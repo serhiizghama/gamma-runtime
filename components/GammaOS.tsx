@@ -2,6 +2,7 @@ import React from "react";
 import "../styles/os-theme.css";
 import { Desktop } from "./Desktop";
 import { Dock } from "./Dock";
+import { Launchpad } from "./Launchpad";
 import { WindowManager } from "./WindowManager";
 
 export function GammaOS(): React.ReactElement {
@@ -17,11 +18,19 @@ export function GammaOS(): React.ReactElement {
         userSelect: "none",
       }}
     >
+      {/* Layer 0: Desktop background */}
       <Desktop />
+
+      {/* Layer 1: Windows */}
       <WindowManager />
-      {/* Launchpad placeholder — Iteration 3 */}
+
+      {/* Layer 2: Launchpad overlay */}
+      <Launchpad />
+
+      {/* Layer 3: Dock */}
       <Dock />
-      {/* NotificationCenter placeholder — Iteration 3 */}
+
+      {/* Portal root for dropdowns / tooltips */}
       <div
         id="gamma-os-portal-root"
         style={{
