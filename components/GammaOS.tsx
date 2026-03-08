@@ -2,6 +2,7 @@ import React from "react";
 import "../styles/os-theme.css";
 import { Desktop } from "./Desktop";
 import { Dock } from "./Dock";
+import { WindowManager } from "./WindowManager";
 
 export function GammaOS(): React.ReactElement {
   return (
@@ -17,12 +18,19 @@ export function GammaOS(): React.ReactElement {
       }}
     >
       <Desktop />
-      {/* WindowManager placeholder — Iteration 2 */}
-      {/* Launchpad placeholder — Iteration 2 */}
+      <WindowManager />
+      {/* Launchpad placeholder — Iteration 3 */}
       <Dock />
       {/* NotificationCenter placeholder — Iteration 3 */}
-      {/* Portal root for floating UI — required by spec §11 Watch-out #1 */}
-      <div id="gamma-os-portal-root" style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999 }} />
+      <div
+        id="gamma-os-portal-root"
+        style={{
+          position: "fixed",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 9999,
+        }}
+      />
     </div>
   );
 }
