@@ -1,7 +1,8 @@
 # Gamma OS — Phase 2: Backend Integration Specification
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Draft  
-**Audience:** Senior Backend Developer (NestJS + Redis)
+**Audience:** Senior Backend Developer (NestJS + Redis)  
+**Changelog v1.1:** Enhanced streaming architecture based on openclaw-studio analysis — phase-aware event bridge, thinking/tool/lifecycle stream types, frontend Zustand state model.
 
 ---
 
@@ -10,8 +11,8 @@
 Phase 2 connects Gamma OS (React-based Web OS) to the **OpenClaw Gateway** running locally on the Mac Mini M4. The result is a live OS where:
 
 - Each open **Window** maps to an **OpenClaw agent session**
-- Agents stream responses via SSE into the OS window's content area
-- A dedicated **System Architect Agent** can generate `.tsx` files, commit them via Git, and hot-reload them into the UI without a full rebuild
+- Agent responses stream live into the window: thinking blocks, tool calls, assistant text — all in real-time
+- A **System Architect Agent** can generate `.tsx` files, commit them via Git, and hot-reload them into the UI without a full rebuild
 - All agent "thought tokens" are intercepted and pushed to `gamma:memory:bus` (Redis Streams)
 
 ```
@@ -19,8 +20,9 @@ Browser (Gamma OS React)
     │  SSE /api/stream/:windowId
     ▼
 NestJS Backend (gamma-os-server)
-    │  WS / HTTP  │  Redis Pub/Sub + Streams
-    ▼              ▼
+    │         │
+    │  WS     │  Redis Streams
+    ▼         ▼
 OpenClaw Gateway   Redis 7+
     │
     ▼
@@ -45,9 +47,15 @@ Claude / local models / sub-agents
 
 ## 3. TypeScript Interfaces
 
-```typescript
-// ── OpenClaw Gateway ──────────────────────────────────────────
+### 3.1 Agent Status
 
+```typescript
+export type AgentStatus = "idle" | "running" | "error";
+```
+
+### 3.2 OpenClaw Gateway Frames
+
+```typescript
 /** WS frame types received from OpenClaw Gateway */
 export type GWFrameType = "res" | "event";
 
@@ -55,7 +63,7 @@ export interface GWFrame<T = unknown> {
   type: GWFrameType;
   id?: string;
   ok?: boolean;
-  event?: string;
+  event?: string;   // "agent" | "chat" | "presence" | "heartbeat"
   payload?: T;
   seq?: number;
 }
@@ -70,60 +78,137 @@ export interface GWConnectParams {
   device: { id: string; publicKey: string; signature: string; signedAt: number; nonce: string };
 }
 
-/** Streamed agent output delta */
-export interface GWAgentDelta {
+/**
+ * Agent event payload — emitted per-frame during a run.
+ * stream field determines rendering path.
+ */
+export interface GWAgentEventPayload {
+  runId: string;
   sessionKey: string;
-  text?: string;
-  thinking?: string;
-  toolCall?: { name: string; args: unknown };
-  toolResult?: { name: string; result: unknown };
-  done: boolean;
-  stopReason?: string;
+  seq?: number;
+  stream:
+    | "lifecycle"   // run phase transitions
+    | "thinking"    // Extended Thinking / reasoning trace
+    | "assistant"   // visible LM text output
+    | "tool"        // tool call or result
+    | string;       // custom streams (reasoning, analysis, etc.)
+  data?: {
+    phase?: "start" | "end" | "error" | "call" | "result";  // lifecycle OR tool phase
+    text?: string;     // full accumulated text
+    delta?: string;    // incremental chunk
+    thinking?: string; // thinking content (assistant stream)
+    name?: string;     // tool name
+    toolCallId?: string;
+    arguments?: unknown;
+    result?: unknown;
+    isError?: boolean;
+  };
 }
 
-// ── Gamma OS Session Mapping ──────────────────────────────────
+/** Chat event payload — final/history messages */
+export interface GWChatEventPayload {
+  runId: string;
+  sessionKey: string;
+  state: "delta" | "final" | "aborted" | "error";
+  seq?: number;
+  stopReason?: string;
+  message?: unknown;
+  errorMessage?: string;
+}
+```
 
-/** One-to-one map: Gamma window ↔ OpenClaw session */
+### 3.3 Gamma OS SSE Events
+
+```typescript
+/**
+ * Structured packets pushed to gamma:sse:<windowId> Redis Stream.
+ * Frontend discriminates on `type`.
+ */
+export type GammaSSEEvent =
+  // ── Lifecycle ──────────────────────────────────────────────────────────
+  | { type: "lifecycle_start"; windowId: string; runId: string }
+  | { type: "lifecycle_end";   windowId: string; runId: string; stopReason?: string }
+  | { type: "lifecycle_error"; windowId: string; runId: string; message: string }
+
+  // ── Thinking / Extended Reasoning ─────────────────────────────────────
+  | { type: "thinking"; windowId: string; runId: string; text: string }
+
+  // ── Assistant text (delta streaming) ──────────────────────────────────
+  | { type: "assistant_delta"; windowId: string; runId: string; text: string }
+
+  // ── Tool calls ─────────────────────────────────────────────────────────
+  | { type: "tool_call";   windowId: string; runId: string; name: string; toolCallId: string; arguments: unknown }
+  | { type: "tool_result"; windowId: string; runId: string; name: string; toolCallId: string; result: unknown; isError: boolean }
+
+  // ── Scaffolding ────────────────────────────────────────────────────────
+  | { type: "component_ready"; appId: string; modulePath: string }
+
+  // ── Error ──────────────────────────────────────────────────────────────
+  | { type: "error"; windowId: string; message: string };
+```
+
+### 3.4 Window↔Session Mapping
+
+```typescript
 export interface WindowSession {
   windowId: string;      // Zustand window UUID
   appId: string;         // e.g. "terminal", "browser"
-  sessionKey: string;    // OpenClaw session key (e.g. "window-abc123")
-  agentId: string;       // OpenClaw agent id (e.g. "serhii" or "architect")
+  sessionKey: string;    // OpenClaw session key
+  agentId: string;       // OpenClaw agent id
   createdAt: number;
-  status: "idle" | "running" | "error";
+  status: AgentStatus;
+}
+```
+
+### 3.5 Frontend Window Agent State (Zustand)
+
+```typescript
+/**
+ * Per-window agent state — lives inside WindowNode's local state or
+ * a dedicated agentWindows slice of useOSStore.
+ */
+export interface WindowAgentState {
+  status: AgentStatus;
+
+  /** Active streaming text — cleared to null when lifecycle:end fires */
+  streamText: string | null;
+
+  /**
+   * Extended Thinking block — full accumulated reasoning text.
+   * Shown as a collapsible block above the assistant response.
+   * Cleared on lifecycle:end.
+   */
+  thinkingTrace: string | null;
+
+  /** Permanent session history — markdown lines appended after lifecycle:end */
+  outputLines: string[];
+
+  /** Current run id — used to drop stale frames from previous runs */
+  runId: string | null;
+
+  /** Timestamp when current run started */
+  runStartedAt: number | null;
+
+  /** Last tool call/result lines rendered in-stream */
+  pendingToolLines: string[];
 }
 
-// ── SSE Events (NestJS → Browser) ────────────────────────────
+export const INITIAL_WINDOW_AGENT_STATE: WindowAgentState = {
+  status: "idle",
+  streamText: null,
+  thinkingTrace: null,
+  outputLines: [],
+  runId: null,
+  runStartedAt: null,
+  pendingToolLines: [],
+};
+```
 
-export type GammaSSEEvent =
-  | { type: "delta";  windowId: string; text: string }
-  | { type: "thinking"; windowId: string; thought: string }
-  | { type: "done";   windowId: string; stopReason: string }
-  | { type: "tool";   windowId: string; name: string; args: unknown }
-  | { type: "component_ready"; appId: string; modulePath: string }
-  | { type: "error";  windowId: string; message: string };
+### 3.6 Memory Bus Entry
 
-// ── App Scaffolding ───────────────────────────────────────────
-
-export interface ScaffoldRequest {
-  appId: string;         // target app id, e.g. "weather"
-  displayName: string;   // window title
-  sourceCode: string;    // full .tsx content from agent
-  commit: boolean;       // whether to git commit
-}
-
-export interface ScaffoldResult {
-  ok: boolean;
-  filePath: string;      // absolute path to written file
-  commitHash?: string;
-  modulePath: string;    // relative path for dynamic import
-  error?: string;
-}
-
-// ── Memory Bus ───────────────────────────────────────────────
-
+```typescript
 export interface MemoryBusEntry {
-  id: string;            // Redis Stream message id
+  id: string;
   sessionKey: string;
   windowId: string;
   kind: "thought" | "tool_call" | "tool_result" | "text";
@@ -136,66 +221,38 @@ export interface MemoryBusEntry {
 
 ## 4. API Surface
 
-### 4.1 REST / SSE Endpoints
-
 ```
-POST   /api/sessions          Create window↔session mapping
-DELETE /api/sessions/:windowId  Destroy session
-POST   /api/sessions/:windowId/send  Send user message to agent
-GET    /api/stream/:windowId   SSE stream for window (text/event-stream)
-POST   /api/scaffold           Scaffold a new app component
-GET    /api/memory-bus         SSE stream of memory bus entries (all windows)
-GET    /api/sessions           List active window→session mappings
-```
-
-### 4.2 Session Lifecycle
-
-```
-Browser opens window "terminal"
-  → POST /api/sessions { windowId, appId: "terminal", agentId: "serhii" }
-  → NestJS creates OpenClaw session via WS: sessions_spawn or sessions_send
-  → Stores WindowSession in Redis Hash  HSET gamma:sessions windowId <json>
-  → Returns { sessionKey }
-
-Browser connects SSE
-  → GET /api/stream/abc123
-  → NestJS subscribes to Redis Stream gamma:sse:abc123
-  → Pumps events to browser as text/event-stream
-
-User sends message
-  → POST /api/sessions/abc123/send { message }
-  → NestJS forwards to OpenClaw via tools/invoke: sessions_send
-  → Agent response streams back through WS → Redis → SSE
+POST   /api/sessions                   Create window↔session mapping
+DELETE /api/sessions/:windowId         Destroy session
+POST   /api/sessions/:windowId/send    Send user message to agent
+GET    /api/stream/:windowId           SSE stream (text/event-stream)
+POST   /api/scaffold                   Scaffold a new app component
+GET    /api/memory-bus                 SSE stream of all memory bus entries
+GET    /api/sessions                   List active window→session mappings
 ```
 
 ---
 
-## 5. OpenClaw Gateway Connection
+## 5. OpenClaw Gateway WS Client
 
-### 5.1 WebSocket Client (NestJS Service)
+### 5.1 Connection & Handshake
 
 ```typescript
 // src/gateway/gateway-ws.service.ts
 @Injectable()
 export class GatewayWsService implements OnModuleInit {
   private ws: WebSocket;
+  private sessionToWindow = new Map<string, string>(); // sessionKey → windowId
 
-  async onModuleInit() {
-    await this.connect();
-  }
+  async onModuleInit() { await this.connect(); }
 
   private async connect() {
     this.ws = new WebSocket(`ws://localhost:${GW_PORT}`);
-
     this.ws.on("message", (raw) => this.handleFrame(JSON.parse(raw.toString())));
 
-    // 1. Wait for connect.challenge
     const challenge = await this.waitForEvent("connect.challenge");
-
-    // 2. Sign nonce (Ed25519 keypair stored in .env)
     const signature = await signChallenge(challenge.payload.nonce, DEVICE_PRIVATE_KEY);
 
-    // 3. Handshake
     this.send({
       type: "req", id: ulid(), method: "connect",
       params: {
@@ -204,21 +261,14 @@ export class GatewayWsService implements OnModuleInit {
         role: "operator",
         scopes: ["operator.read", "operator.write"],
         auth: { token: process.env.OPENCLAW_GATEWAY_TOKEN },
-        device: {
-          id: DEVICE_ID,
-          publicKey: DEVICE_PUBLIC_KEY,
-          signature,
-          signedAt: Date.now(),
-          nonce: challenge.payload.nonce,
-        },
+        device: { id: DEVICE_ID, publicKey: DEVICE_PUBLIC_KEY, signature,
+                  signedAt: Date.now(), nonce: challenge.payload.nonce },
       },
     });
 
-    // 4. Wait for hello-ok
-    await this.waitForResponse();
+    await this.waitForResponse(); // hello-ok
   }
 
-  /** Invoke a single tool via HTTP (simpler for non-streaming) */
   async invokeTool(tool: string, args: Record<string, unknown>, sessionKey = "main") {
     const res = await fetch(`http://localhost:${GW_PORT}/tools/invoke`, {
       method: "POST",
@@ -233,64 +283,200 @@ export class GatewayWsService implements OnModuleInit {
 }
 ```
 
-### 5.2 Session Spawning
-
-When a window opens, NestJS spawns an isolated OpenClaw session:
+### 5.2 Event Classification
 
 ```typescript
-// For interactive app windows (terminal, browser, etc.)
-await gatewayWs.invokeTool("sessions_spawn", {
-  task: `You are the ${appId} app in Gamma OS. Await user input.`,
-  mode: "session",
-  label: `gamma-${windowId}`,
-}, "main");
-```
+// Mirrors openclaw-studio's classifyGatewayEventKind
+type GatewayEventKind = "summary-refresh" | "runtime-agent" | "runtime-chat" | "ignore";
 
-The returned `sessionKey` is stored in `gamma:sessions` Redis Hash.
+function classifyGatewayEventKind(event: string): GatewayEventKind {
+  if (event === "presence" || event === "heartbeat") return "summary-refresh";
+  if (event === "agent")  return "runtime-agent";
+  if (event === "chat")   return "runtime-chat";
+  return "ignore";
+}
+
+// Custom reasoning streams (beyond "thinking") — e.g. "analysis", "reasoning", "trace"
+const REASONING_STREAM_HINTS = ["reason", "think", "analysis", "trace"];
+function isReasoningStream(stream: string): boolean {
+  const s = stream.trim().toLowerCase();
+  if (!s || s === "assistant" || s === "tool" || s === "lifecycle") return false;
+  return REASONING_STREAM_HINTS.some((h) => s.includes(h));
+}
+```
 
 ---
 
-## 6. SSE Multiplexer
+## 6. Phase-Aware Event Bridge
 
-NestJS aggregates **N agent streams** into per-window SSE pipes via Redis Streams.
+The core of the streaming system. Each incoming `agent` WS frame is routed by `stream` field.
 
+```typescript
+// src/gateway/gateway-ws.service.ts — handleFrame()
+private async handleFrame(frame: GWFrame) {
+  const kind = classifyGatewayEventKind(frame.event ?? "");
+
+  // ── Summary refresh (heartbeat/presence) — update session status only ──
+  if (kind === "summary-refresh") return; // optional: update Redis status key
+
+  // ── Runtime agent stream ────────────────────────────────────────────────
+  if (kind === "runtime-agent") {
+    await this.handleAgentEvent(frame.payload as GWAgentEventPayload);
+    return;
+  }
+
+  // ── Runtime chat (final messages / history) ─────────────────────────────
+  if (kind === "runtime-chat") {
+    await this.handleChatEvent(frame.payload as GWChatEventPayload);
+    return;
+  }
+}
+
+private async handleAgentEvent(payload: GWAgentEventPayload) {
+  const windowId = this.sessionToWindow.get(payload.sessionKey);
+  if (!windowId) return;
+
+  const { stream, data, runId } = payload;
+  const streamKey = `gamma:sse:${windowId}`;
+  const nowMs = Date.now();
+
+  // ── LIFECYCLE ────────────────────────────────────────────────────────────
+  if (stream === "lifecycle") {
+    const phase = data?.phase;
+    if (phase === "start") {
+      await this.pushSSE(streamKey, {
+        type: "lifecycle_start", windowId, runId,
+      });
+    } else if (phase === "end") {
+      await this.pushSSE(streamKey, {
+        type: "lifecycle_end", windowId, runId, stopReason: "stop",
+      });
+    } else if (phase === "error") {
+      await this.pushSSE(streamKey, {
+        type: "lifecycle_error", windowId, runId,
+        message: typeof data?.text === "string" ? data.text : "Run error",
+      });
+    }
+    return;
+  }
+
+  // ── THINKING / REASONING STREAMS ─────────────────────────────────────────
+  if (stream === "thinking" || isReasoningStream(stream)) {
+    const text = data?.text ?? data?.delta ?? "";
+    if (!text) return;
+
+    await this.pushSSE(streamKey, { type: "thinking", windowId, runId, text });
+
+    // Also write to memory bus
+    await this.pushMemoryBus({
+      sessionKey: payload.sessionKey, windowId,
+      kind: "thought", content: text, ts: nowMs,
+    });
+    return;
+  }
+
+  // ── ASSISTANT TEXT ────────────────────────────────────────────────────────
+  if (stream === "assistant") {
+    const text = data?.text ?? data?.delta ?? "";
+    // Also intercept embedded thinking (<think> tags)
+    const thinkingContent = data?.thinking;
+
+    if (thinkingContent) {
+      await this.pushSSE(streamKey, { type: "thinking", windowId, runId, text: thinkingContent });
+      await this.pushMemoryBus({
+        sessionKey: payload.sessionKey, windowId,
+        kind: "thought", content: thinkingContent, ts: nowMs,
+      });
+    }
+
+    if (text) {
+      await this.pushSSE(streamKey, { type: "assistant_delta", windowId, runId, text });
+    }
+    return;
+  }
+
+  // ── TOOL CALLS ────────────────────────────────────────────────────────────
+  if (stream === "tool") {
+    const phase = data?.phase;
+    const name  = data?.name ?? "tool";
+    const toolCallId = data?.toolCallId ?? "";
+
+    if (phase !== "result") {
+      // Tool call initiated
+      await this.pushSSE(streamKey, {
+        type: "tool_call", windowId, runId,
+        name, toolCallId, arguments: data?.arguments ?? null,
+      });
+      await this.pushMemoryBus({
+        sessionKey: payload.sessionKey, windowId,
+        kind: "tool_call",
+        content: JSON.stringify({ name, arguments: data?.arguments }),
+        ts: nowMs,
+      });
+    } else {
+      // Tool result received
+      await this.pushSSE(streamKey, {
+        type: "tool_result", windowId, runId,
+        name, toolCallId,
+        result: data?.result ?? null,
+        isError: data?.isError ?? false,
+      });
+      await this.pushMemoryBus({
+        sessionKey: payload.sessionKey, windowId,
+        kind: "tool_result",
+        content: JSON.stringify({ name, result: data?.result }),
+        ts: nowMs,
+      });
+    }
+    return;
+  }
+}
+
+// Helper: push to Redis Stream
+private async pushSSE(streamKey: string, event: GammaSSEEvent) {
+  await this.redis.xadd(streamKey, "*", ...flattenEntry(event));
+}
+
+private async pushMemoryBus(entry: Omit<MemoryBusEntry, "id">) {
+  await this.redis.xadd("gamma:memory:bus", "*",
+    ...flattenEntry({ ...entry, id: ulid() })
+  );
+}
 ```
-OpenClaw WS stream (per session)
-  ↓
-GatewayWsService.handleFrame()
-  ↓ XADD gamma:sse:<windowId> * type delta text "..."
-Redis Stream gamma:sse:<windowId>
-  ↓ XREAD BLOCK 0 STREAMS gamma:sse:<windowId> $
-SseController — pumps to browser EventSource
-```
+
+---
+
+## 7. SSE Multiplexer (NestJS → Browser)
 
 ```typescript
 // src/sse/sse.controller.ts
 @Controller("api/stream")
 export class SseController {
-  constructor(private readonly redis: Redis) {}
-
   @Sse(":windowId")
   stream(@Param("windowId") windowId: string): Observable<MessageEvent> {
     return new Observable((subscriber) => {
-      const streamKey = `gamma:sse:${windowId}`;
-      let lastId = "$";
+      const keys = [`gamma:sse:${windowId}`, "gamma:sse:broadcast"];
+      let lastIds: Record<string, string> = Object.fromEntries(keys.map(k => [k, "$"]));
 
       const poll = async () => {
-        const results = await this.redis.xread(
-          "BLOCK", 5000, "STREAMS", streamKey, lastId
-        );
-        if (!results) return poll();
-
-        for (const [, messages] of results) {
-          for (const [id, fields] of messages) {
-            lastId = id;
-            const entry = parseStreamEntry(fields);
-            subscriber.next({ data: JSON.stringify(entry) } as MessageEvent);
-            if (entry.type === "done") subscriber.complete();
+        try {
+          const results = await this.redis.xread(
+            "BLOCK", 5000, "COUNT", 50,
+            "STREAMS", ...keys, ...keys.map(k => lastIds[k])
+          );
+          if (results) {
+            for (const [key, messages] of results) {
+              for (const [id, fields] of messages) {
+                lastIds[key] = id;
+                const event = parseStreamEntry(fields) as GammaSSEEvent;
+                subscriber.next({ data: JSON.stringify(event) } as MessageEvent);
+              }
+            }
           }
+          if (!subscriber.closed) poll();
+        } catch (e) {
+          subscriber.error(e);
         }
-        poll();
       };
 
       poll();
@@ -302,105 +488,165 @@ export class SseController {
 
 ---
 
-## 7. Memory Bus Interception
+## 8. Frontend: How to Handle SSE Events
 
-All "thinking" tokens and tool calls are intercepted and written to `gamma:memory:bus` (separate Redis Stream for observability / AI decision tree UI).
+### 8.1 Event → State Mapping
 
 ```typescript
-// Inside GatewayWsService.handleFrame()
-private async handleFrame(frame: GWFrame) {
-  if (frame.event !== "agent.delta") return;
+// hooks/useAgentStream.ts — runs inside each agent-enabled WindowNode
+function useAgentStream(windowId: string): WindowAgentState {
+  const [state, dispatch] = useReducer(agentReducer, INITIAL_WINDOW_AGENT_STATE);
 
-  const delta = frame.payload as GWAgentDelta;
-  const windowId = this.sessionToWindow.get(delta.sessionKey);
-  if (!windowId) return;
+  useEffect(() => {
+    const es = new EventSource(`/api/stream/${windowId}`);
 
-  // 1. Push to per-window SSE stream
-  const entry: GammaSSEEvent = delta.thinking
-    ? { type: "thinking", windowId, thought: delta.thinking }
-    : { type: "delta",   windowId, text: delta.text ?? "" };
-
-  await this.redis.xadd(`gamma:sse:${windowId}`, "*", ...flattenEntry(entry));
-
-  // 2. Intercept thought tokens → memory bus
-  if (delta.thinking) {
-    const mem: MemoryBusEntry = {
-      id: ulid(),
-      sessionKey: delta.sessionKey,
-      windowId,
-      kind: "thought",
-      content: delta.thinking,
-      ts: Date.now(),
+    es.onmessage = (e) => {
+      const event: GammaSSEEvent = JSON.parse(e.data);
+      dispatch(event);
     };
-    await this.redis.xadd("gamma:memory:bus", "*", ...flattenEntry(mem));
-  }
 
-  // 3. Tool calls
-  if (delta.toolCall) {
-    await this.redis.xadd("gamma:memory:bus", "*", ...flattenEntry({
-      id: ulid(), sessionKey: delta.sessionKey, windowId,
-      kind: "tool_call", content: JSON.stringify(delta.toolCall), ts: Date.now(),
-    }));
-  }
+    return () => es.close();
+  }, [windowId]);
 
-  if (delta.done) {
-    await this.redis.xadd(`gamma:sse:${windowId}`, "*",
-      ...flattenEntry({ type: "done", windowId, stopReason: delta.stopReason ?? "stop" })
-    );
+  return state;
+}
+```
+
+### 8.2 Reducer Logic
+
+```typescript
+function agentReducer(state: WindowAgentState, event: GammaSSEEvent): WindowAgentState {
+  switch (event.type) {
+
+    // ── Run started ──────────────────────────────────────────────
+    case "lifecycle_start":
+      return {
+        ...state,
+        status: "running",
+        runId: event.runId,
+        runStartedAt: Date.now(),
+        streamText: null,
+        thinkingTrace: null,
+        pendingToolLines: [],
+      };
+
+    // ── Run ended: commit streamText to history ───────────────────
+    case "lifecycle_end": {
+      if (state.runId !== event.runId) return state;
+      const newLines = [...state.outputLines];
+      if (state.thinkingTrace) {
+        newLines.push(`<details><summary>💭 Thinking</summary>\n\n${state.thinkingTrace}\n</details>`);
+      }
+      if (state.pendingToolLines.length > 0) {
+        newLines.push(...state.pendingToolLines);
+      }
+      if (state.streamText) {
+        newLines.push(state.streamText);
+      }
+      return {
+        ...state,
+        status: "idle",
+        runId: null,
+        runStartedAt: null,
+        streamText: null,
+        thinkingTrace: null,
+        pendingToolLines: [],
+        outputLines: newLines,
+      };
+    }
+
+    case "lifecycle_error":
+      return { ...state, status: "error", runId: null, streamText: null };
+
+    // ── Thinking: replace/append to thinkingTrace ─────────────────
+    case "thinking":
+      if (state.runId !== event.runId) return state;
+      return {
+        ...state,
+        thinkingTrace: event.text,  // Gateway sends full accumulated text
+      };
+
+    // ── Assistant text: delta-update streamText ───────────────────
+    case "assistant_delta":
+      if (state.runId !== event.runId) return state;
+      return {
+        ...state,
+        streamText: event.text,  // Full accumulated text from Gateway
+      };
+
+    // ── Tool call: append formatted line ─────────────────────────
+    case "tool_call": {
+      if (state.runId !== event.runId) return state;
+      const line = `🔧 \`${event.name}\`(${JSON.stringify(event.arguments ?? {})})`;
+      return { ...state, pendingToolLines: [...state.pendingToolLines, line] };
+    }
+
+    // ── Tool result: append formatted line ────────────────────────
+    case "tool_result": {
+      if (state.runId !== event.runId) return state;
+      const status = event.isError ? "❌" : "✅";
+      const line = `${status} \`${event.name}\` → ${JSON.stringify(event.result ?? null)}`;
+      return { ...state, pendingToolLines: [...state.pendingToolLines, line] };
+    }
+
+    default:
+      return state;
   }
 }
 ```
 
+### 8.3 UI Rendering Order
+
+```
+outputLines     → permanent history (markdown, scrollable)
+pendingToolLines → in-progress tool calls (appended live during run)
+thinkingTrace   → collapsible "💭 Thinking" block (shown while running)
+streamText      → live-printing assistant response (shown while running)
+```
+
 ---
 
-## 8. App Scaffolding Pipeline
+## 9. App Scaffolding Pipeline
 
-The **System Architect Agent** (OpenClaw agent id: `architect`) generates new React components and injects them into the live app without rebuilding.
-
-### 8.1 Flow
+### 9.1 Flow
 
 ```
 1. User asks: "Build me a Weather app"
-2. Architect Agent generates full WeatherApp.tsx source
+2. Architect Agent generates WeatherApp.tsx source
 3. Agent calls POST /api/scaffold { appId:"weather", sourceCode:"..." }
 4. NestJS writes file to apps/generated/WeatherApp.tsx
-5. NestJS runs: git add && git commit -m "feat: generated WeatherApp"
-6. NestJS publishes SSE event: { type:"component_ready", appId:"weather", modulePath:"./apps/generated/WeatherApp" }
-7. React frontend does: const mod = await import(modulePath); registers app in registry
-8. User opens Weather from Launchpad — no reload needed
+5. NestJS: git add && git commit -m "feat: generated WeatherApp"
+6. NestJS pushes SSE: { type:"component_ready", appId:"weather", modulePath:"..." }
+7. React: const mod = await import(modulePath) → register in app registry
+8. User opens Weather from Launchpad — no page reload
 ```
 
-### 8.2 NestJS Scaffold Service
+### 9.2 Scaffold Service
 
 ```typescript
-// src/scaffold/scaffold.service.ts
 @Injectable()
 export class ScaffoldService {
-  private readonly appsDir = path.resolve(__dirname, "../../gamma-os/apps/generated");
-  private readonly git = simpleGit(path.resolve(__dirname, "../../gamma-os"));
+  private readonly appsDir = path.resolve(GAMMA_OS_REPO, "apps/generated");
+  private readonly git = simpleGit(GAMMA_OS_REPO);
 
   async scaffold(req: ScaffoldRequest): Promise<ScaffoldResult> {
-    // 1. Sanitize appId
-    const safeId = req.appId.replace(/[^a-z0-9-]/gi, "");
+    const safeId   = req.appId.replace(/[^a-z0-9-]/gi, "");
     const fileName = `${pascal(safeId)}App.tsx`;
     const filePath = path.join(this.appsDir, fileName);
 
-    // 2. Write file
     await fs.mkdir(this.appsDir, { recursive: true });
     await fs.writeFile(filePath, req.sourceCode, "utf8");
 
-    // 3. Git commit
     let commitHash: string | undefined;
     if (req.commit) {
       await this.git.add(filePath);
       const result = await this.git.commit(
         `feat: generated ${req.displayName} app`,
-        { "--author": "serhiizghama <zmrser@gmail.com>" }
+        { "--author": `${GIT_AUTHOR_NAME} <${GIT_AUTHOR_EMAIL}>` }
       );
       commitHash = result.commit;
     }
 
-    // 4. Notify SSE bus
     const modulePath = `./apps/generated/${fileName.replace(".tsx", "")}`;
     await this.redis.xadd("gamma:sse:broadcast", "*",
       ...flattenEntry({ type: "component_ready", appId: safeId, modulePath })
@@ -411,76 +657,32 @@ export class ScaffoldService {
 }
 ```
 
-### 8.3 FS Watcher (hot-reload fallback)
-
-```typescript
-// src/scaffold/scaffold-watcher.service.ts
-@Injectable()
-export class ScaffoldWatcherService implements OnModuleInit {
-  onModuleInit() {
-    chokidar
-      .watch(APPS_GENERATED_DIR, { ignoreInitial: true })
-      .on("add", (filePath) => this.onNewFile(filePath))
-      .on("change", (filePath) => this.onNewFile(filePath));
-  }
-
-  private async onNewFile(filePath: string) {
-    const appId = path.basename(filePath, "App.tsx").toLowerCase();
-    const modulePath = `./apps/generated/${path.basename(filePath, ".tsx")}`;
-    await this.redis.xadd("gamma:sse:broadcast", "*",
-      ...flattenEntry({ type: "component_ready", appId, modulePath })
-    );
-  }
-}
-```
-
-### 8.4 Frontend Dynamic Import (React)
-
-```typescript
-// components/WindowNode.tsx — extended app registry
-async function loadGeneratedApp(appId: string): Promise<React.ComponentType> {
-  try {
-    const mod = await import(
-      /* @vite-ignore */
-      `../apps/generated/${pascal(appId)}App.tsx`
-    );
-    return mod[`${pascal(appId)}App`];
-  } catch {
-    return AppPlaceholder;
-  }
-}
-```
-
 ---
 
-## 9. Redis Key Schema
+## 10. Redis Key Schema
 
 | Key | Type | TTL | Description |
 |---|---|---|---|
 | `gamma:sessions` | Hash | — | windowId → WindowSession JSON |
 | `gamma:sse:<windowId>` | Stream | 1h | Per-window SSE event stream |
-| `gamma:sse:broadcast` | Stream | 1h | Global events (component_ready, etc.) |
-| `gamma:memory:bus` | Stream | 24h | All thought tokens + tool calls |
-| `gamma:app:registry` | Hash | — | appId → modulePath (generated apps) |
+| `gamma:sse:broadcast` | Stream | 1h | Global: component_ready, etc. |
+| `gamma:memory:bus` | Stream | 24h | All thoughts + tool calls |
+| `gamma:app:registry` | Hash | — | appId → modulePath (generated) |
 
 ---
 
-## 10. Environment Variables
+## 11. Environment Variables
 
 ```env
-# OpenClaw Gateway
 OPENCLAW_GATEWAY_URL=ws://localhost:18789
 OPENCLAW_GATEWAY_TOKEN=your-token-here
 
-# Device identity (Ed25519 keypair — generate with: openclaw keygen)
 GAMMA_DEVICE_ID=gamma-os-bridge-001
 GAMMA_DEVICE_PUBLIC_KEY=base64...
 GAMMA_DEVICE_PRIVATE_KEY=base64...
 
-# Redis
 REDIS_URL=redis://localhost:6379
 
-# Paths
 GAMMA_OS_REPO=/Users/sputnik/.openclaw/agents/serhii/projects/gamma-os
 GIT_AUTHOR_NAME=serhiizghama
 GIT_AUTHOR_EMAIL=zmrser@gmail.com
@@ -488,50 +690,53 @@ GIT_AUTHOR_EMAIL=zmrser@gmail.com
 
 ---
 
-## 11. NestJS Module Structure
+## 12. NestJS Module Structure
 
 ```
 gamma-os-server/
 ├── src/
 │   ├── app.module.ts
 │   ├── gateway/
-│   │   ├── gateway-ws.service.ts      # WS client to OpenClaw
+│   │   ├── gateway-ws.service.ts      # WS client + event bridge
+│   │   ├── event-classifier.ts        # classifyGatewayEventKind
 │   │   └── gateway.module.ts
 │   ├── sessions/
-│   │   ├── sessions.controller.ts     # POST/DELETE /api/sessions
+│   │   ├── sessions.controller.ts
 │   │   ├── sessions.service.ts
 │   │   └── sessions.module.ts
 │   ├── sse/
 │   │   ├── sse.controller.ts          # GET /api/stream/:windowId
 │   │   └── sse.module.ts
 │   ├── scaffold/
-│   │   ├── scaffold.controller.ts     # POST /api/scaffold
+│   │   ├── scaffold.controller.ts
 │   │   ├── scaffold.service.ts
 │   │   ├── scaffold-watcher.service.ts
 │   │   └── scaffold.module.ts
 │   ├── memory-bus/
-│   │   ├── memory-bus.service.ts      # Writes to gamma:memory:bus
+│   │   ├── memory-bus.service.ts
 │   │   └── memory-bus.module.ts
 │   └── redis/
-│       └── redis.module.ts            # ioredis provider
+│       └── redis.module.ts
 ├── .env
 └── package.json
 ```
 
 ---
 
-## 12. Implementation Order
+## 13. Implementation Order
 
 | Priority | Module | Estimated effort |
 |---|---|---|
 | P0 | Redis setup + key schema | 0.5 day |
-| P0 | GatewayWsService (connect + frame routing) | 1 day |
+| P0 | GatewayWsService — connect + handshake | 1 day |
+| P0 | Phase-aware event bridge (lifecycle/thinking/assistant/tool) | 1 day |
 | P0 | Sessions CRUD + Redis mapping | 0.5 day |
-| P0 | SSE multiplexer (per-window stream) | 1 day |
+| P0 | SSE multiplexer (per-window + broadcast) | 1 day |
+| P1 | Frontend `useAgentStream` hook + reducer | 1 day |
 | P1 | Memory bus interception | 0.5 day |
 | P1 | Scaffold service + Git integration | 1 day |
-| P1 | FS watcher | 0.5 day |
+| P1 | FS watcher (hot-reload fallback) | 0.5 day |
 | P2 | Frontend dynamic import registry | 1 day |
-| P2 | Memory bus visualization in Gamma OS UI | 1 day |
+| P2 | Memory bus visualization (Gamma OS UI panel) | 1 day |
 
-**Total Phase 2 estimate: ~7 developer-days**
+**Total Phase 2 estimate: ~9 developer-days**
