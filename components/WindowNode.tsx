@@ -1,7 +1,43 @@
-import React, { useRef, useCallback, useEffect } from "react";
+import React, { useRef, useCallback, useEffect, lazy, Suspense } from "react";
 import { useOSStore } from "../store/useOSStore";
 import { TitleBar } from "./TitleBar";
 import { ResizeHandles, ResizeEdge } from "./ResizeHandles";
+
+// ── App registry — lazy-load per appId ──────────────────────────────────────
+const TerminalApp = lazy(() =>
+  import("../apps/TerminalApp").then((m) => ({ default: m.TerminalApp }))
+);
+
+function AppContent({ appId }: { appId: string }): React.ReactElement {
+  switch (appId) {
+    case "terminal":
+      return (
+        <Suspense fallback={<AppPlaceholder label="Loading Terminal…" />}>
+          <TerminalApp />
+        </Suspense>
+      );
+    default:
+      return <AppPlaceholder label={appId} />;
+  }
+}
+
+function AppPlaceholder({ label }: { label: string }): React.ReactElement {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--text-secondary)",
+        fontSize: 13,
+        fontFamily: "var(--font-system)",
+      }}
+    >
+      {label}
+    </div>
+  );
+}
 
 const MIN_W = 320;
 const MIN_H = 200;
@@ -196,20 +232,9 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
           onDragStart={handleDragStart}
         />
 
-        {/* AppContent placeholder — Iteration 4 */}
-        <div
-          style={{
-            flex: 1,
-            overflow: "auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--text-secondary)",
-            fontSize: 13,
-            fontFamily: "var(--font-system)",
-          }}
-        >
-          {win.appId}
+        {/* App content — lazy-loaded per appId */}
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <AppContent appId={win.appId} />
         </div>
 
         {/* 8-directional resize handles */}
