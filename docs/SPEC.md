@@ -1060,6 +1060,212 @@ Migration is non-breaking: replace `emitMemoryEvent()` internals, keep the SSE A
 
 ---
 
+## 11. Engineering Watch-outs
+
+### ⚠️ Watch-out #1 — CSS Stacking Context & React Portals
+
+**Problem:** `transform: translate(...)` on `<WindowNode />` creates a new [Stacking Context](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_stacking_context) for every window. Any popup rendered inside `<AppContent />` — `<select>` dropdowns, datepickers, tooltips, context menus — will be clipped by the window boundary if `overflow: hidden` is set, or will fail to stack above sibling windows regardless of `z-index`.
+
+This is a browser-level constraint, not a CSS bug. `z-index` only competes within the same Stacking Context.
+
+**Solution: React Portals for all floating UI**
+
+Portals render children into a DOM node outside the component tree hierarchy — in this case, directly into `<GammaOS />` root — bypassing the Stacking Context of individual windows entirely.
+
+```typescript
+// components/Portal.tsx
+import { createPortal } from 'react-dom';
+import { useRef, useEffect, useState } from 'react';
+
+interface PortalProps {
+  anchorRef: React.RefObject<HTMLElement>;  // element to anchor the popup to
+  children: React.ReactNode;
+}
+
+export function Portal({ anchorRef, children }: PortalProps) {
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!anchorRef.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    setCoords({ top: rect.bottom, left: rect.left });
+  }, [anchorRef]);
+
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed',
+        top: coords.top,
+        left: coords.left,
+        zIndex: 9999,   // above all windows — no Stacking Context conflict
+      }}
+    >
+      {children}
+    </div>,
+    document.getElementById('gamma-os-portal-root')!  // sibling of <GammaOS /> in DOM
+  );
+}
+```
+
+```html
+<!-- index.html — portal root must be outside the main app tree -->
+<div id="root"></div>
+<div id="gamma-os-portal-root"></div>
+```
+
+**Rule:** Every floating UI element inside `<AppContent />` (dropdown, tooltip, context menu, datepicker) **must** use `<Portal>`. This is a code review gate — same as the cleanup contract in §5.
+
+---
+
+### ⚠️ Watch-out #2 — Redis Stream ID Precision Loss
+
+**Problem:** Redis Stream IDs have the format `1526919030474-55` — a millisecond Unix timestamp followed by a sequence number. The timestamp part alone (`1526919030474`) exceeds `Number.MAX_SAFE_INTEGER` (`2^53 - 1 = 9007199254740991`), which means any JavaScript numeric parse will cause silent precision loss.
+
+```typescript
+// ❌ NEVER do this
+const id = Number('1526919030474-55');    // NaN
+const id = parseInt('1526919030474-55');  // 1526919030474 — looks fine now,
+                                          // but will silently corrupt at higher values
+
+// ✅ Always treat as opaque string
+const lastId: string = entry.id;  // '1526919030474-55'
+res.write(`id: ${lastId}\n`);     // pass through verbatim
+```
+
+**Enforcement rules:**
+
+| Context | Rule |
+|---|---|
+| SSE `id:` field | Write as-is from Redis entry, never parse |
+| `Last-Event-ID` header | Read as `req.headers['last-event-id'] as string` |
+| XREAD cursor | Pass directly to `xRead([{ key, id: lastId }])` |
+| TypeScript types | Always `string`, never `number` or `bigint` |
+| Logging | `JSON.stringify({ id: entry.id })` — string field |
+
+```typescript
+// types/redis.ts
+export type StreamID = string;  // '1526919030474-55' — never parse numerically
+
+// Correct XREAD cursor advancement
+let lastId: StreamID = '0-0';
+
+for (const entry of stream.messages) {
+  res.write(`id: ${entry.id}\n`);   // ✅ verbatim
+  lastId = entry.id;                 // ✅ string assignment, no parse
+}
+```
+
+---
+
+### ⚠️ Watch-out #3 — Memory Bus Throttling
+
+**Problem:** During active Vector DB searches, an agent can emit hundreds of `decision_node` events per second. Forwarding each event individually through SSE triggers a `setNodes` call on every message, causing:
+- React to re-render the Canvas on every event
+- Browser to parse and process hundreds of SSE frames per second
+- Main thread to saturate — UI freezes
+
+**Solution: Backend batching + frontend debounce**
+
+**Backend — batch flush every 150ms:**
+
+```typescript
+// events/memoryBusSSE.ts
+app.get('/api/v1/agents/:id/memory-stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  let lastId: StreamID = (req.headers['last-event-id'] as string) || '0-0';
+  let batch: MemoryBusEvent[] = [];
+  let active = true;
+
+  req.on('close', () => { active = false; });
+
+  // Flush accumulated batch every 150ms
+  const flushInterval = setInterval(() => {
+    if (batch.length === 0 || !active) return;
+
+    res.write(`event: batch\n`);
+    res.write(`id: ${batch[batch.length - 1].id}\n`);    // cursor = last event in batch
+    res.write(`data: ${JSON.stringify(batch)}\n\n`);
+    batch = [];
+  }, 150);
+
+  req.on('close', () => clearInterval(flushInterval));
+
+  // Read loop — accumulate, don't flush immediately
+  while (active) {
+    const results = await readerClient.xRead(
+      [{ key: `gamma:memory:bus`, id: lastId }],
+      { COUNT: 500, BLOCK: 150 }
+    );
+    if (!results || !active) continue;
+
+    for (const stream of results) {
+      for (const entry of stream.messages) {
+        batch.push(JSON.parse(entry.message.payload));
+        lastId = entry.id;
+      }
+    }
+  }
+});
+```
+
+**Frontend — process batch, not individual events:**
+
+```typescript
+// hooks/useMemoryBus.ts
+export function useMemoryBus(agentId: string) {
+  const [nodes, setNodes] = useState<DecisionNode[]>([]);
+  const [edges, setEdges] = useState<DecisionEdge[]>([]);
+
+  useEffect(() => {
+    const es = new EventSource(`/api/v1/agents/${agentId}/memory-stream`);
+
+    // ✅ Single batch event — one setState call for N events
+    es.addEventListener('batch', (e: MessageEvent) => {
+      const events: MemoryBusEvent[] = JSON.parse(e.data);
+
+      const newNodes: DecisionNode[] = [];
+      const newEdges: DecisionEdge[] = [];
+
+      for (const event of events) {
+        if (event.type === 'decision_node') {
+          newNodes.push({ id: event.id, label: event.payload.decisionLabel ?? event.type });
+          if (event.payload.parentNodeId) {
+            newEdges.push({ from: event.payload.parentNodeId, to: event.id });
+          }
+        }
+      }
+
+      // One re-render for the entire batch
+      setNodes(prev => [...prev, ...newNodes]);
+      setEdges(prev => [...prev, ...newEdges]);
+    });
+
+    return () => es.close();
+  }, [agentId]);
+
+  return { nodes, edges };
+}
+```
+
+**Performance profile:**
+
+| Scenario | Without batching | With 150ms batching |
+|---|---|---|
+| 500 events/s | 500 `setState` / s → freeze | ~7 `setState` / s → smooth |
+| React renders/s | 500 | 7 |
+| SSE frames/s | 500 | 7 |
+| `Last-Event-ID` accuracy | Per-event | Last in batch (sufficient) |
+
+**Tuning:** 150ms is a starting point. Adjust based on agent throughput profile:
+- Interactive UI feedback needed → 50–100ms
+- Batch analytics / post-hoc review → 500ms–1s
+
+---
+
 ## Architectural Decision Log
 
 | # | Decision | Rationale |
@@ -1077,7 +1283,10 @@ Migration is non-breaking: replace `emitMemoryEvent()` internals, keep the SSE A
 | 11 | SIGTERM drains SSE via `retry` directive | Zero missed events on rolling deploy; browser reconnects with Last-Event-ID cursor |
 | 12 | Separate `gamma:memory:bus` stream | UI transport and memory tracing are distinct concerns; Memory Bus feeds Canvas visualizer |
 | 13 | Redis Streams now, Kafka later | Pragmatic for Phase 1-2; Kafka migration path defined for Phase 3 scale |
+| 14 | React Portals for all floating UI | `transform` creates Stacking Context — portals bypass it; mandatory code review gate |
+| 15 | Redis Stream IDs always `string` | `1526919030474-55` exceeds `Number.MAX_SAFE_INTEGER`; numeric parse = silent corruption |
+| 16 | Memory Bus SSE batching at 150ms | 500 events/s → 7 `setState/s`; one re-render per batch instead of per event |
 
 ---
 
-*Gamma OS Phase 1 Spec v4 — revised 2026-03-08*
+*Gamma OS Phase 1 Spec v5 — revised 2026-03-08*
