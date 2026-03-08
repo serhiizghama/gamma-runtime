@@ -80,6 +80,26 @@
   pointer-events: none;
 }
 
+/* ── Toast Notifications ─────────────────────────────────────── */
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateX(calc(100% + 20px)); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toastSlideOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(calc(100% + 20px)); }
+}
+
+.toast-notification {
+  animation: toastSlideIn var(--duration-normal) var(--spring-fast) forwards;
+}
+
+.toast-notification--dismissing {
+  animation: toastSlideOut var(--duration-fast) var(--ease-smooth) forwards;
+}
+
+/* ── Desktop ─────────────────────────────────────────────────── */
 .desktop--launchpad-open {
   backdrop-filter: blur(20px) brightness(0.7);
   transition: backdrop-filter var(--duration-normal) var(--ease-smooth);

@@ -4,8 +4,13 @@ import { Desktop } from "./Desktop";
 import { Dock } from "./Dock";
 import { Launchpad } from "./Launchpad";
 import { WindowManager } from "./WindowManager";
+import { NotificationCenter } from "./NotificationCenter";
+import { useSystemEvents } from "../hooks/useSystemEvents";
 
 export function GammaOS(): React.ReactElement {
+  // Start mock SSE event loop (will be real EventSource in production)
+  useSystemEvents();
+
   return (
     <div
       id="gamma-os"
@@ -30,7 +35,10 @@ export function GammaOS(): React.ReactElement {
       {/* Layer 3: Dock */}
       <Dock />
 
-      {/* Portal root for dropdowns / tooltips */}
+      {/* Layer 4: Notification toasts (top-right) */}
+      <NotificationCenter />
+
+      {/* Portal root for dropdowns / tooltips — spec §11 */}
       <div
         id="gamma-os-portal-root"
         style={{
