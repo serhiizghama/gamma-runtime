@@ -35,9 +35,10 @@ const VALUE_BADGE: React.CSSProperties = {
 };
 
 export function SettingsApp(): React.ReactElement {
-  const uiSettings     = useOSStore((s) => s.uiSettings);
-  const updateUI       = useOSStore((s) => s.updateUISettings);
-  const resetAll       = useOSStore((s) => s.resetAll);
+  const uiSettings        = useOSStore((s) => s.uiSettings);
+  const updateUI          = useOSStore((s) => s.updateUISettings);
+  const setBackgroundType = useOSStore((s) => s.setBackgroundType);
+  const resetAll          = useOSStore((s) => s.resetAll);
 
   const set = <K extends keyof UISettings>(key: K, val: UISettings[K]) =>
     updateUI({ [key]: val } as Partial<UISettings>);
@@ -69,7 +70,25 @@ export function SettingsApp(): React.ReactElement {
         </div>
       </div>
 
-      {/* ── Background ─────────────────────────────────────────── */}
+      {/* ── Wallpaper ──────────────────────────────────────────── */}
+      <div style={SECTION}>
+        <p style={LABEL}>Desktop Wallpaper</p>
+
+        <div style={ROW}>
+          <span style={{ fontSize: 14 }}>Background Engine</span>
+          <SegmentedControl
+            options={[
+              { value: "matrix", label: "🟩 Matrix Rain" },
+              { value: "live",   label: "🌌 Live Nebula"  },
+            ]}
+            value={uiSettings.backgroundType}
+            onChange={(v) => setBackgroundType(v as "live" | "matrix")}
+          />
+        </div>
+      </div>
+
+      {/* ── Nebula controls (only shown when Live Nebula active) ── */}
+      {uiSettings.backgroundType === "live" && (
       <div style={SECTION}>
         <p style={LABEL}>Live Background</p>
 
@@ -91,6 +110,7 @@ export function SettingsApp(): React.ReactElement {
           />
         </div>
       </div>
+      )}
 
       {/* ── System ─────────────────────────────────────────────── */}
       <div style={{ ...SECTION, borderBottom: "none", paddingBottom: 0 }}>
