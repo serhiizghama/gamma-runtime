@@ -736,6 +736,330 @@ export function useSystemEvents() {
 
 ---
 
+## 7. State Hydration — Refresh-Resistance
+
+### Problem
+
+`useOSStore` exists exclusively in browser memory. A page reload (F5) or accidental tab close destroys the entire OS session state: open windows, their coordinates, minimized states, and running agent connections.
+
+### Phase 1 — localStorage Snapshot
+
+Minimal viable hydration using Zustand `persist` middleware:
+
+```typescript
+// store/useOSStore.ts
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+export const useOSStore = create<OSStore>()(
+  persist(
+    immer((set) => ({ /* ...store implementation... */ })),
+    {
+      name: 'gamma-os-session',
+      storage: createJSONStorage(() => localStorage),
+      // Only persist layout state — never volatile connection handles
+      partialize: (state) => ({
+        windows: Object.fromEntries(
+          Object.entries(state.windows).map(([id, w]) => [id, {
+            ...w,
+            // Strip non-serializable refs if any
+          }])
+        ),
+        zIndexCounter: state.zIndexCounter,
+        focusedWindowId: state.focusedWindowId,
+      }),
+    }
+  )
+);
+```
+
+On mount, `<GammaOS />` reads the persisted snapshot and restores window layout before first paint. App components reconnect their own WebSocket/WebGL in their `useEffect` — the OS kernel just provides the coordinates.
+
+### Phase 2 — Server-Side Session (PostgreSQL/Redis)
+
+For multi-device and agent-continuity use cases:
+
+```
+POST /api/v1/session/snapshot   ← client pushes state delta every 30s or on change
+GET  /api/v1/session/restore    ← on mount, before store init
+
+Table: os_sessions
+  id           uuid  PK
+  user_id      uuid  FK
+  windows_json jsonb           -- serialized window layout
+  updated_at   timestamptz
+```
+
+**Key rule:** Window coordinates and open process list are part of the Session Context. Agent state (LLM context, memory) is NOT stored here — it lives in the Agent Daemon layer (see §8).
+
+---
+
+## 8. Process Lifecycle — UI Process vs Daemon Process
+
+### Separation of Concerns
+
+Closing a window ≠ killing a background agent. These are two distinct lifecycles:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  UI Process (Window)              Daemon Process (Agent) │
+│  ──────────────────               ──────────────────── │
+│  Lifecycle: tied to DOM           Lifecycle: independent │
+│  Controlled by: Zustand store     Controlled by: backend │
+│  Close action: unmount + cleanup  Close action: explicit │
+│                                   kill via API           │
+│  WS conn: closes on unmount       LLM stream: persists   │
+│                                   until task complete    │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Backend Agent API
+
+```typescript
+// Agent daemon — independent of UI window lifecycle
+interface AgentProcess {
+  id: string;          // uuid
+  appId: string;
+  status: 'running' | 'idle' | 'completed' | 'failed';
+  startedAt: number;
+  task?: string;
+}
+
+// REST endpoints
+GET  /api/v1/agents                    // list running daemon processes
+POST /api/v1/agents/:id/kill           // explicit kill (separate from window close)
+GET  /api/v1/agents/:id/output         // SSE stream of agent output
+```
+
+### Window ↔ Agent Binding
+
+When `AgentMonitorApp` opens:
+1. UI window mounts → establishes WS to `/api/v1/agents/:id/output`
+2. If agent daemon is NOT running → backend starts it, returns `agentId`
+3. If agent daemon IS running (resumed session) → WS attaches to existing stream
+
+When window closes:
+1. `useEffect` cleanup → WS closes (client-side only)
+2. Backend detects WS disconnect → agent daemon **continues running**
+3. Agent output is buffered in Redis Stream (`gamma:agents:<id>:output`)
+4. When window re-opens → WS reconnects, replays buffered output via `Last-Event-ID`
+
+```typescript
+// <AgentMonitorApp /> cleanup contract
+useEffect(() => {
+  const ws = new WebSocket(`wss://api/v1/agents/${agentId}/output`);
+  wsRef.current = ws;
+
+  return () => {
+    // ✅ Closes WS only — does NOT kill the agent daemon
+    ws.close(1000, 'window_closed');
+    // Backend sees close code 1000 → keeps agent alive
+    // Backend sees close code 1001 (going away) or explicit kill API → stops agent
+  };
+}, [agentId]);
+```
+
+---
+
+## 9. Connection Draining — Graceful SSE Shutdown
+
+### Problem
+
+SSE connections are long-lived TCP connections. On rolling deploy (PM2 reload, K8s rolling update), the process receives `SIGTERM`. Without explicit draining, connected clients hang until TCP timeout (~90s).
+
+### Implementation
+
+```typescript
+// server/graceful-shutdown.ts
+const activeSSEClients = new Set<Response>();
+
+// Register on connect, deregister on close
+app.get('/api/v1/system/events', async (req, res) => {
+  activeSSEClients.add(res);
+  req.on('close', () => activeSSEClients.delete(res));
+
+  // ...existing SSE implementation...
+});
+
+// SIGTERM handler
+process.on('SIGTERM', async () => {
+  console.log('[GammaOS] SIGTERM received — draining SSE connections');
+
+  // 1. Stop accepting new connections
+  server.close();
+
+  // 2. Signal all clients to reconnect (they will hit the new instance)
+  for (const res of activeSSEClients) {
+    // Send retry directive — browser will reconnect with Last-Event-ID
+    res.write('retry: 1000\n\n');
+    res.end();
+  }
+  activeSSEClients.clear();
+
+  // 3. Flush Redis writes, close connections
+  await Promise.all([writeClient.quit(), readClient.quit()]);
+
+  // 4. Exit cleanly
+  process.exit(0);
+});
+```
+
+### Kubernetes Lifecycle Hook
+
+```yaml
+# deployment.yaml
+lifecycle:
+  preStop:
+    exec:
+      command: ["/bin/sh", "-c", "sleep 5"]  # let LB drain before SIGTERM
+terminationGracePeriodSeconds: 30
+```
+
+**Flow on rolling deploy:**
+1. K8s sends `preStop` → pod sleeps 5s (LB removes from rotation)
+2. K8s sends `SIGTERM` → handler drains SSE, sends `retry: 1000` to all clients
+3. Clients reconnect in 1s to the new pod, using `Last-Event-ID` as Redis Stream cursor
+4. Zero missed events — Redis Stream persists across pod restarts
+
+---
+
+## 10. Memory Bus — Architecture Bridge
+
+### Concept
+
+Redis Streams `gamma:system:events` serves as UI transport (notifications, toasts). For thesis-grade agent memory tracing, a parallel **Memory Bus** is required — a dedicated event stream for all memory read/write transactions across Vector DB and PostgreSQL.
+
+### Stream Topology
+
+```
+┌───────────────────────────────────────────────────────────┐
+│                    Redis Streams                           │
+│                                                            │
+│  gamma:system:events     ← UI transport (notifications)   │
+│                                                            │
+│  gamma:memory:bus        ← Memory Bus (agent transactions) │
+│    ├── type: vector_write   (embedding stored)             │
+│    ├── type: vector_read    (similarity search result)     │
+│    ├── type: pg_write       (structured memory saved)      │
+│    ├── type: pg_read        (context retrieved)            │
+│    └── type: decision_node  (LLM decision checkpoint)      │
+└───────────────────────────────────────────────────────────┘
+```
+
+### Memory Bus Event Schema
+
+```typescript
+// types/memory-bus.ts
+
+export type MemoryEventType =
+  | 'vector_write'
+  | 'vector_read'
+  | 'pg_write'
+  | 'pg_read'
+  | 'decision_node';
+
+export interface MemoryBusEvent {
+  id: string;              // Redis Stream auto-ID (timestamp-based)
+  agentId: string;
+  sessionId: string;
+  type: MemoryEventType;
+  payload: {
+    query?: string;        // for reads
+    content?: string;      // for writes
+    embedding?: number[];  // vector ops
+    score?: number;        // similarity score on read
+    table?: string;        // pg ops
+    decisionLabel?: string;  // decision_node: human-readable checkpoint
+    parentNodeId?: string;   // decision tree edge
+  };
+  timestamp: number;
+}
+```
+
+### Emitting Memory Bus Events
+
+```typescript
+// memory/memoryBus.ts
+import { emitSystemEvent } from '../events/systemBus';
+
+const MEMORY_STREAM_KEY = 'gamma:memory:bus';
+
+export async function emitMemoryEvent(event: Omit<MemoryBusEvent, 'id' | 'timestamp'>) {
+  const id = await writeClient.xAdd(
+    MEMORY_STREAM_KEY,
+    '*',
+    {
+      agentId: event.agentId,
+      sessionId: event.sessionId,
+      type: event.type,
+      payload: JSON.stringify(event.payload),
+    },
+    { TRIM: { strategy: 'MAXLEN', strategyModifier: '~', threshold: 50_000 } }
+  );
+  return id;
+}
+
+// Called from vector DB wrapper:
+// await emitMemoryEvent({ agentId, sessionId, type: 'vector_write', payload: { content, embedding } });
+```
+
+### Canvas Visualizer — Real-Time Decision Tree
+
+The client subscribes to a dedicated SSE endpoint for Memory Bus events:
+
+```typescript
+// hooks/useMemoryBus.ts
+export function useMemoryBus(agentId: string) {
+  const [nodes, setNodes] = useState<DecisionNode[]>([]);
+  const [edges, setEdges] = useState<DecisionEdge[]>([]);
+
+  useEffect(() => {
+    const es = new EventSource(`/api/v1/agents/${agentId}/memory-stream`);
+
+    es.addEventListener('decision_node', (e: MessageEvent) => {
+      const event: MemoryBusEvent = JSON.parse(e.data);
+      setNodes(prev => [...prev, {
+        id: event.id,
+        label: event.payload.decisionLabel ?? event.type,
+        timestamp: event.timestamp,
+      }]);
+      if (event.payload.parentNodeId) {
+        setEdges(prev => [...prev, {
+          from: event.payload.parentNodeId!,
+          to: event.id,
+        }]);
+      }
+    });
+
+    es.addEventListener('vector_read', (e: MessageEvent) => {
+      // Highlight retrieved memory nodes on canvas
+    });
+
+    return () => es.close();
+  }, [agentId]);
+
+  return { nodes, edges };
+}
+```
+
+The Canvas component renders the decision tree using `useMemoryBus()`, giving a real-time visualization of the agent's reasoning chain — directly relevant to the thesis claim about observable, auditable AI decision-making.
+
+### Kafka Migration Path (Phase 3)
+
+Redis Streams provide at-least-once delivery with manual acknowledgment (`XACK`). For thesis-grade ordering guarantees (strict total order across distributed nodes):
+
+| Property | Redis Streams | Kafka |
+|---|---|---|
+| Ordering | Per-stream, monotonic | Per-partition, strict |
+| Retention | MAXLEN (size-bound) | Time-bound (configurable) |
+| Throughput | ~100k msg/s | ~1M+ msg/s |
+| Consumer groups | ✅ `XREADGROUP` | ✅ native |
+| Schema registry | ❌ manual | ✅ Confluent/Apicurio |
+| Replay from offset | ✅ stream ID | ✅ topic offset |
+
+Migration is non-breaking: replace `emitMemoryEvent()` internals, keep the SSE API contract identical. Recommended trigger: when Memory Bus throughput exceeds 50k events/s or when multi-region deployment is required.
+
+---
+
 ## Architectural Decision Log
 
 | # | Decision | Rationale |
@@ -748,7 +1072,12 @@ export function useSystemEvents() {
 | 6 | Mandatory cleanup contract in every `<AppContent />` | Prevents zombie WebSockets, intervals, and WebGL contexts on window close |
 | 7 | Phase 1 same-thread execution; Phase 2 iframe/Worker sandbox | Pragmatic for first-party apps; isolation deferred to when third-party agents exist |
 | 8 | 8-handle resize (`n/s/e/w/ne/nw/se/sw`) | Full OS-grade window resizing from any edge or corner |
+| 9 | localStorage hydration (Phase 1) → PostgreSQL session (Phase 2) | Incremental: browser-local first, server-persistent when multi-device needed |
+| 10 | UI Process / Daemon Process separation | Window close ≠ agent kill; agent runs to completion, output buffered in Redis |
+| 11 | SIGTERM drains SSE via `retry` directive | Zero missed events on rolling deploy; browser reconnects with Last-Event-ID cursor |
+| 12 | Separate `gamma:memory:bus` stream | UI transport and memory tracing are distinct concerns; Memory Bus feeds Canvas visualizer |
+| 13 | Redis Streams now, Kafka later | Pragmatic for Phase 1-2; Kafka migration path defined for Phase 3 scale |
 
 ---
 
-*Gamma OS Phase 1 Spec v3 — revised 2026-03-08*
+*Gamma OS Phase 1 Spec v4 — revised 2026-03-08*
