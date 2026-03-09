@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { RedisModule } from './redis/redis.module';
+import { GatewayModule } from './gateway/gateway.module';
 
 @Module({
   imports: [
@@ -10,6 +11,7 @@ import { RedisModule } from './redis/redis.module';
       envFilePath: '.env',
     }),
     RedisModule,
+    GatewayModule,
   ],
   controllers: [AppController],
 })
