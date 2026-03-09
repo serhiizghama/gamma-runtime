@@ -166,6 +166,44 @@ src/sessions/
 
 ---
 
+### Task 2.4 — Shared Types Extraction
+
+**What to build:**
+- Create a shared types package `packages/gamma-os-types/` at the monorepo root (or symlinked into both `src/` and the NestJS server)
+- Move all Phase 2 interfaces out of `types/os.ts` into this shared package:
+  - `AgentStatus`, `GammaSSEEvent`, `WindowAgentState`, `WindowStateSyncSnapshot`
+  - `MemoryBusEntry`, `WindowSession`, `ScaffoldRequest`, `ScaffoldAsset`, `SystemHealthReport`
+- Both frontend and backend import from `@gamma-os/types` instead of duplicating definitions
+- Add a `tsconfig` path alias so both projects resolve `@gamma-os/types` without publishing to npm
+
+**Why this matters:**
+When `GammaSSEEvent` is updated (e.g., adding a new stream type in v1.5), the TypeScript compiler will immediately flag every handler that needs updating — in both frontend and backend — at build time, not at runtime.
+
+**Structure:**
+```
+gamma-os/
+├── packages/
+│   └── gamma-os-types/
+│       ├── index.ts        ← re-exports all shared interfaces
+│       ├── events.ts       ← GammaSSEEvent union type
+│       ├── state.ts        ← WindowAgentState, AgentStatus
+│       ├── session.ts      ← WindowSession, WindowStateSyncSnapshot
+│       ├── scaffold.ts     ← ScaffoldRequest, ScaffoldAsset
+│       └── system.ts       ← SystemHealthReport
+├── src/                    ← frontend (React) imports from @gamma-os/types
+├── gamma-os-server/        ← backend (NestJS) imports from @gamma-os/types
+└── tsconfig.base.json      ← shared paths: { "@gamma-os/types": ["packages/gamma-os-types"] }
+```
+
+**Acceptance criteria:**
+- Change `GammaSSEEvent` in `packages/gamma-os-types/events.ts` → TypeScript errors appear in both frontend and backend until all handlers are updated
+- `npm run typecheck` in both projects passes with the shared types
+- No copy-pasted interface definitions exist in `src/` or `gamma-os-server/src/`
+
+**Key spec reference:** §3 (TypeScript Interfaces) — all interfaces in that section move here
+
+---
+
 ## Loop 3 — Real-time Streaming & Batching (P1)
 
 > **Goal:** Deliver live event data to the browser smoothly, without React re-render storms.
@@ -291,8 +329,65 @@ src/sse/stream-batcher.ts
 - Redis: `redis.ping()` latency
 - Gateway: `fetch /ping` to Gateway HTTP endpoint with 2s timeout
 
+**Event Lag metric (observability addition):**
+
+Add `eventLag` to the health report — the delta between when an event was emitted by OpenClaw Gateway and when it was written to Redis. This measures the latency of the data bus itself and is a useful academic benchmark.
+
+```typescript
+// In GatewayWsService — record arrival timestamp on every agent event:
+private async handleAgentEvent(payload: GWAgentEventPayload) {
+  const arrivedAt = Date.now();
+  // payload.ts = Gateway-side timestamp (if present in OpenClaw protocol)
+  const gatewayTs = (payload as Record<string, unknown>).ts as number | undefined;
+  const lagMs = gatewayTs ? arrivedAt - gatewayTs : null;
+
+  // Store rolling average in Redis
+  if (lagMs !== null && lagMs >= 0) {
+    await this.redis.lpush("gamma:metrics:event_lag", lagMs);
+    await this.redis.ltrim("gamma:metrics:event_lag", 0, 99); // keep last 100 samples
+  }
+  // ... rest of handler
+}
+```
+
+```typescript
+// In SystemController.health():
+const lagSamples = await this.redis.lrange("gamma:metrics:event_lag", 0, -1);
+const lagNumbers = lagSamples.map(Number).filter(n => !isNaN(n));
+const eventLag = lagNumbers.length > 0
+  ? {
+      avgMs: Math.round(lagNumbers.reduce((a, b) => a + b, 0) / lagNumbers.length),
+      maxMs: Math.max(...lagNumbers),
+      samples: lagNumbers.length,
+    }
+  : null;
+
+return {
+  ...existingMetrics,
+  eventLag,  // null = no data yet (no agent runs recorded)
+};
+```
+
+Updated `SystemHealthReport`:
+```typescript
+export interface SystemHealthReport {
+  ts: number;
+  status: "ok" | "degraded" | "error";
+  cpu:      { usagePct: number };
+  ram:      { usedMb: number; totalMb: number; usedPct: number };
+  redis:    { connected: boolean; latencyMs: number };
+  gateway:  { connected: boolean; latencyMs: number };
+  /** v1.4+: Event bus latency — Gateway emit → Redis write delta */
+  eventLag: { avgMs: number; maxMs: number; samples: number } | null;
+}
+```
+
+Redis key: `gamma:metrics:event_lag` — List, keep last 100 samples, no TTL.
+
 **Acceptance criteria:**
-- `GET /api/system/health` → `{ status: "ok", cpu: { usagePct: N }, ram: { usedMb: N, totalMb: 16384 }, redis: { connected: true, latencyMs: N }, gateway: { connected: true, latencyMs: N } }`
+- `GET /api/system/health` → `{ status: "ok", cpu: { usagePct: N }, ram: { usedMb: N, totalMb: 16384 }, redis: { connected: true, latencyMs: N }, gateway: { connected: true, latencyMs: N }, eventLag: { avgMs: N, maxMs: N, samples: N } }`
+- `eventLag: null` when no agent runs have occurred yet
+- After 10+ events streamed: `eventLag.avgMs` is a realistic single-digit ms value on localhost
 - Kill Redis → `{ status: "degraded", redis: { connected: false } }`
 - Response time < 3 seconds (bounded by 2s Gateway timeout)
 
