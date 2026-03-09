@@ -2,3 +2,6 @@ node_modules/
 dist/
 .DS_Store
 *.local
+gamma-os-server/node_modules/
+gamma-os-server/.env
+gamma-os-server/dist/
