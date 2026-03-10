@@ -1,5 +1,5 @@
 {
-  "name": "gamma-os-server",
+  "name": "gamma-kernel",
   "version": "1.4.0",
   "description": "Gamma OS Phase 2 — Backend Integration Server",
   "private": true,
@@ -8,7 +8,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/gamma-os-server/src/main.js",
+    "start:prod": "node dist/kernel/src/main.js",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit"
   },

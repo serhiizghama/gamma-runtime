@@ -17,8 +17,8 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@gamma/types": ["packages/gamma-types/index.ts"]
+      "@gamma/types": ["../packages/gamma-types/index.ts"]
     }
   },
-  "include": ["src", "components", "store", "types", "styles", "packages/gamma-types"]
+  "include": ["src", "components", "store", "types", "styles", "apps", "hooks", "constants", "../packages/gamma-types"]
 }

@@ -1,26 +1,12 @@
 {
-  "name": "gamma-os",
+  "name": "gamma-os-monorepo",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5173",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "zustand": "^4.5.2",
-    "immer": "^10.1.1",
-    "uuid": "^9.0.1"
-  },
-  "devDependencies": {
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@types/uuid": "^9.0.8",
-    "@vitejs/plugin-react": "^4.3.1",
-    "typescript": "^5.4.5",
-    "vite": "^5.3.4"
+    "dev": "npm run dev --prefix web",
+    "dev:kernel": "npm run start:dev --prefix kernel",
+    "build": "npm run build --prefix web",
+    "build:kernel": "npm run build --prefix kernel",
+    "start:kernel": "npm run start:prod --prefix kernel"
   }
 }
