@@ -1,8 +1,9 @@
 # Gamma OS — Phase 3: Frontend & Multi-Agent Architecture
-**Version:** 1.2  
+**Version:** 1.2.1  
 **Status:** Draft — Ready for Review  
 **Audience:** Senior Frontend Developer (React), Agent Architect  
 **Depends on:** Phase 2 Backend Integration Specification v1.6  
+**Changelog v1.2.1:** Security fix — context injection in §6.1 must use `scaffoldService.jailPath()` for all file reads, preventing path traversal when reading `agent-prompt.md`, `context.md`, and source code.  
 **Changelog v1.2:** Fixed unscaffold memory leaks (app data + App Owner session cleanup on delete). Defined Vite alias for `@gamma/os` module resolution. Resolved Hot-Reload strategy: Full Remount with dynamic key (not Fast Refresh).  
 **Changelog v1.1:** English-only token constraints for AI context files (`context.md`, `agent-prompt.md`). OS-level App Storage API (`useAppStorage` hook + Redis persistence) replacing blocked `localStorage`.  
 
@@ -607,12 +608,15 @@ When a user sends a message to an App Owner, the backend constructs the full con
 ```typescript
 // In sessions.service.ts — sendMessage() for app-owner-* windows
 async sendAppOwnerMessage(appId: string, windowId: string, message: string): Promise<void> {
-  const bundlePath = path.join(JAIL_ROOT, appId);
+  // ⚠️ SECURITY: All file reads MUST go through jailPath() to prevent path traversal.
+  // A malicious appId like "../../../etc" would escape the generated/ directory without this.
+  const promptPath   = this.scaffoldService.jailPath(`${appId}/agent-prompt.md`);
+  const contextPath  = this.scaffoldService.jailPath(`${appId}/context.md`);
+  const sourcePath   = this.scaffoldService.jailPath(`${appId}/${pascal(appId)}App.tsx`);
 
-  // Read the three context files
-  const agentPrompt = await fs.readFile(path.join(bundlePath, 'agent-prompt.md'), 'utf8');
-  const contextDoc = await fs.readFile(path.join(bundlePath, 'context.md'), 'utf8');
-  const sourceCode = await fs.readFile(path.join(bundlePath, `${pascal(appId)}App.tsx`), 'utf8');
+  const agentPrompt = await fs.readFile(promptPath, 'utf8');
+  const contextDoc  = await fs.readFile(contextPath, 'utf8');
+  const sourceCode  = await fs.readFile(sourcePath, 'utf8');
 
   // Construct the full message with context prefix
   const fullMessage = [
