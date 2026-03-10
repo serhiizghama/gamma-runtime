@@ -9,4 +9,5 @@ export const INSTALLED_APPS: AppDefinition[] = [
   { id: "terminal", name: "Terminal", icon: "⌨️" },
   { id: "settings", name: "Settings", icon: "⚙️" },
   { id: "notes",    name: "Notes",    icon: "📝" },
+  { id: "kernel-monitor", name: "Kernel Monitor", icon: "🔬" },
 ];

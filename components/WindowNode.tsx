@@ -4,8 +4,9 @@ import { TitleBar } from "./TitleBar";
 import { ResizeHandles, ResizeEdge } from "./ResizeHandles";
 
 // ── App registry — lazy-load per appId ──────────────────────────────────────
-const TerminalApp  = lazy(() => import("../apps/TerminalApp").then((m)  => ({ default: m.TerminalApp  })));
-const SettingsApp  = lazy(() => import("../apps/SettingsApp").then((m)  => ({ default: m.SettingsApp  })));
+const TerminalApp       = lazy(() => import("../apps/TerminalApp").then((m)       => ({ default: m.TerminalApp  })));
+const SettingsApp       = lazy(() => import("../apps/SettingsApp").then((m)       => ({ default: m.SettingsApp  })));
+const KernelMonitorApp  = lazy(() => import("../apps/KernelMonitorApp").then((m)  => ({ default: m.KernelMonitorApp })));
 
 function AppContent({ appId }: { appId: string }): React.ReactElement {
   const wrap = (node: React.ReactNode, label: string) => (
@@ -14,9 +15,10 @@ function AppContent({ appId }: { appId: string }): React.ReactElement {
     </Suspense>
   );
   switch (appId) {
-    case "terminal": return wrap(<TerminalApp />,  "Terminal");
-    case "settings": return wrap(<SettingsApp />,  "Settings");
-    default:         return <AppPlaceholder label={appId} />;
+    case "terminal":       return wrap(<TerminalApp />,       "Terminal");
+    case "settings":       return wrap(<SettingsApp />,       "Settings");
+    case "kernel-monitor": return wrap(<KernelMonitorApp />,  "Kernel Monitor");
+    default:               return <AppPlaceholder label={appId} />;
   }
 }
 
