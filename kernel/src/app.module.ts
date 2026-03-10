@@ -8,6 +8,7 @@ import { SessionsModule } from './sessions/sessions.module';
 import { SseModule } from './sse/sse.module';
 import { SystemModule } from './system/system.module';
 import { ScaffoldModule } from './scaffold/scaffold.module';
+import { AppDataModule } from './app-data/app-data.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ScaffoldModule } from './scaffold/scaffold.module';
     SseModule,
     SystemModule,
     ScaffoldModule,
+    AppDataModule,
   ],
   controllers: [AppController],
 })
