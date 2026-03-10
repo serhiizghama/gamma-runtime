@@ -1,4 +1,32 @@
 import { ForbiddenException } from '@nestjs/common';
+
+// ── Mock SessionsService before importing ScaffoldService ────────────────
+
+jest.mock('../sessions/sessions.service', () => ({
+  SessionsService: jest.fn().mockImplementation(() => ({
+    remove: jest.fn().mockResolvedValue(true),
+  })),
+}));
+
+const mockGit = {
+  checkIsRepo: jest.fn().mockResolvedValue(true),
+  revparse: jest.fn().mockResolvedValue('private-apps'),
+  add: jest.fn().mockResolvedValue(undefined),
+  commit: jest.fn().mockResolvedValue({ commit: 'abc123' }),
+  status: jest.fn().mockResolvedValue({ files: [{ path: 'test' }] }),
+  push: jest.fn().mockResolvedValue(undefined),
+  checkout: jest.fn().mockResolvedValue(undefined),
+  checkoutLocalBranch: jest.fn().mockResolvedValue(undefined),
+  init: jest.fn().mockResolvedValue(undefined),
+  addConfig: jest.fn().mockResolvedValue(undefined),
+  addRemote: jest.fn().mockResolvedValue(undefined),
+};
+
+jest.mock('simple-git', () => ({
+  __esModule: true,
+  default: jest.fn(() => mockGit),
+}));
+
 import { ScaffoldService } from './scaffold.service';
 
 // ── fs/promises mock ─────────────────────────────────────────────────────
@@ -35,13 +63,19 @@ const mockRedis = {
   hget: jest.fn().mockResolvedValue(null),
   hdel: jest.fn().mockResolvedValue(1),
   xadd: jest.fn().mockResolvedValue('1-0'),
+  keys: jest.fn().mockResolvedValue([]),
+  del: jest.fn().mockResolvedValue(0),
+};
+
+const mockSessionsService = {
+  remove: jest.fn().mockResolvedValue(true),
 };
 
 describe('ScaffoldService', () => {
   let service: ScaffoldService;
 
   beforeEach(() => {
-    service = new ScaffoldService(mockConfig as any, mockRedis as any);
+    service = new ScaffoldService(mockConfig as any, mockRedis as any, mockSessionsService as any);
     jest.clearAllMocks();
   });
 
@@ -299,6 +333,75 @@ describe('ScaffoldService', () => {
       const paths = mockedFs.writeFile.mock.calls.map(c => c[0] as string);
       expect(paths.some(p => p.endsWith('context.md'))).toBe(false);
       expect(paths.some(p => p.endsWith('agent-prompt.md'))).toBe(false);
+    });
+  });
+
+  // ── Remove Deep Cleanup Tests ────────────────────────────────────────
+
+  describe('remove (deep cleanup)', () => {
+    beforeEach(() => {
+      mockRedis.keys.mockReset().mockResolvedValue([]);
+      mockRedis.del.mockReset().mockResolvedValue(0);
+      mockRedis.hdel.mockReset().mockResolvedValue(1);
+      mockRedis.xadd.mockReset().mockResolvedValue('1-0');
+      mockSessionsService.remove.mockReset().mockResolvedValue(true);
+      mockedFs.rm.mockReset().mockResolvedValue(undefined);
+    });
+
+    it('should delete app-data Redis keys when they exist', async () => {
+      const fakeKeys = [
+        'gamma:app-data:weather:selectedCities',
+        'gamma:app-data:weather:units',
+      ];
+      mockRedis.keys.mockResolvedValue(fakeKeys);
+
+      await service.remove('weather');
+
+      expect(mockRedis.keys).toHaveBeenCalledWith('gamma:app-data:weather:*');
+      expect(mockRedis.del).toHaveBeenCalledWith(...fakeKeys);
+    });
+
+    it('should skip redis.del when no app-data keys exist', async () => {
+      mockRedis.keys.mockResolvedValue([]);
+
+      await service.remove('weather');
+
+      expect(mockRedis.keys).toHaveBeenCalledWith('gamma:app-data:weather:*');
+      expect(mockRedis.del).not.toHaveBeenCalled();
+    });
+
+    it('should call sessionsService.remove for the App Owner session', async () => {
+      await service.remove('weather');
+
+      expect(mockSessionsService.remove).toHaveBeenCalledWith('app-owner-weather');
+    });
+
+    it('should not throw if sessionsService.remove fails', async () => {
+      mockSessionsService.remove.mockRejectedValue(new Error('session not found'));
+
+      await expect(service.remove('weather')).resolves.toEqual({ ok: true });
+      expect(mockSessionsService.remove).toHaveBeenCalledWith('app-owner-weather');
+    });
+
+    it('should remove bundle directory, registry entry, and broadcast', async () => {
+      await service.remove('weather');
+
+      // Bundle dir removal
+      expect(mockedFs.rm).toHaveBeenCalledWith(
+        expect.stringContaining('weather'),
+        { recursive: true, force: true },
+      );
+
+      // Registry removal
+      expect(mockRedis.hdel).toHaveBeenCalledWith('gamma:app:registry', 'weather');
+
+      // SSE broadcast
+      expect(mockRedis.xadd).toHaveBeenCalledWith(
+        'gamma:sse:broadcast',
+        '*',
+        'type', 'component_removed',
+        'appId', 'weather',
+      );
     });
   });
 });

@@ -10,6 +10,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { SessionsService } from '../sessions/sessions.service';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -127,6 +128,7 @@ export class ScaffoldService {
   constructor(
     private readonly config: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly sessionsService: SessionsService,
   ) {
     const repoRoot = this.config.get<string>(
       'GAMMA_OS_REPO',
@@ -405,6 +407,20 @@ export class ScaffoldService {
       await fs.rm(bundleDir, { recursive: true, force: true });
     } catch {
       /* already gone */
+    }
+
+    // Clean up user-persisted app data from Redis
+    const dataKeys = await this.redis.keys(`gamma:app-data:${safeId}:*`);
+    if (dataKeys.length > 0) {
+      await this.redis.del(...dataKeys);
+      this.logger.log(`Deleted ${dataKeys.length} app-data keys for '${safeId}'`);
+    }
+
+    // Kill App Owner Gateway session (best-effort)
+    try {
+      await this.sessionsService.remove(`app-owner-${safeId}`);
+    } catch {
+      /* session may not exist — that's fine */
     }
 
     // Git: stage removal and commit in the NESTED repo (v1.5)
