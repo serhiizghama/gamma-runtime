@@ -48,6 +48,9 @@ export interface OSStore {
 
   uiSettings: UISettings;
 
+  /** System Architect panel visibility */
+  architectOpen: boolean;
+
   openWindow: (appId: string, title: string) => void;
   closeWindow: (id: string) => void;
   minimizeWindow: (id: string) => void;
@@ -58,6 +61,8 @@ export interface OSStore {
 
   toggleLaunchpad: () => void;
   closeLaunchpad: () => void;
+
+  toggleArchitect: () => void;
 
   pushNotification: (n: Omit<Notification, "id" | "timestamp" | "read">) => void;
   dismissToast: (id: string) => void;

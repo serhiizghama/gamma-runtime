@@ -6,6 +6,7 @@ import { Desktop } from "./Desktop";
 import { Dock } from "./Dock";
 import { Launchpad } from "./Launchpad";
 import { MenuBar, MENU_HEIGHT } from "./MenuBar";
+import { ArchitectWindow } from "./ArchitectWindow";
 import { WindowManager } from "./WindowManager";
 import { NotificationCenter } from "./NotificationCenter";
 import { useSystemEvents } from "../hooks/useSystemEvents";
@@ -16,29 +17,74 @@ import { useSystemEvents } from "../hooks/useSystemEvents";
  * before the first render, so by the time this effect runs, windows already
  * contains any saved state. An empty object means a genuine first boot.
  */
+// ── API Base ─────────────────────────────────────────────────────────────
+
+function getApiBase(): string {
+  if (typeof window === "undefined") return "http://localhost:3001";
+  const { origin } = window.location;
+  if (origin.includes("localhost:5173") || origin.includes("127.0.0.1:5173")) {
+    return "http://localhost:3001";
+  }
+  return "";
+}
+
+const API_BASE = getApiBase();
+
+// ── Boot: ensure System Architect session exists ─────────────────────────
+
+function useArchitectSession() {
+  useEffect(() => {
+    let cancelled = false;
+
+    const ensureSession = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions`);
+        if (!res.ok) return;
+        const sessions: { windowId: string }[] = await res.json();
+        const exists = sessions.some((s) => s.windowId === "system-architect");
+        if (!exists && !cancelled) {
+          await fetch(`${API_BASE}/api/sessions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              windowId: "system-architect",
+              appId: "system-architect",
+              sessionKey: "system-architect",
+              agentId: "architect",
+            }),
+          });
+        }
+      } catch {
+        // Kernel not available yet — session will be created on next load
+      }
+    };
+
+    ensureSession();
+    return () => { cancelled = true; };
+  }, []);
+}
+
+// ── Fresh boot defaults ──────────────────────────────────────────────────
+
 function useFreshBootDefaults() {
   useEffect(() => {
-    // persist middleware has already merged localStorage into the store
-    // synchronously by this point — safe to read final hydrated state.
     const { openWindow } = useOSStore.getState();
-
-    // Spawn defaults only if there is NO existing session in localStorage.
-    // Empty windows after a session exists = user closed everything deliberately.
     const hasSession = !!localStorage.getItem("gamma-os-session");
     if (!hasSession) {
       openWindow("terminal", "Terminal");
       openWindow("browser",  "Browser");
     }
-    // Run once on mount only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
 
 export function GammaOS(): React.ReactElement {
   const [booting, setBooting] = useState(true);
   const handleBootDone = useCallback(() => setBooting(false), []);
+  const toggleArchitect = useOSStore((s) => s.toggleArchitect);
+  const toggleLaunchpad = useOSStore((s) => s.toggleLaunchpad);
 
   useFreshBootDefaults();
+  useArchitectSession();
   useSystemEvents(); // mock SSE → real EventSource in production
 
   return (
@@ -57,9 +103,12 @@ export function GammaOS(): React.ReactElement {
     >
       {/* Layer -1: Menu Bar (fixed top) */}
       <MenuBar
-        onOpenArchitect={() => console.log("[MenuBar] Open Architect")}
-        onOpenLaunchpad={() => console.log("[MenuBar] Open Launchpad")}
+        onOpenArchitect={toggleArchitect}
+        onOpenLaunchpad={toggleLaunchpad}
       />
+
+      {/* Layer 5: System Architect panel */}
+      <ArchitectWindow />
 
       {/* Layer 0: Desktop background (offset by menu bar) */}
       <div style={{ paddingTop: MENU_HEIGHT }}>

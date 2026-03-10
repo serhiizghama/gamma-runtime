@@ -7,14 +7,30 @@ import type { ChatMessage } from "./MessageList";
 
 // ── Props ────────────────────────────────────────────────────────────────
 
-interface AgentChatProps {
-  windowId: string;
+interface AgentChatBaseProps {
   title: string;
   variant: "fullWindow" | "embedded";
   accentColor?: string;
   placeholder?: string;
+}
+
+/** Live mode — driven by external stream hook */
+interface AgentChatLiveProps extends AgentChatBaseProps {
+  mode: "live";
+  messages: ChatMessage[];
+  status: AgentStatus;
+  pendingToolLines: string[];
+  onSend: (text: string) => void;
+}
+
+/** Mock mode — self-contained with demo data */
+interface AgentChatMockProps extends AgentChatBaseProps {
+  mode?: "mock";
+  windowId: string;
   onComponentReady?: (appId: string) => void;
 }
+
+type AgentChatProps = AgentChatLiveProps | AgentChatMockProps;
 
 // ── Mock Data ────────────────────────────────────────────────────────────
 
@@ -38,7 +54,7 @@ const MOCK_MESSAGES: ChatMessage[] = [
       },
       {
         name: "scaffold",
-        result: '{"ok":true,"modulePath":"./web/apps/generated/weather/WeatherApp"}',
+        result: '{"ok":true,"modulePath":"./web/apps/generated/weather/We',
       },
     ],
     ts: Date.now() - 45000,
@@ -46,58 +62,56 @@ const MOCK_MESSAGES: ChatMessage[] = [
   {
     id: "m3",
     role: "assistant",
-    text: "The Weather Dashboard is ready! It shows current conditions for **Hanoi** (32°C, Partly Cloudy) and **Kyiv** (8°C, Overcast). You can click on a city card for the 5-day forecast.",
+    text: "The Weather Dashboard is ready! It shows current conditions for **Hanoi** (32°C, Partly Cloudy) and **Kyiv** (8°C, Overcast).",
     ts: Date.now() - 30000,
-  },
-  {
-    id: "m4",
-    role: "user",
-    text: "Add a search bar to filter cities",
-    ts: Date.now() - 15000,
   },
 ];
 
-const MOCK_PENDING_TOOLS = ["🔧 scaffold({appId: 'weather', patch: true})"];
-
 // ── Component ────────────────────────────────────────────────────────────
 
-export function AgentChat({
-  windowId: _windowId,
-  title,
-  variant,
-  accentColor = "#00ff41",
-  placeholder,
-  onComponentReady: _onComponentReady,
-}: AgentChatProps): React.ReactElement {
-  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
-  const [status, setStatus] = useState<AgentStatus>("running");
-  const [pendingToolLines] = useState<string[]>(MOCK_PENDING_TOOLS);
+export function AgentChat(props: AgentChatProps): React.ReactElement {
+  const { title, variant, accentColor = "#00ff41", placeholder } = props;
+
+  // Determine if live or mock
+  const isLive = "mode" in props && props.mode === "live";
+
+  // Mock state (only used in mock mode)
+  const [mockMessages, setMockMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
+  const [mockStatus, setMockStatus] = useState<AgentStatus>("idle");
+
+  const messages = isLive ? (props as AgentChatLiveProps).messages : mockMessages;
+  const status = isLive ? (props as AgentChatLiveProps).status : mockStatus;
+  const pendingToolLines = isLive ? (props as AgentChatLiveProps).pendingToolLines : [];
 
   const handleSend = useCallback(
     (text: string) => {
-      const msg: ChatMessage = {
-        id: `u-${Date.now()}`,
-        role: "user",
-        text,
-        ts: Date.now(),
-      };
-      setMessages((prev) => [...prev, msg]);
-      // Mock: flip to running for 2s, then idle
-      setStatus("running");
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a-${Date.now()}`,
-            role: "assistant",
-            text: `Got it — working on: "${text}"`,
-            ts: Date.now(),
-          },
-        ]);
-        setStatus("idle");
-      }, 2000);
+      if (isLive) {
+        (props as AgentChatLiveProps).onSend(text);
+      } else {
+        const msg: ChatMessage = {
+          id: `u-${Date.now()}`,
+          role: "user",
+          text,
+          ts: Date.now(),
+        };
+        setMockMessages((prev) => [...prev, msg]);
+        setMockStatus("running");
+        setTimeout(() => {
+          setMockMessages((prev) => [
+            ...prev,
+            {
+              id: `a-${Date.now()}`,
+              role: "assistant",
+              text: `Got it — working on: "${text}"`,
+              ts: Date.now(),
+            },
+          ]);
+          setMockStatus("idle");
+        }, 2000);
+      }
     },
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isLive],
   );
 
   const isEmbedded = variant === "embedded";

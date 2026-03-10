@@ -29,6 +29,7 @@ export const useOSStore = create<OSStore>()(
       zIndexCounter: INITIAL_Z,
       focusedWindowId: null,
       launchpadOpen: false,
+      architectOpen: false,
       notifications: [],
       toastQueue: [],
       uiSettings: { ...DEFAULT_UI_SETTINGS },
@@ -103,6 +104,9 @@ export const useOSStore = create<OSStore>()(
 
       closeLaunchpad: () =>
         set((state) => { state.launchpadOpen = false; }),
+
+      toggleArchitect: () =>
+        set((state) => { state.architectOpen = !state.architectOpen; }),
 
       pushNotification: (n) =>
         set((state) => {
