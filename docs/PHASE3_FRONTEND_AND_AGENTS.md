@@ -1,8 +1,9 @@
 # Gamma OS — Phase 3: Frontend & Multi-Agent Architecture
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Draft — Ready for Review  
 **Audience:** Senior Frontend Developer (React), Agent Architect  
 **Depends on:** Phase 2 Backend Integration Specification v1.6  
+**Changelog v1.1:** English-only token constraints for AI context files (`context.md`, `agent-prompt.md`). OS-level App Storage API (`useAppStorage` hook + Redis persistence) replacing blocked `localStorage`.  
 
 ---
 
@@ -81,6 +82,9 @@ web/apps/generated/
 
 ### 2.3 context.md — The App's Memory
 
+> **⚠️ Token Economics Constraint (v1.1):**  
+> `context.md` MUST be written **exclusively in English**, regardless of the user's input language. Use bullet points, not paragraphs. Target **under 500 tokens** per file. Every token in this file is injected into the agent's context window on every user interaction — bloated context = slower responses + higher cost + context overflow risk.
+
 This file is the single source of truth for the app's state. It's written by the System Architect on creation and updated by the App Owner on every modification.
 
 ```markdown
@@ -116,6 +120,9 @@ Real-time weather display for the user's configured cities.
 **Why it matters:** When the App Owner agent receives "add a humidity column," it reads `context.md` to understand the current layout (grid, glassmorphism, max 5 cities), modifies `WeatherApp.tsx` accordingly, and updates `context.md` with the new state. No guessing.
 
 ### 2.4 agent-prompt.md — The App Owner's Persona
+
+> **⚠️ Token Economics Constraint (v1.1):**  
+> `agent-prompt.md` MUST be written **exclusively in English**. Target **under 300 tokens**. Use terse bullet lists. The primary directive for every App Owner is: **"Help the user utilize and adapt this application."** Everything else is constraints and scope.
 
 This file defines who the App Owner agent is for this specific app. It's scoped — the agent only sees this file, `context.md`, and the app's source code.
 
@@ -551,6 +558,9 @@ Rules:
 - contextDoc must include: Purpose, UI Rules, State Shape, Design Decisions sections
 - agentPrompt must include: Scope, Capabilities, Constraints sections
 - All three documents are REQUIRED for every new app
+- contextDoc and agentPrompt MUST be in English (regardless of user's language)
+- contextDoc: max ~500 tokens, bullet points only, no prose
+- agentPrompt: max ~300 tokens, primary directive = "help the user utilize and adapt this application"
 ```
 
 ---
@@ -666,7 +676,192 @@ Agents receive different tool sets based on their role:
 
 ---
 
-## 8. Implementation Order
+## 8. App Data Persistence — OS Storage API (v1.1)
+
+### 8.1 The Problem
+
+In Phase 2, we blocked `localStorage` and `sessionStorage` access in generated apps (security deny pattern). This was correct — direct browser storage is a shared global namespace that generated apps could abuse to leak data or conflict with each other.
+
+But generated apps need to persist user data: saved notes, selected cities, theme preferences, form drafts. Without a storage API, every app loses its state on page reload.
+
+### 8.2 The Solution: `useAppStorage<T>()` Hook
+
+Gamma OS provides a **system-level React hook** injected into the app runtime environment. Generated apps use it instead of `localStorage`:
+
+```typescript
+/**
+ * OS-provided hook for app data persistence.
+ * Syncs state to the backend Redis store via REST API.
+ *
+ * @param appId   — the app's identifier (e.g., "weather")
+ * @param key     — storage key within the app's namespace (e.g., "selectedCities")
+ * @param initial — default value if no stored data exists
+ * @returns [value, setValue, { loading, error }]
+ */
+function useAppStorage<T>(
+  appId: string,
+  key: string,
+  initial: T,
+): [T, (val: T | ((prev: T) => T)) => void, { loading: boolean; error: string | null }];
+```
+
+**Usage in a generated app:**
+
+```tsx
+import { useAppStorage } from '@gamma/os';
+
+export function WeatherApp() {
+  const [cities, setCities] = useAppStorage<string[]>('weather', 'selectedCities', ['Hanoi']);
+  const [unit, setUnit] = useAppStorage<'C' | 'F'>('weather', 'tempUnit', 'C');
+
+  return (
+    <div>
+      {cities.map(city => <CityCard key={city} city={city} unit={unit} />)}
+      <button onClick={() => setCities(prev => [...prev, 'Kyiv'])}>Add Kyiv</button>
+    </div>
+  );
+}
+```
+
+### 8.3 Backend: Storage Endpoints
+
+Two new endpoints in the kernel:
+
+```
+GET    /api/app-data/:appId/:key     → { value: T }
+PUT    /api/app-data/:appId/:key     → { ok: true }  (body: { value: T })
+```
+
+**Redis key schema:**
+
+```
+gamma:app-data:<appId>:<key>   →   JSON string
+```
+
+| Key | Type | TTL | Description |
+|---|---|---|---|
+| `gamma:app-data:<appId>:<key>` | String | — | Per-app, per-key JSON-serialized value |
+
+**Controller:**
+
+```typescript
+// kernel/src/app-data/app-data.controller.ts
+@Controller('api/app-data')
+export class AppDataController {
+
+  @Get(':appId/:key')
+  async get(
+    @Param('appId') appId: string,
+    @Param('key') key: string,
+  ): Promise<{ value: unknown }> {
+    const safeAppId = appId.replace(/[^a-z0-9-]/gi, '');
+    const safeKey = key.replace(/[^a-z0-9_-]/gi, '');
+    const raw = await this.redis.get(`gamma:app-data:${safeAppId}:${safeKey}`);
+    return { value: raw ? JSON.parse(raw) : null };
+  }
+
+  @Put(':appId/:key')
+  async put(
+    @Param('appId') appId: string,
+    @Param('key') key: string,
+    @Body() body: { value: unknown },
+  ): Promise<{ ok: true }> {
+    const safeAppId = appId.replace(/[^a-z0-9-]/gi, '');
+    const safeKey = key.replace(/[^a-z0-9_-]/gi, '');
+    await this.redis.set(
+      `gamma:app-data:${safeAppId}:${safeKey}`,
+      JSON.stringify(body.value),
+    );
+    return { ok: true };
+  }
+}
+```
+
+### 8.4 Hook Implementation
+
+```typescript
+// web/hooks/useAppStorage.ts
+import { useState, useEffect, useCallback, useRef } from 'react';
+
+const API_BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:3001'
+  : `http://${window.location.hostname}:3001`;
+
+export function useAppStorage<T>(
+  appId: string,
+  key: string,
+  initial: T,
+): [T, (val: T | ((prev: T) => T)) => void, { loading: boolean; error: string | null }] {
+  const [value, setLocal] = useState<T>(initial);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Load on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/app-data/${appId}/${key}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && data.value !== null) {
+            setLocal(data.value as T);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setError(String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [appId, key]);
+
+  // Persist on change (debounced 500ms)
+  const setValue = useCallback((val: T | ((prev: T) => T)) => {
+    setLocal((prev) => {
+      const next = typeof val === 'function' ? (val as (p: T) => T)(prev) : val;
+
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        fetch(`${API_BASE}/api/app-data/${appId}/${key}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: next }),
+        }).catch((err) => setError(String(err)));
+      }, 500);
+
+      return next;
+    });
+  }, [appId, key]);
+
+  return [value, setValue, { loading, error }];
+}
+```
+
+### 8.5 Security Constraints
+
+| Rule | Enforcement |
+|---|---|
+| Apps can only access their own `appId` namespace | Backend validates `appId` matches the calling app's registered ID |
+| Keys are alphanumeric + hyphens/underscores only | `safeKey = key.replace(/[^a-z0-9_-]/gi, '')` |
+| Max value size: 64 KB per key | Backend rejects `PUT` if `JSON.stringify(value).length > 65536` |
+| Max keys per app: 50 | Backend checks `KEYS gamma:app-data:<appId>:*` count before write |
+| No cross-app reads | Endpoint only accepts the app's own `appId` |
+
+### 8.6 Update to Security Deny Patterns
+
+The `validateSource()` security scanner (Phase 2) already blocks `localStorage` and `sessionStorage`. No changes needed — generated apps must use `useAppStorage` instead.
+
+Add to the System Architect's scaffold prompt:
+```
+- For data persistence, use `useAppStorage` from '@gamma/os' — NEVER use localStorage or sessionStorage
+```
+
+---
+
+## 9. Implementation Order (Updated v1.1)
 
 | Priority | Task | Estimated Effort |
 |---|---|---|
@@ -681,12 +876,15 @@ Agents receive different tool sets based on their role:
 | P2 | Tool scoping per agent role | 1 day |
 | P2 | context.md auto-update on App Owner modifications | 0.5 day |
 | P2 | System health in menu bar (polling + indicator) | 0.5 day |
+| P1 | **v1.1** App Storage API — backend endpoints + Redis | 0.5 day |
+| P1 | **v1.1** `useAppStorage` hook implementation | 0.5 day |
+| P1 | **v1.1** English-only + token budget enforcement in scaffold prompts | 0.25 day |
 
-**Total Phase 3 estimate: ~7.25 developer-days**
+**Total Phase 3 estimate: ~8.5 developer-days**
 
 ---
 
-## 9. File Structure (Phase 3 Additions)
+## 10. File Structure (Phase 3 Additions)
 
 ```
 gamma-os/
@@ -697,9 +895,14 @@ gamma-os/
 │   └── IMPLEMENTATION_PLAN.md           ← updated with Phase 3 loops
 ├── kernel/
 │   └── src/
-│       └── sessions/
-│           └── sessions.service.ts      ← context injection for App Owners
+│       ├── sessions/
+│       │   └── sessions.service.ts      ← context injection for App Owners
+│       └── app-data/
+│           ├── app-data.controller.ts   ← NEW v1.1: GET/PUT /api/app-data/:appId/:key
+│           └── app-data.module.ts       ← NEW v1.1
 ├── web/
+│   ├── hooks/
+│   │   └── useAppStorage.ts             ← NEW v1.1: OS Storage API hook
 │   ├── components/
 │   │   ├── MenuBar.tsx                  ← NEW: top menu bar
 │   │   ├── AgentChat.tsx                ← NEW: reusable chat component
@@ -723,7 +926,7 @@ gamma-os/
 
 ---
 
-## 10. Open Questions
+## 11. Open Questions
 
 | # | Question | Impact |
 |---|---|---|
@@ -735,7 +938,7 @@ gamma-os/
 
 ---
 
-## 11. Summary
+## 12. Summary
 
 Phase 3 transforms Gamma OS from a "browser OS with AI streaming" into a **self-evolving agentic operating system**:
 
