@@ -1,16 +1,13 @@
 /**
  * Event classification — pure functions.
  * Mirrors openclaw-studio's classifyGatewayEventKind (spec §5.2).
+ *
+ * Types re-exported from @gamma/types for convenience.
  */
 
-/** Agent lifecycle status (spec §3.1) */
-export type AgentStatus = 'idle' | 'running' | 'error' | 'aborted';
+export type { AgentStatus, GatewayEventKind } from '@gamma/types';
 
-export type GatewayEventKind =
-  | 'summary-refresh'
-  | 'runtime-agent'
-  | 'runtime-chat'
-  | 'ignore';
+import type { GatewayEventKind } from '@gamma/types';
 
 export function classifyGatewayEventKind(event: string): GatewayEventKind {
   if (event === 'presence' || event === 'heartbeat') return 'summary-refresh';
@@ -21,8 +18,6 @@ export function classifyGatewayEventKind(event: string): GatewayEventKind {
 
 /**
  * Detect reasoning/thinking streams beyond the canonical "thinking".
- * Custom streams with hints like "analysis", "reasoning", "trace" are
- * treated as thinking content for UI rendering purposes.
  */
 const REASONING_STREAM_HINTS = ['reason', 'think', 'analysis', 'trace'];
 

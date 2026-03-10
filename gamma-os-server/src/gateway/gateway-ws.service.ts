@@ -15,8 +15,10 @@ import {
   classifyGatewayEventKind,
   isReasoningStream,
 } from './event-classifier';
+import type { GWAgentEventPayload } from '@gamma/types';
+// REDIS_KEYS available from @gamma/types when needed
 
-// ── Types (spec §3.2, §3.3, §3.6) ────────────────────────────────────────
+// ── Local types ───────────────────────────────────────────────────────────
 
 interface GWFrame {
   type: string;
@@ -26,31 +28,6 @@ interface GWFrame {
   method?: string;
   payload?: Record<string, unknown>;
   seq?: number;
-}
-
-interface GWAgentEventPayload {
-  runId: string;
-  sessionKey: string;
-  seq?: number;
-  stream: string;
-  data?: {
-    phase?: string;
-    text?: string;
-    delta?: string;
-    thinking?: string;
-    name?: string;
-    toolCallId?: string;
-    arguments?: unknown;
-    result?: unknown;
-    isError?: boolean;
-    // tokenUsage fields (v1.4)
-    inputTokens?: number;
-    outputTokens?: number;
-    cacheReadTokens?: number;
-    cacheWriteTokens?: number;
-    contextUsedPct?: number;
-  };
-  ts?: number;
 }
 
 interface PendingRequest {

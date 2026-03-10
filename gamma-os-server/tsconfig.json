@@ -21,7 +21,7 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "paths": {
-      "@gamma-os/types": ["../packages/gamma-os-types"]
+      "@gamma/types": ["../packages/gamma-types/index.ts"]
     }
   },
   "include": ["src/**/*"],
