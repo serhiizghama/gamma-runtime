@@ -484,10 +484,8 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     // ── ASSISTANT TEXT ──────────────────────────────────────────────────
     if (stream === 'assistant') {
       const thinkingContent = data?.thinking;
-      // OpenClaw sends BOTH data.text (cumulative) and data.delta (actual delta)
-      // Always prefer delta when available
-      const rawText: string = data?.delta ?? data?.text ?? '';
-      const isDelta = !!data?.delta;
+      // OpenClaw sends cumulative text in data.text — use it directly (overwrite pattern)
+      const fullText: string = data?.text ?? '';
 
       // Intercept embedded thinking (e.g. <think> tags)
       if (thinkingContent) {
@@ -521,35 +519,20 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      if (rawText) {
-        // OpenClaw sends CUMULATIVE text in data.text — compute delta
-        let deltaText: string;
-        if (isDelta) {
-          deltaText = rawText;
-        } else {
-          const prev = this.cumulativeText.get(windowId) ?? '';
-          deltaText = rawText.startsWith(prev)
-            ? rawText.slice(prev.length)
-            : rawText;
-          this.cumulativeText.set(windowId, rawText);
-          this.logger.log(`DELTA: prev=${prev.length}ch, raw=${rawText.length}ch, delta=${deltaText.length}ch`);
-        }
+      if (fullText) {
+        const textEventId = await this.pushSSE(sseKey, {
+          type: 'assistant_update',
+          windowId,
+          runId,
+          text: fullText,
+        });
 
-        if (deltaText) {
-          const textEventId = await this.pushSSE(sseKey, {
-            type: 'assistant_delta',
-            windowId,
-            runId,
-            text: deltaText,
-          });
-
-          await this.redis.hset(
-            `gamma:state:${windowId}`,
-            'streamText', rawText,
-            'lastEventAt', String(nowMs),
-            'lastEventId', textEventId,
-          );
-        }
+        await this.redis.hset(
+          `gamma:state:${windowId}`,
+          'streamText', fullText,
+          'lastEventAt', String(nowMs),
+          'lastEventId', textEventId,
+        );
       }
       return;
     }

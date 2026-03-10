@@ -106,10 +106,12 @@ export function useAgentStream(windowId: string): AgentStreamState {
           break;
         }
 
-        case "assistant_delta": {
+        case "assistant_delta":
+        case "assistant_update": {
           const cur = currentAssistantRef.current;
           if (cur) {
-            cur.text += (event.text as string) || "";
+            // Cumulative overwrite — immune to dropped packets, double-mounts, out-of-order chunks
+            cur.text = (event.text as string) || "";
           }
           break;
         }
