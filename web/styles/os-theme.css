@@ -1,34 +1,39 @@
 :root {
-  /* ── Glass morphism ───────────────────────────────────────── */
-  --glass-bg: rgba(30, 30, 32, 0.80);
-  --glass-border: rgba(255, 255, 255, 0.09);
-  --glass-blur: blur(20px) saturate(180%);
-  --glass-shadow: 0 22px 70px rgba(0, 0, 0, 0.60);
+  /* ── Accent & brand ───────────────────────────────────────── */
+  --accent-primary: #0066ff;
+  --accent-primary-soft: #4d94ff;
+
+  /* ── Glass morphism (light) ───────────────────────────────── */
+  --glass-bg: rgba(255, 255, 255, 0.92);
+  --glass-border: rgba(229, 229, 229, 1);
+  --glass-blur: blur(20px) saturate(170%);
+  --glass-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
 
   /* ── macOS window chrome ──────────────────────────────────── */
-  --window-bg: rgba(22, 22, 26, 0.88);
+  --window-bg: #ffffff;
   --window-titlebar-height: 28px;
   --window-radius: 12px;
-  --window-border: 1px solid rgba(255, 255, 255, 0.07);
+  --window-border: 1px solid #e5e5e5;
   --window-min-width: 320px;
   --window-min-height: 200px;
 
   /* ── Dock ─────────────────────────────────────────────────── */
-  --dock-bg: rgba(255, 255, 255, 0.10);
-  --dock-blur: blur(28px) saturate(200%);
+  --dock-bg: rgba(255, 255, 255, 0.75);
+  --dock-blur: blur(24px) saturate(180%);
   --dock-radius: 20px;
   --dock-icon-size: 56px;
   --dock-padding: 8px 14px;
 
   /* ── Typography ───────────────────────────────────────────── */
-  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
-  --text-primary: rgba(255, 255, 255, 0.92);
-  --text-secondary: rgba(255, 255, 255, 0.50);
+  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui,
+    sans-serif;
+  --text-primary: #1e1e1e;
+  --text-secondary: #4b5563;
 
   /* ── Notifications ────────────────────────────────────────── */
-  --notif-bg: rgba(40, 40, 46, 0.92);
+  --notif-bg: rgba(255, 255, 255, 0.96);
   --notif-radius: 14px;
-  --notif-shadow: 0 8px 32px rgba(0, 0, 0, 0.50);
+  --notif-shadow: 0 10px 40px rgba(15, 23, 42, 0.18);
 
   /* ── Traffic lights ───────────────────────────────────────── */
   --btn-close: #ff5f57;
@@ -42,12 +47,12 @@
   --duration-normal: 280ms;
   --duration-slow: 420ms;
 
-  /* ── Nebula blob colors ───────────────────────────────────── */
-  --blob-1: #3b82f6;   /* electric blue   */
-  --blob-2: #7c3aed;   /* deep violet     */
-  --blob-3: #0ea5e9;   /* cyan            */
-  --blob-4: #9333ea;   /* purple          */
-  --blob-5: #1d4ed8;   /* indigo          */
+  /* ── Nebula blob colors (analog blues) ────────────────────── */
+  --blob-1: #c7ddff; /* soft blue      */
+  --blob-2: #e0d7ff; /* lavender       */
+  --blob-3: #bfe3ff; /* pale cyan      */
+  --blob-4: #d6d9ff; /* periwinkle     */
+  --blob-5: #a9c8ff; /* mid blue       */
 }
 
 /* ── Blob keyframes ───────────────────────────────────────────── */
@@ -95,13 +100,12 @@
   inset: 0;
   /* Oversized gradient animates position for a "breathing" base */
   background: linear-gradient(
-    130deg,
-    #020617 0%,
-    #0d1535 20%,
-    #1a1040 40%,
-    #0f172a 60%,
-    #12082e 80%,
-    #020617 100%
+    140deg,
+    #f5f7fb 0%,
+    #eef3ff 30%,
+    #e3edff 55%,
+    #f7fbff 80%,
+    #ffffff 100%
   );
   background-size: 300% 300%;
   animation: bgBreath 28s ease-in-out infinite;
@@ -219,7 +223,8 @@
   padding: 0 12px; gap: 8px;
   flex-shrink: 0; cursor: grab;
   user-select: none;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: #f5f5f5;
+  border-bottom: 1px solid #e5e5e5;
 }
 .window-titlebar__lights { display: flex; gap: 6px; flex-shrink: 0; }
 
@@ -340,6 +345,6 @@
 
 /* ── Desktop ──────────────────────────────────────────────────── */
 .desktop--launchpad-open {
-  backdrop-filter: blur(20px) brightness(0.65);
+  backdrop-filter: blur(20px) brightness(1.05);
   transition: backdrop-filter var(--duration-normal) var(--ease-smooth);
 }

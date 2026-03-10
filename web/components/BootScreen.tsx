@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const BOOT_DURATION  = 4000; // ms total boot sequence
 const EXIT_DELAY     = 400;  // ms pause at 100% before fading
@@ -109,105 +109,6 @@ function NetworkCanvas() {
       ref={canvasRef}
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
     />
-  );
-}
-
-// ── Side data widget ──────────────────────────────────────────────
-function DataWidget({ side, progress }: { side: "left" | "right"; progress: number }) {
-  const bars = [0.72, 0.45, 0.88, 0.61, 0.93, 0.38, 0.77];
-  const values = [668, 717, 484, 821, 553, 392, 729];
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: "50%",
-        [side]: "4%",
-        transform: "translateY(-50%)",
-        opacity: Math.min((progress - 0.2) * 3, 1),
-        width: 140,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      {/* Bar chart */}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 60 }}>
-        {bars.map((h, i) => (
-          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <div
-              style={{
-                width: "100%",
-                height: `${h * 52 * Math.min(progress * 2, 1)}px`,
-                background: `rgba(0, 180, 255, ${0.4 + h * 0.5})`,
-                border: "1px solid rgba(0, 200, 255, 0.4)",
-                borderRadius: 2,
-                boxShadow: `0 0 6px rgba(0,180,255,0.3)`,
-                transition: "height 0.5s ease",
-              }}
-            />
-          </div>
-        ))}
-      </div>
-
-      {/* Line graph dots */}
-      <div
-        style={{
-          height: 30,
-          border: "1px solid rgba(0,180,255,0.2)",
-          borderRadius: 4,
-          padding: 4,
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <svg width="100%" height="100%" viewBox="0 0 100 22">
-          <polyline
-            points={bars.map((h, i) => `${i * 16},${22 - h * 20}`).join(" ")}
-            fill="none"
-            stroke="rgba(0,200,255,0.7)"
-            strokeWidth="1.5"
-          />
-          {bars.map((h, i) => (
-            <circle key={i} cx={i * 16} cy={22 - h * 20} r="2" fill="rgba(0,220,255,0.9)" />
-          ))}
-        </svg>
-      </div>
-
-      {/* Counters */}
-      {values.slice(0, 3).map((v, i) => (
-        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 9, color: "rgba(0,180,255,0.6)", letterSpacing: "0.05em" }}>
-            {["CPU", "MEM", "NET"][i]}
-          </div>
-          <div style={{ fontSize: 12, fontFamily: "monospace", color: "rgba(0,220,255,0.9)", fontWeight: 700 }}>
-            {Math.floor(v * Math.min(progress * 2, 1))}
-          </div>
-        </div>
-      ))}
-
-      {/* Circular meter */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <svg width="36" height="36" viewBox="0 0 36 36">
-          <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(0,80,120,0.4)" strokeWidth="3" />
-          <circle
-            cx="18" cy="18" r="14"
-            fill="none"
-            stroke="rgba(0,200,255,0.85)"
-            strokeWidth="3"
-            strokeDasharray={`${88 * progress * 0.68} 88`}
-            strokeLinecap="round"
-            transform="rotate(-90 18 18)"
-          />
-          <text x="18" y="22" textAnchor="middle" fontSize="8" fill="rgba(0,220,255,0.9)" fontFamily="monospace">
-            {Math.floor(68 * Math.min(progress * 2, 1))}%
-          </text>
-        </svg>
-        <div style={{ fontSize: 9, color: "rgba(0,160,200,0.7)", lineHeight: 1.4 }}>
-          SYS<br/>INIT
-        </div>
-      </div>
-    </div>
   );
 }
 

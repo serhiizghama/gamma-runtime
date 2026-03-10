@@ -28,9 +28,9 @@ export function ArchitectWindow(): React.ReactElement | null {
         zIndex: 9998,
         display: "flex",
         flexDirection: "column",
-        background: "#0a0a0a",
-        borderLeft: "1px solid rgba(0, 255, 65, 0.12)",
-        boxShadow: "-4px 0 24px rgba(0, 0, 0, 0.5)",
+        background: "#ffffff",
+        borderLeft: "1px solid #e5e5e5",
+        boxShadow: "-4px 0 24px rgba(15, 23, 42, 0.15)",
       }}
     >
       {/* Close / minimize button */}
@@ -44,7 +44,7 @@ export function ArchitectWindow(): React.ReactElement | null {
           zIndex: 1,
           background: "transparent",
           border: "none",
-          color: "#666",
+          color: "#6b7280",
           fontSize: 16,
           cursor: "pointer",
           padding: "2px 6px",
@@ -52,10 +52,10 @@ export function ArchitectWindow(): React.ReactElement | null {
           lineHeight: 1,
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.color = "#ccc";
+          e.currentTarget.style.color = "#111827";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.color = "#666";
+          e.currentTarget.style.color = "#6b7280";
         }}
       >
         ✕
@@ -65,7 +65,7 @@ export function ArchitectWindow(): React.ReactElement | null {
         mode="live"
         title="System Architect"
         variant="fullWindow"
-        accentColor="#00ff41"
+        accentColor="#0066ff"
         placeholder="Ask the Architect…"
         messages={messages}
         status={status}

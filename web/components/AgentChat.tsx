@@ -70,7 +70,7 @@ const MOCK_MESSAGES: ChatMessage[] = [
 // ── Component ────────────────────────────────────────────────────────────
 
 export function AgentChat(props: AgentChatProps): React.ReactElement {
-  const { title, variant, accentColor = "#00ff41", placeholder } = props;
+  const { title, variant, accentColor = "#0066ff", placeholder } = props;
 
   // Determine if live or mock
   const isLive = "mode" in props && props.mode === "live";
@@ -123,7 +123,7 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
         flexDirection: "column",
         height: isEmbedded ? "40%" : "100%",
         width: "100%",
-        background: "#0a0a0a",
+        background: "#ffffff",
         borderRadius: isEmbedded ? "10px 10px 0 0" : 0,
         border: isEmbedded ? `1px solid ${accentColor}22` : "none",
         position: isEmbedded ? "absolute" : "relative",
@@ -151,27 +151,27 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
         }
-        .agent-chat-markdown p { margin: 4px 0; }
+        .agent-chat-markdown p { margin: 4px 0; color: #1e1e1e; }
         .agent-chat-markdown code {
-          background: #1a1a2e;
+          background: #f3f4f6;
           padding: 1px 5px;
           border-radius: 3px;
           font-size: 12px;
         }
         .agent-chat-markdown pre {
-          background: #111;
+          background: #f5f5f5;
           padding: 10px;
           border-radius: 6px;
           overflow-x: auto;
           font-size: 12px;
-          border: 1px solid #222;
+          border: 1px solid #e5e5e5;
         }
         .agent-chat-markdown pre code {
           background: none;
           padding: 0;
         }
         .agent-chat-markdown a {
-          color: #00ff41;
+          color: #0066ff;
           text-decoration: underline;
         }
         .agent-chat-markdown table {
@@ -181,12 +181,12 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
         }
         .agent-chat-markdown th,
         .agent-chat-markdown td {
-          border: 1px solid #333;
+          border: 1px solid #e5e5e5;
           padding: 4px 8px;
           text-align: left;
         }
         .agent-chat-markdown th {
-          background: #1a1a2e;
+          background: #f3f4f6;
         }
       `}</style>
     </div>

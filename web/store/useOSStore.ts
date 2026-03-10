@@ -7,7 +7,8 @@ import type { OSStore, Notification, WindowNode, UISettings } from "../types/os"
 const INITIAL_Z = 100;
 
 const DEFAULT_UI_SETTINGS: UISettings = {
-  theme: "dark",
+  theme: "light",
+  accentColor: "#0066ff",
   bgBlur: 100,
   bgSpeed: 28,
 };

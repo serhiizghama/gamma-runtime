@@ -1,14 +1,4 @@
 import { useEffect } from "react";
-import { useOSStore } from "../store/useOSStore";
-
-const MOCK_EVENTS = [
-  { appId: "terminal", title: "Agent Process",   body: "Task completed successfully." },
-  { appId: "browser",  title: "Download Finished", body: "gamma-os-spec-v5.pdf is ready." },
-  { appId: "notes",    title: "Auto-Save",        body: "Your notes have been saved." },
-  { appId: "settings", title: "Update Available", body: "Gamma OS 0.2.0 is ready to install." },
-];
-
-let mockIndex = 0;
 
 /**
  * useSystemEvents — mock SSE hook.
@@ -20,12 +10,13 @@ export function useSystemEvents(): void {
     // Mock SSE disabled — will be replaced with real EventSource in Phase 2.
     // Uncomment the block below to re-enable fake notifications for testing.
     /*
-    const id = setInterval(() => {
-      const payload = MOCK_EVENTS[mockIndex % MOCK_EVENTS.length];
-      mockIndex += 1;
+    Example wiring for real SSE:
+    const es = new EventSource("/api/events");
+    es.onmessage = (event) => {
+      const payload = JSON.parse(event.data);
       useOSStore.getState().pushNotification(payload);
-    }, 15_000);
-    return () => clearInterval(id);
+    };
+    return () => es.close();
     */
   }, []);
 }

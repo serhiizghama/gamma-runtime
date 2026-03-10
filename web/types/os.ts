@@ -33,6 +33,7 @@ export interface Notification {
 
 export interface UISettings {
   theme: "dark" | "light";
+  accentColor?: string;
   bgBlur: number;            // px — blob filter blur (60–140)
   bgSpeed: number;           // s  — base breath cycle duration (10–60)
 }

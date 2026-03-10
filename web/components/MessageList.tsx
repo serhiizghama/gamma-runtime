@@ -47,11 +47,11 @@ function ThinkingBlock({ text }: { text: string }): React.ReactElement {
       style={{
         marginBottom: 6,
         padding: "6px 10px",
-        background: "#1a1a2e",
+        background: "#f3f4f6",
         borderRadius: 6,
-        border: "1px solid #333",
+        border: "1px solid #e5e5e5",
         fontSize: 12,
-        color: "#aaa",
+        color: "#4b5563",
       }}
     >
       <summary
@@ -60,7 +60,7 @@ function ThinkingBlock({ text }: { text: string }): React.ReactElement {
           userSelect: "none",
           fontFamily: "'SF Mono', 'Fira Code', monospace",
           fontSize: 11,
-          color: "#888",
+          color: "#6b7280",
         }}
       >
         💭 Thinking
@@ -73,7 +73,7 @@ function ThinkingBlock({ text }: { text: string }): React.ReactElement {
           fontFamily: "'SF Mono', 'Fira Code', monospace",
           fontSize: 11,
           lineHeight: 1.5,
-          color: "#999",
+          color: "#4b5563",
         }}
       >
         {text}
@@ -96,7 +96,7 @@ function ToolCallLine({
         style={{
           fontFamily: "'SF Mono', 'Fira Code', monospace",
           fontSize: 11,
-          color: entry.isError ? "#ff4444" : "#888",
+          color: entry.isError ? "#ff4d4f" : "#6b7280",
           padding: "2px 0",
         }}
       >
@@ -109,7 +109,7 @@ function ToolCallLine({
       style={{
         fontFamily: "'SF Mono', 'Fira Code', monospace",
         fontSize: 11,
-        color: "#00ff41",
+        color: "#0066ff",
         padding: "2px 0",
       }}
     >
@@ -142,10 +142,10 @@ function MessageBubble({
           maxWidth: "80%",
           padding: "8px 12px",
           borderRadius: 10,
-          background: isUser ? `${accentColor}18` : "#141414",
-          border: `1px solid ${isUser ? `${accentColor}33` : "#222"}`,
-          color: "#e0e0e0",
-          fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+          background: isUser ? accentColor : "#ffffff",
+          border: `1px solid ${isUser ? accentColor : "#e5e5e5"}`,
+          color: isUser ? "#ffffff" : "#1e1e1e",
+          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
           fontSize: 13,
           lineHeight: 1.6,
           wordBreak: "break-word",
@@ -171,7 +171,7 @@ function MessageBubble({
           style={{
             textAlign: "right",
             fontSize: 10,
-            color: "#555",
+            color: "#9ca3af",
             marginTop: 4,
           }}
         >
@@ -216,9 +216,9 @@ export function MessageList({
         <div
           style={{
             padding: "6px 10px",
-            background: "#111",
+            background: "#f9fafb",
             borderRadius: 6,
-            border: "1px solid #222",
+            border: "1px solid #e5e5e5",
             marginBottom: 8,
           }}
         >
@@ -228,7 +228,7 @@ export function MessageList({
               style={{
                 fontFamily: "'SF Mono', 'Fira Code', monospace",
                 fontSize: 11,
-                color: "#00ff41",
+                color: "#0066ff",
                 padding: "1px 0",
               }}
             >

@@ -12,11 +12,11 @@ interface MenuBarProps {
 
 // ── Status Config ────────────────────────────────────────────────────────
 
-const STATUS_DISPLAY: Record<HealthStatus, { icon: string; color: string }> = {
-  ok: { icon: "🟢", color: "#00ff41" },
-  degraded: { icon: "🟡", color: "#ffaa00" },
-  error: { icon: "🔴", color: "#ff4444" },
-  offline: { icon: "🔴", color: "#ff4444" },
+const STATUS_DISPLAY: Record<HealthStatus, { label: string; color: string }> = {
+  ok: { label: "OK", color: "#0066ff" },
+  degraded: { label: "Degraded", color: "#facc15" },
+  error: { label: "Error", color: "#ff4d4f" },
+  offline: { label: "Offline", color: "#9ca3af" },
 };
 
 const MENU_HEIGHT = 28;
@@ -71,45 +71,58 @@ export function MenuBar({
         left: 0,
         right: 0,
         height: MENU_HEIGHT,
-        background: "rgba(10, 10, 10, 0.85)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(255, 255, 255, 0.4)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        borderBottom: "1px solid #e5e5e5",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "0 12px",
+        padding: "0 16px",
         zIndex: 10000,
-        fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-        fontSize: 12,
-        color: "#ccc",
+        fontFamily:
+          "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif",
+        fontSize: 11,
+        letterSpacing: 0.08,
+        color: "#1e1e1e",
         userSelect: "none",
       }}
     >
-      {/* Left: Logo + System Status */}
+      {/* Left: Brand + System Status */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span
           style={{
-            fontSize: 16,
-            fontWeight: 700,
-            color: "#00ff41",
-            letterSpacing: 1,
+            fontSize: 13,
+            fontWeight: 600,
+            letterSpacing: 2,
           }}
         >
-          Γ
+          GAMMA OS
         </span>
         <span
           title={`System: ${health}`}
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 4,
+            gap: 6,
             fontSize: 11,
-            color: st.color,
+            color: "#4b5563",
             cursor: "default",
           }}
         >
-          {st.icon}
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "999px",
+              backgroundColor: st.color,
+              boxShadow:
+                health === "ok"
+                  ? "0 0 0 1px rgba(0,102,255,0.2)"
+                  : "0 0 0 1px rgba(148,163,184,0.35)",
+            }}
+          />
+          <span>{st.label}</span>
         </span>
       </div>
 
@@ -121,18 +134,20 @@ export function MenuBar({
           style={{
             background: "transparent",
             border: "none",
-            color: "#ccc",
-            fontSize: 15,
+            color: "#4b5563",
+            fontSize: 14,
             cursor: "pointer",
-            padding: "2px 8px",
-            borderRadius: 4,
-            transition: "background 0.15s",
+            padding: "3px 10px",
+            borderRadius: 6,
+            transition: "background 0.15s, color 0.15s",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+            e.currentTarget.style.background = "rgba(0, 102, 255, 0.08)";
+            e.currentTarget.style.color = "#0066ff";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "#4b5563";
           }}
         >
           ☰
@@ -143,18 +158,20 @@ export function MenuBar({
           style={{
             background: "transparent",
             border: "none",
-            color: "#ccc",
-            fontSize: 15,
+            color: "#4b5563",
+            fontSize: 14,
             cursor: "pointer",
-            padding: "2px 8px",
-            borderRadius: 4,
-            transition: "background 0.15s",
+            padding: "3px 10px",
+            borderRadius: 6,
+            transition: "background 0.15s, color 0.15s",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+            e.currentTarget.style.background = "rgba(0, 102, 255, 0.08)";
+            e.currentTarget.style.color = "#0066ff";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "#4b5563";
           }}
         >
           💬
