@@ -1,25 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-
-/**
- * Resolve the API base URL.
- * - In the browser: use window.location.origin if not localhost:5173 (Vite dev),
- *   otherwise fall back to localhost:3001 (kernel dev server).
- * - In SSR/Node: fall back to localhost:3001.
- */
-function getApiBase(): string {
-  if (typeof window === "undefined") {
-    return "http://localhost:3001";
-  }
-  const { origin } = window.location;
-  // Vite dev server — proxy not guaranteed, hit kernel directly
-  if (origin.includes("localhost:5173") || origin.includes("127.0.0.1:5173")) {
-    return "http://localhost:3001";
-  }
-  // Production or Tailscale — same-origin
-  return "";
-}
-
-const API_BASE = getApiBase();
+import { API_BASE } from "../constants/api";
 
 /**
  * useAppStorage — persist per-app key-value data via the kernel App Data API.

@@ -17,18 +17,7 @@ import { useSystemEvents } from "../hooks/useSystemEvents";
  * before the first render, so by the time this effect runs, windows already
  * contains any saved state. An empty object means a genuine first boot.
  */
-// ── API Base ─────────────────────────────────────────────────────────────
-
-function getApiBase(): string {
-  if (typeof window === "undefined") return "http://localhost:3001";
-  const { origin } = window.location;
-  if (origin.includes("localhost:5173") || origin.includes("127.0.0.1:5173")) {
-    return "http://localhost:3001";
-  }
-  return "";
-}
-
-const API_BASE = getApiBase();
+import { API_BASE } from "../constants/api";
 
 // ── Boot: ensure System Architect session exists ─────────────────────────
 

@@ -14,5 +14,11 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     allowedHosts: ["sputniks-mac-mini.tailcde006.ts.net"],
+    proxy: {
+      "/api": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
+    },
   },
 });

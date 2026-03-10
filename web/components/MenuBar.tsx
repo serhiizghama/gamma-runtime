@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { API_BASE } from "../constants/api";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -8,19 +9,6 @@ interface MenuBarProps {
   onOpenArchitect: () => void;
   onOpenLaunchpad: () => void;
 }
-
-// ── API Base (same logic as useAppStorage) ───────────────────────────────
-
-function getApiBase(): string {
-  if (typeof window === "undefined") return "http://localhost:3001";
-  const { origin } = window.location;
-  if (origin.includes("localhost:5173") || origin.includes("127.0.0.1:5173")) {
-    return "http://localhost:3001";
-  }
-  return "";
-}
-
-const API_BASE = getApiBase();
 
 // ── Status Config ────────────────────────────────────────────────────────
 
