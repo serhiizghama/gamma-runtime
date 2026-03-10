@@ -5,6 +5,7 @@ import { BootScreen } from "./BootScreen";
 import { Desktop } from "./Desktop";
 import { Dock } from "./Dock";
 import { Launchpad } from "./Launchpad";
+import { MenuBar, MENU_HEIGHT } from "./MenuBar";
 import { WindowManager } from "./WindowManager";
 import { NotificationCenter } from "./NotificationCenter";
 import { useSystemEvents } from "../hooks/useSystemEvents";
@@ -54,8 +55,16 @@ export function GammaOS(): React.ReactElement {
         userSelect: "none",
       }}
     >
-      {/* Layer 0: Desktop background */}
-      <Desktop />
+      {/* Layer -1: Menu Bar (fixed top) */}
+      <MenuBar
+        onOpenArchitect={() => console.log("[MenuBar] Open Architect")}
+        onOpenLaunchpad={() => console.log("[MenuBar] Open Launchpad")}
+      />
+
+      {/* Layer 0: Desktop background (offset by menu bar) */}
+      <div style={{ paddingTop: MENU_HEIGHT }}>
+        <Desktop />
+      </div>
 
       {/* Layer 1: Windows */}
       <WindowManager />
