@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { RedisModule } from './redis/redis.module';
 import { GatewayModule } from './gateway/gateway.module';
+import { SessionsModule } from './sessions/sessions.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { GatewayModule } from './gateway/gateway.module';
     }),
     RedisModule,
     GatewayModule,
+    SessionsModule,
   ],
   controllers: [AppController],
 })

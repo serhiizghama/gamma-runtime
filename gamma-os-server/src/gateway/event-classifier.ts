@@ -3,6 +3,9 @@
  * Mirrors openclaw-studio's classifyGatewayEventKind (spec §5.2).
  */
 
+/** Agent lifecycle status (spec §3.1) */
+export type AgentStatus = 'idle' | 'running' | 'error' | 'aborted';
+
 export type GatewayEventKind =
   | 'summary-refresh'
   | 'runtime-agent'
