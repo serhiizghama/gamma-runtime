@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
 import type { WindowSession, CreateSessionDto } from './sessions.interfaces';
+import type { WindowStateSyncSnapshot } from '@gamma/types';
 
 @Controller('api/sessions')
 export class SessionsController {
@@ -28,6 +29,17 @@ export class SessionsController {
   @Get()
   async findAll(): Promise<WindowSession[]> {
     return this.sessions.findAll();
+  }
+
+  @Get(':windowId/sync')
+  async sync(
+    @Param('windowId') windowId: string,
+  ): Promise<WindowStateSyncSnapshot> {
+    const snapshot = await this.sessions.getSyncSnapshot(windowId);
+    if (!snapshot) {
+      throw new NotFoundException(`No session for window ${windowId}`);
+    }
+    return snapshot;
   }
 
   @Delete(':windowId')

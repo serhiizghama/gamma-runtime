@@ -1,4 +1,4 @@
-import { Controller, Param, Sse, MessageEvent, Inject } from '@nestjs/common';
+import { Controller, Param, Query, Sse, MessageEvent, Inject } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
@@ -24,7 +24,10 @@ export class SseController {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
   @Sse(':windowId')
-  stream(@Param('windowId') windowId: string): Observable<MessageEvent> {
+  stream(
+    @Param('windowId') windowId: string,
+    @Query('lastEventId') lastEventId?: string,
+  ): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
       // Dedicated Redis connection for blocking reads —
       // XREAD BLOCK monopolizes the connection, so we duplicate it.
@@ -43,9 +46,11 @@ export class SseController {
       const windowKey = `${REDIS_KEYS.SSE_PREFIX}${windowId}`;
       const broadcastKey = REDIS_KEYS.SSE_BROADCAST;
 
-      // Track last-seen IDs per stream — '$' means "only new entries"
+      // Gap protection (spec §4.1): if lastEventId is provided, resume from
+      // that point instead of '$'. This prevents losing events between the
+      // sync snapshot call and the SSE connection opening.
       const lastIds: Record<string, string> = {
-        [windowKey]: '$',
+        [windowKey]: lastEventId ?? '$',
         [broadcastKey]: '$',
       };
 

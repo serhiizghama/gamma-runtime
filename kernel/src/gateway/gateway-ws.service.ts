@@ -321,7 +321,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           toolCallStepIds: new Map(),
         });
 
-        await this.pushSSE(sseKey, {
+        const eventId = await this.pushSSE(sseKey, {
           type: 'lifecycle_start',
           windowId,
           runId,
@@ -333,6 +333,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           'status', 'running',
           'runId', runId,
           'lastEventAt', String(nowMs),
+          'lastEventId', eventId,
           'streamText', '',
           'thinkingTrace', '',
           'pendingToolLines', '[]',
@@ -354,7 +355,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
               }
             : undefined;
 
-        await this.pushSSE(sseKey, {
+        const eventId = await this.pushSSE(sseKey, {
           type: 'lifecycle_end',
           windowId,
           runId,
@@ -362,7 +363,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           ...(tokenUsage ? { tokenUsage } : {}),
         });
 
-        // Clear live state
+        // Clear live state but keep lastEventId for gap protection
         await this.redis.hset(
           `gamma:state:${windowId}`,
           'status', 'idle',
@@ -371,7 +372,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           'thinkingTrace', '',
           'pendingToolLines', '[]',
           'lastEventAt', String(nowMs),
+          'lastEventId', eventId,
         );
+        await this.redis.expire(`gamma:state:${windowId}`, 14400); // 4h TTL
 
         // Cleanup run tracking
         this.runStepCounters.delete(runId);
@@ -379,7 +382,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (phase === 'error') {
-        await this.pushSSE(sseKey, {
+        const eventId = await this.pushSSE(sseKey, {
           type: 'lifecycle_error',
           windowId,
           runId,
@@ -391,6 +394,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           'status', 'error',
           'runId', '',
           'lastEventAt', String(nowMs),
+          'lastEventId', eventId,
         );
 
         this.runStepCounters.delete(runId);
@@ -405,7 +409,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       const text = data?.text ?? data?.delta ?? '';
       if (!text) return;
 
-      await this.pushSSE(sseKey, {
+      const eventId = await this.pushSSE(sseKey, {
         type: 'thinking',
         windowId,
         runId,
@@ -417,6 +421,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         `gamma:state:${windowId}`,
         'thinkingTrace', text,
         'lastEventAt', String(nowMs),
+        'lastEventId', eventId,
       );
 
       // Memory bus with hierarchy
@@ -444,7 +449,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
       // Intercept embedded thinking (e.g. <think> tags)
       if (thinkingContent) {
-        await this.pushSSE(sseKey, {
+        const thinkEventId = await this.pushSSE(sseKey, {
           type: 'thinking',
           windowId,
           runId,
@@ -455,6 +460,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           `gamma:state:${windowId}`,
           'thinkingTrace', thinkingContent,
           'lastEventAt', String(nowMs),
+          'lastEventId', thinkEventId,
         );
 
         const stepId = this.nextStepId(runId);
@@ -474,7 +480,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (text) {
-        await this.pushSSE(sseKey, {
+        const textEventId = await this.pushSSE(sseKey, {
           type: 'assistant_delta',
           windowId,
           runId,
@@ -485,6 +491,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           `gamma:state:${windowId}`,
           'streamText', text,
           'lastEventAt', String(nowMs),
+          'lastEventId', textEventId,
         );
       }
       return;
@@ -498,7 +505,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
       if (phase !== 'result') {
         // Tool call initiated
-        await this.pushSSE(sseKey, {
+        const eventId = await this.pushSSE(sseKey, {
           type: 'tool_call',
           windowId,
           runId,
@@ -515,6 +522,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           `gamma:state:${windowId}`,
           'pendingToolLines', JSON.stringify(lines),
           'lastEventAt', String(nowMs),
+          'lastEventId', eventId,
         );
 
         // Memory bus — tool_call with parent = last thinking step
@@ -538,7 +546,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         });
       } else {
         // Tool result received
-        await this.pushSSE(sseKey, {
+        const eventId = await this.pushSSE(sseKey, {
           type: 'tool_result',
           windowId,
           runId,
@@ -557,6 +565,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           `gamma:state:${windowId}`,
           'pendingToolLines', JSON.stringify(lines),
           'lastEventAt', String(nowMs),
+          'lastEventId', eventId,
         );
 
         // Memory bus — tool_result with parent = matching tool_call
@@ -598,8 +607,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
   private async pushSSE(
     streamKey: string,
     event: Record<string, unknown>,
-  ): Promise<void> {
-    await this.redis.xadd(streamKey, '*', ...flattenEntry(event));
+  ): Promise<string> {
+    const eventId = await this.redis.xadd(streamKey, '*', ...flattenEntry(event));
+    return eventId!; // xadd always returns an ID when using '*'
   }
 
   private async pushMemoryBus(entry: {

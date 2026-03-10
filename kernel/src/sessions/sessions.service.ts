@@ -3,6 +3,7 @@ import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { GatewayWsService } from '../gateway/gateway-ws.service';
 import type { WindowSession, CreateSessionDto } from './sessions.interfaces';
+import type { AgentStatus, WindowStateSyncSnapshot } from '@gamma/types';
 
 const SESSIONS_KEY = 'gamma:sessions';
 
@@ -68,6 +69,26 @@ export class SessionsService {
       windowId,
       JSON.stringify(session),
     );
+  }
+
+  /** Get F5 recovery snapshot from gamma:state:<windowId> (spec §4.1) */
+  async getSyncSnapshot(windowId: string): Promise<WindowStateSyncSnapshot | null> {
+    const session = await this.findByWindowId(windowId);
+    if (!session) return null;
+
+    const raw = await this.redis.hgetall(`gamma:state:${windowId}`);
+
+    return {
+      windowId,
+      sessionKey: session.sessionKey,
+      status: (raw.status as AgentStatus) ?? 'idle',
+      runId: raw.runId || null,
+      streamText: raw.streamText || null,
+      thinkingTrace: raw.thinkingTrace || null,
+      pendingToolLines: raw.pendingToolLines ? (JSON.parse(raw.pendingToolLines) as string[]) : [],
+      lastEventAt: raw.lastEventAt ? Number(raw.lastEventAt) : null,
+      lastEventId: raw.lastEventId || null,
+    };
   }
 
   /** Remove a session mapping */

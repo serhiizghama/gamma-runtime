@@ -127,6 +127,8 @@ export interface WindowStateSyncSnapshot {
   thinkingTrace: string | null;
   pendingToolLines: string[];
   lastEventAt: number | null;
+  /** Redis Stream ID of the last SSE event — used for gap protection on reconnect */
+  lastEventId: string | null;
 }
 
 // ── §9 Scaffold Types ────────────────────────────────────────────────────
