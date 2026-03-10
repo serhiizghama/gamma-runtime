@@ -1,19 +1,34 @@
 import { ForbiddenException } from '@nestjs/common';
 import { ScaffoldService } from './scaffold.service';
 
-// Create a mock ConfigService
+// ── Mocks ────────────────────────────────────────────────────────────────
+
 const mockConfig = {
   get: (key: string, fallback: string) => {
-    if (key === 'GAMMA_OS_REPO') return '/tmp/test-gamma-os';
-    return fallback;
+    const values: Record<string, string> = {
+      GAMMA_OS_REPO: '/tmp/test-gamma-os',
+      SCAFFOLD_GIT_BRANCH: 'private-apps',
+      SCAFFOLD_AUTO_PUSH: 'false',
+      SCAFFOLD_PRIVATE_REPO_URL: '',
+      GIT_AUTHOR_NAME: 'test-user',
+      GIT_AUTHOR_EMAIL: 'test@test.com',
+    };
+    return values[key] ?? fallback;
   },
+};
+
+const mockRedis = {
+  hset: jest.fn().mockResolvedValue(1),
+  hdel: jest.fn().mockResolvedValue(1),
+  xadd: jest.fn().mockResolvedValue('1-0'),
 };
 
 describe('ScaffoldService', () => {
   let service: ScaffoldService;
 
   beforeEach(() => {
-    service = new ScaffoldService(mockConfig as any);
+    service = new ScaffoldService(mockConfig as any, mockRedis as any);
+    jest.clearAllMocks();
   });
 
   // ── Path Jail Tests ──────────────────────────────────────────────────
@@ -21,7 +36,9 @@ describe('ScaffoldService', () => {
   describe('jailPath', () => {
     it('should resolve a valid relative path', () => {
       const result = service.jailPath('WeatherApp.tsx');
-      expect(result).toBe('/tmp/test-gamma-os/web/apps/generated/WeatherApp.tsx');
+      expect(result).toBe(
+        '/tmp/test-gamma-os/web/apps/generated/WeatherApp.tsx',
+      );
     });
 
     it('should resolve nested paths', () => {
@@ -72,9 +89,7 @@ describe('ScaffoldService', () => {
     });
 
     it('should block .DS_Store', () => {
-      expect(() => service.jailPath('.DS_Store')).toThrow(
-        ForbiddenException,
-      );
+      expect(() => service.jailPath('.DS_Store')).toThrow(ForbiddenException);
     });
 
     it('should block nested hidden dirs like assets/.hidden/file', () => {
@@ -83,9 +98,7 @@ describe('ScaffoldService', () => {
       );
     });
 
-    it('should allow the jail root itself', () => {
-      // '.' normalizes to '.' which starts with '.', but the jail root check
-      // should still work for non-hidden intent — use an empty-equivalent
+    it('should block the "." path (hidden segment)', () => {
       expect(() => service.jailPath('.')).toThrow(ForbiddenException);
     });
   });
