@@ -2,6 +2,8 @@ import { Controller, Param, Sse, MessageEvent, Inject } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { StreamBatcher } from './stream-batcher';
+
 // Redis key constants (from @gamma/types — inlined to avoid runtime path alias issues)
 const REDIS_KEYS = {
   SSE_PREFIX: 'gamma:sse:',
@@ -28,6 +30,15 @@ export class SseController {
       // XREAD BLOCK monopolizes the connection, so we duplicate it.
       const blockingRedis = this.redis.duplicate();
       let closed = false;
+
+      // ── StreamBatcher (spec §7.3) ─────────────────────────────────────
+      // Debounces thinking/assistant_delta by 50ms.
+      // All other event types pass through immediately.
+      const batcher = new StreamBatcher((event) => {
+        if (!closed) {
+          subscriber.next({ data: JSON.stringify(event) } as MessageEvent);
+        }
+      });
 
       const windowKey = `${REDIS_KEYS.SSE_PREFIX}${windowId}`;
       const broadcastKey = REDIS_KEYS.SSE_BROADCAST;
@@ -61,9 +72,7 @@ export class SseController {
                 const event = parseStreamFields(fields);
 
                 if (!closed) {
-                  subscriber.next({
-                    data: JSON.stringify(event),
-                  } as MessageEvent);
+                  batcher.push(event);
                 }
               }
             }
@@ -89,6 +98,7 @@ export class SseController {
       // Cleanup on client disconnect
       return () => {
         closed = true;
+        batcher.destroy();
         blockingRedis.disconnect();
       };
     });
