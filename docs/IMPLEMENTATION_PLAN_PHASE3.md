@@ -1,5 +1,5 @@
 # Gamma OS — Phase 3 Implementation Plan
-**Based on:** Frontend & Multi-Agent Architecture Specification v1.3  
+**Based on:** Frontend & Multi-Agent Architecture Specification v1.4  
 **Status:** Ready to execute  
 **Execution model:** Loop-by-loop, task-by-task. Verify each task before proceeding to the next.
 
@@ -74,6 +74,9 @@ kernel/src/app.module.ts      ← import AppDataModule
 - Debounce: rapid `setValue` calls within 500ms → only one `PUT` request fires
 - `loading` is `true` during initial fetch, `false` after
 - `error` is `null` on success, contains error message on failure
+- After a simulated network failure, a subsequent successful `GET`/`PUT` clears `error` back to `null` (no stale error state)
+- Rapid mount/unmount of the test component while calling `setValue` does not produce React warnings about state updates on unmounted components (debounce timer is correctly cleaned up)
+- Hook works both when the kernel is exposed directly on `http://localhost:3001` and when it is served via same-origin proxy using relative `/api/...` paths (API base resolution matches Phase 3 §8.4 v1.4)
 - `npm run dev` (Vite) starts without alias resolution errors
 
 **Key spec reference:** Phase 3 §8.4 (Hook Implementation), §8.6 (Module Resolution)
@@ -182,7 +185,7 @@ kernel/src/scaffold/scaffold.service.spec.ts      ← update tests
 - Create `web/components/AgentChat.tsx` — the unified chat interface
 - Sub-components:
   - `ChatHeader` — title, status indicator (idle/running/error), accent color
-  - `MessageList` — scrollable message history, renders markdown, auto-scroll to bottom
+  - `MessageList` — scrollable message history, renders markdown (via `react-markdown` + `remark-gfm`), auto-scroll to bottom
   - `ChatInput` — text input + send button, disabled while agent is running
 - Props:
   - `windowId: string`
@@ -202,9 +205,10 @@ kernel/src/scaffold/scaffold.service.spec.ts      ← update tests
 - Message list renders user messages (right-aligned) and agent messages (left-aligned)
 - Typing indicator shows when `status === "running"`
 - Thinking trace renders as collapsible `💭 Thinking` block
-- Tool calls render as `🔧 tool_name(args)` / `✅ tool_name → result` inline
+- Tool calls render as `🔧 tool_name(args)` / `✅ tool_name → result` inline, with large argument/result payloads truncated to a short preview string (no multi‑KB JSON blobs in the DOM)
 - Send button is disabled when input is empty or agent is running
 - Auto-scrolls to bottom on new messages
+- Markdown in agent messages is rendered using `react-markdown` + `remark-gfm` without `dangerouslySetInnerHTML`
 - No TypeScript errors
 
 **Key spec reference:** Phase 3 §4.3–§4.4 (Chat Component)
@@ -313,6 +317,7 @@ web/store/useOSStore.ts                     ← architect window management
 **Acceptance criteria:**
 - `POST /api/sessions/app-owner-weather/send { message: "make icons bigger" }` → Gateway receives enriched message containing `agent-prompt.md` + `context.md` + source code + user message
 - If `agent-prompt.md` doesn't exist → message sent without persona prefix (no crash)
+- If `context.md` or `agent-prompt.md` are missing, the enriched prompt is still constructed from the remaining available files (no crash), and the App Owner agent still responds to the user (graceful degradation)
 - `POST /api/sessions/app-owner-../../etc/send` → `appId` sanitized, jailPath blocks traversal
 - Regular (non-app-owner) session sends are unaffected
 - 0 TS errors
@@ -381,6 +386,7 @@ web/store/useOSStore.ts             ← per-window agent panel state
 - Component load failure → error boundary shows "Failed to load app" instead of blank window
 - Dynamic import works with both `default` and named exports
 - No TypeScript errors
+ - If the app is deleted via unscaffold while its window is open, the window content smoothly transitions to an "Application removed" tombstone placeholder (as defined in the spec), without throwing any unhandled React errors or attempting further dynamic imports for that `appId`
 
 **Key spec reference:** Phase 3 §6.3 (Hot-Reload Strategy), §6.2 (App Owner Response Handling)
 
@@ -394,6 +400,37 @@ web/hooks/useAgentStream.ts               ← ensure it works for app-owner-* se
 
 ---
 
+### Task 9.4 — Agent Tool Scoping
+
+**What to build:**
+- Configure OpenClaw/Gateway (or equivalent agent runtime) so that each session type receives only the tools defined for its role in the spec:
+  - **System Architect (`windowId: "system-architect"`):** `scaffold`, `unscaffold`, `system_health`, `list_apps`, `read_file` (read-only filesystem access).
+  - **App Owner sessions (`windowId: "app-owner-{appId}"`):** `update_app`, `read_context`, `list_assets`, `add_asset` — strictly scoped to their own bundle.
+- Ensure that App Owner sessions:
+  - Cannot call `scaffold`, `unscaffold`, `system_health`, `list_apps`, or any other global/system tools.
+  - Can only modify files and app data inside their own bundle (`{appId}/...`) and `gamma:app-data:{appId}:*`, matching the jailPath and storage constraints from Phase 3.
+- Wire tool configuration into the session initialization path:
+  - When creating `system-architect` sessions, attach the System Architect toolset.
+  - When creating `app-owner-{appId}` sessions, attach the App Owner toolset.
+
+**Acceptance criteria:**
+- In Gateway/tooling logs, `system-architect` sessions show access to `scaffold`, `unscaffold`, `system_health`, `list_apps`, and `read_file`, and can successfully call them.
+- App Owner sessions (`app-owner-weather`, `app-owner-notes`, etc.) can successfully call `update_app`, `read_context`, `list_assets`, and `add_asset` for their own app.
+- Attempts by an App Owner session to call `scaffold` or `system_health` are rejected by the Gateway/tooling layer (clear error or "tool not available"), and no such calls reach the kernel.
+- There is no way for an App Owner to use any filesystem or Redis tool to access another app's files or `gamma:app-data:<otherAppId>:*` keys.
+- 0 TS/config compile errors for the Gateway/tooling configuration.
+
+**Key spec reference:** Phase 3 §7.2–§7.3 (Gateway Session Management & Tool Scoping)
+
+**Files to create/update:**
+```
+gateway/agents/system-architect.config.(ts|json)   ← System Architect toolset
+gateway/agents/app-owner.config.(ts|json)          ← App Owner toolset (scoped)
+kernel/src/sessions/sessions.service.ts            ← ensure session metadata matches tool configs, if needed
+```
+
+---
+
 ## Dependency Installation Reference
 
 ```bash
@@ -401,7 +438,8 @@ web/hooks/useAgentStream.ts               ← ensure it works for app-owner-* se
 npm install @nestjs/schedule    # already installed in Phase 2 Task 4.4
 
 # Frontend (web/)
-# No new npm dependencies — useAppStorage uses native fetch, Vite alias uses built-in resolve
+npm install react-markdown remark-gfm    # safe markdown rendering for AgentChat MessageList
+# No additional deps required for useAppStorage — it uses native fetch, Vite alias uses built-in resolve
 ```
 
 ---
@@ -423,7 +461,7 @@ Before marking Phase 3 complete, verify:
 
 | Document | Location |
 |---|---|
-| Phase 3 Spec v1.3 | `docs/PHASE3_FRONTEND_AND_AGENTS.md` |
+| Phase 3 Spec v1.4 | `docs/PHASE3_FRONTEND_AND_AGENTS.md` |
 | Phase 2 Backend Spec v1.6 | `docs/PHASE2_BACKEND_SPEC.md` |
 | Phase 2 Implementation Plan | `docs/IMPLEMENTATION_PLAN.md` |
 | This Plan | `docs/IMPLEMENTATION_PLAN_PHASE3.md` |

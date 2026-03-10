@@ -1,8 +1,10 @@
 # Gamma OS — Phase 3: Frontend & Multi-Agent Architecture
-**Version:** 1.3  
+**Version:** 1.5  
 **Status:** Draft — Ready for Review  
 **Audience:** Senior Frontend Developer (React), Agent Architect  
 **Depends on:** Phase 2 Backend Integration Specification v1.6  
+**Changelog v1.5:** UI/UX hardening — truncated chat tool output to prevent DOM freezes on large results, and defined a graceful "tombstone" window state when an app is unscaffolded while its window is open (no more crashes on missing bundles).  
+**Changelog v1.4:** Hardened App Storage API & hooks — added unmount-safe debounce cleanup and error reset semantics in `useAppStorage`, made `API_BASE` resolution SSR-/proxy-safe, synchronized `AppDataController` with 64KB/50-keys limits, documented `redis.keys` usage constraints in unscaffold cleanup, and updated docs file structure to point Phase 3 to `IMPLEMENTATION_PLAN_PHASE3.md`.  
 **Changelog v1.3:** Resolved tool naming contradiction — App Owner uses `update_app` tool (translated to `POST /api/scaffold` by backend). Scaffold acts as PATCH/Merge — omitted fields preserve existing files. Fixed Vite dynamic import to use strongly-typed template literal for generated directory.  
 **Changelog v1.2.1:** Security fix — context injection in §6.1 must use `scaffoldService.jailPath()` for all file reads, preventing path traversal when reading `agent-prompt.md`, `context.md`, and source code.  
 **Changelog v1.2:** Fixed unscaffold memory leaks (app data + App Owner session cleanup on delete). Defined Vite alias for `@gamma/os` module resolution. Resolved Hot-Reload strategy: Full Remount with dynamic key (not Fast Refresh).  
@@ -361,6 +363,7 @@ Every window frame gets an **AI Assistant toggle** button in the title bar:
 - Chat panel height: 40% of window height, resizable
 - If the app has no `agent-prompt.md`, the ✨ button is grayed out with tooltip: "No agent configured for this app"
 - First click creates the App Owner session (lazy initialization)
+ - If the underlying app bundle is unscaffolded while the window is open (see §5.5), the window's content area MUST transition to a non-interactive "tombstone" state instead of crashing — e.g., a centered message: "This application was removed by the System Architect." The ✨ chat panel is disabled in this state.
 
 **Updated `WindowNode` props:**
 
@@ -472,6 +475,9 @@ function AgentChat({ windowId, title, variant, ... }: AgentChatProps) {
 | `tool_result` | Show "✅ {name} → {result}" inline |
 | `lifecycle_end` | Hide typing indicator, finalize message |
 | `component_ready` | Show "✅ App updated — reloading..." toast |
+
+> **v1.5 — Tool output truncation:**  
+> The underlying agent reducer logic for `tool_call`/`tool_result` events (see Phase 2 Backend Spec §8.2) **MUST truncate** stringified arguments and results before adding them to `pendingToolLines`. Clamp `JSON.stringify(...)` to a maximum of ~64 visible characters, and append an ellipsis marker such as `"… (truncated)"` when content is longer. The Chat UI **must not** attempt to render full multi‑KB payloads (e.g., entire source files returned by `read_file`) inline in bubbles — large payloads should only be summarized in `pendingToolLines` (name + small argument/result preview), with any richer inspection done via separate, dedicated UI if needed.
 
 ---
 
@@ -590,6 +596,8 @@ try {
   await this.sessionsService.remove(appOwnerWindowId);
 } catch { /* session may not exist if user never clicked ✨ */ }
 ```
+
+> **Note (v1.4):** Using the blocking `KEYS` command during unscaffold is acceptable here **only** because each app is strictly limited to at most 50 `gamma:app-data:<appId>:*` keys (see §8.3–§8.5 and Loop 6 Task 6.1). This keeps the key scan bounded and prevents Redis from being overwhelmed during deletion.
 
 **Full unscaffold cleanup order:**
 1. Delete `.tsx` + `context.md` + `agent-prompt.md` + `assets/` directory
@@ -722,27 +730,44 @@ function DynamicAppRenderer({ appId }: { appId: string }) {
       .replace(/^(.)/, (_, c: string) => c.toUpperCase());
 
   useEffect(() => {
-    if (!entry) return;
+    if (!entry) {
+      // App has been removed from the registry (e.g., unscaffolded) — see v1.5 tombstone behavior.
+      setComponent(() => null);
+      return;
+    }
     const PascalId = pascal(appId);
     import(`../../apps/generated/${appId}/${PascalId}App.tsx?t=${entry.updatedAt}`)
       .then((mod) => setComponent(() => mod.default ?? mod[Object.keys(mod)[0]]))
       .catch(console.error);
   }, [appId, entry?.updatedAt]);
 
-  if (!Component || !entry) return null;
+  // v1.5 — Tombstone state: if the app registry entry is missing (e.g., after unscaffold),
+  // render a graceful placeholder instead of attempting to import a non-existent module.
+  if (!entry) {
+    return (
+      <div className="app-tombstone">
+        <h2>Application removed</h2>
+        <p>This application was removed by the System Architect.</p>
+      </div>
+    );
+  }
+
+  if (!Component) return null;
 
   // key={updatedAt} forces React to unmount old + mount new on every update
   return <Component key={entry.updatedAt} />;
 }
 ```
 
-**Behavior on `component_ready` SSE event:**
+**Behavior on `component_ready` / `component_removed` SSE events:**
 1. Frontend receives `{ type: "component_ready", appId, modulePath }`
 2. Updates `AppRegistryEntry.updatedAt` in Zustand store
 3. `DynamicAppRenderer` re-runs effect → `import()` fetches updated module
 4. `key` changes → React unmounts old component (cleans up hooks, effects, subscriptions)
 5. New component mounts fresh with clean state
 6. `useAppStorage` hooks re-hydrate from Redis on mount → user data preserved
+
+If a `component_removed` event is received and the app is removed from `useAppRegistry`, all open windows for that `appId` MUST move into the tombstone state described above — no further dynamic imports should run for that app, and the user should see a clear "App removed" placeholder instead of a crash or blank window.
 
 **Trade-off:** Component state is lost on every AI update (e.g., scroll position, form input). This is acceptable because:
 - Persistent user data lives in `useAppStorage` (survives remount)
@@ -897,9 +922,26 @@ export class AppDataController {
   ): Promise<{ ok: true }> {
     const safeAppId = appId.replace(/[^a-z0-9-]/gi, '');
     const safeKey = key.replace(/[^a-z0-9_-]/gi, '');
+
+    // Enforce 64 KB max value size per key (v1.4).
+    const json = JSON.stringify(body.value);
+    if (json.length > 65536) {
+      // In real code, use Nest's BadRequestException
+      throw new Error('Value too large for app-data key (max 64 KB)');
+    }
+
+    // Enforce max 50 keys per app (v1.4).
+    // Using KEYS is acceptable here because of the strict per-app key cap.
+    const existingKeys = await this.redis.keys(`gamma:app-data:${safeAppId}:*`);
+    const keyAlreadyExists = existingKeys.includes(`gamma:app-data:${safeAppId}:${safeKey}`);
+    if (!keyAlreadyExists && existingKeys.length >= 50) {
+      // In real code, use Nest's TooManyRequestsException
+      throw new Error('Too many app-data keys for this app (max 50)');
+    }
+
     await this.redis.set(
       `gamma:app-data:${safeAppId}:${safeKey}`,
-      JSON.stringify(body.value),
+      json,
     );
     return { ok: true };
   }
@@ -912,9 +954,32 @@ export class AppDataController {
 // web/hooks/useAppStorage.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-const API_BASE = window.location.hostname === 'localhost'
-  ? 'http://localhost:3001'
-  : `http://${window.location.hostname}:3001`;
+// Resolve API base in a way that is safe for SSR/tests and proxy deployments (v1.4).
+function resolveApiBase(): string {
+  // Prefer explicit config first (Vite env or global), then sensible defaults.
+  const envBase =
+    (typeof window !== 'undefined' && (window as any).__GAMMA_API_BASE__) ??
+    (typeof import.meta !== 'undefined' &&
+      // @ts-expect-error Vite env at runtime
+      import.meta.env?.VITE_API_BASE);
+
+  if (envBase && typeof envBase === 'string' && envBase.length > 0) {
+    return envBase.replace(/\/+$/, '');
+  }
+
+  // No window → probably SSR/test: fall back to localhost:3001.
+  if (typeof window === 'undefined') {
+    return 'http://localhost:3001';
+  }
+
+  // Local dev: kernel usually runs on :3001.
+  if (window.location.hostname === 'localhost') {
+    return 'http://localhost:3001';
+  }
+
+  // Default: rely on same-origin proxy, use relative /api paths.
+  return '';
+}
 
 export function useAppStorage<T>(
   appId: string,
@@ -926,16 +991,23 @@ export function useAppStorage<T>(
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+  const apiBase = resolveApiBase();
+  const apiPrefix = apiBase ? apiBase : '';
+
   // Load on mount
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/app-data/${appId}/${key}`);
+        const res = await fetch(`${apiPrefix}/api/app-data/${appId}/${key}`);
         if (res.ok) {
           const data = await res.json();
           if (!cancelled && data.value !== null) {
             setLocal(data.value as T);
+          }
+          if (!cancelled) {
+            // Successful response should clear any previous error (v1.4).
+            setError(null);
           }
         }
       } catch (err) {
@@ -944,26 +1016,45 @@ export function useAppStorage<T>(
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
-  }, [appId, key]);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiPrefix, appId, key]);
 
   // Persist on change (debounced 500ms)
-  const setValue = useCallback((val: T | ((prev: T) => T)) => {
-    setLocal((prev) => {
-      const next = typeof val === 'function' ? (val as (p: T) => T)(prev) : val;
+  const setValue = useCallback(
+    (val: T | ((prev: T) => T)) => {
+      setLocal((prev) => {
+        const next = typeof val === 'function' ? (val as (p: T) => T)(prev) : val;
 
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        fetch(`${API_BASE}/api/app-data/${appId}/${key}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value: next }),
-        }).catch((err) => setError(String(err)));
-      }, 500);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+          fetch(`${apiPrefix}/api/app-data/${appId}/${key}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: next }),
+          })
+            .then(() => {
+              // Successful persist clears previous error (v1.4).
+              setError(null);
+            })
+            .catch((err) => setError(String(err)));
+        }, 500);
 
-      return next;
-    });
-  }, [appId, key]);
+        return next;
+      });
+    },
+    [apiPrefix, appId, key],
+  );
+
+  // Clear any pending debounce timer on unmount to avoid setState on unmounted component (v1.4).
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, []);
 
   return [value, setValue, { loading, error }];
 }
@@ -1048,9 +1139,10 @@ Add to the System Architect's scaffold prompt:
 gamma-os/
 ├── docs/
 │   ├── PHASE2_BACKEND_SPEC.md
-│   ├── PHASE3_FRONTEND_AND_AGENTS.md    ← this document
-│   ├── system-architect.md              ← System Architect persona
-│   └── IMPLEMENTATION_PLAN.md           ← updated with Phase 3 loops
+│   ├── PHASE3_FRONTEND_AND_AGENTS.md       ← this document
+│   ├── system-architect.md                 ← System Architect persona
+│   ├── IMPLEMENTATION_PLAN.md              ← Phase 2 implementation plan
+│   └── IMPLEMENTATION_PLAN_PHASE3.md       ← Phase 3 implementation plan (executes this spec)
 ├── kernel/
 │   └── src/
 │       ├── sessions/
