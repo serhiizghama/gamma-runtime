@@ -3,6 +3,7 @@ import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { GatewayWsService } from '../gateway/gateway-ws.service';
 import type { WindowSession, CreateSessionDto } from './sessions.interfaces';
+import { ToolWatchdogService } from '../gateway/tool-watchdog.service';
 import type { AgentStatus, WindowStateSyncSnapshot } from '@gamma/types';
 
 const SESSIONS_KEY = 'gamma:sessions';
@@ -12,6 +13,7 @@ export class SessionsService {
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly gatewayWs: GatewayWsService,
+    private readonly toolWatchdog: ToolWatchdogService,
   ) {}
 
   /** Create a new window↔session mapping */
@@ -69,6 +71,36 @@ export class SessionsService {
       windowId,
       JSON.stringify(session),
     );
+  }
+
+  /** Abort a running agent session (spec §4.2) */
+  async abort(windowId: string): Promise<boolean> {
+    const session = await this.findByWindowId(windowId);
+    if (!session) return false;
+
+    // Send abort to Gateway
+    await this.gatewayWs.abortRun(session.sessionKey);
+
+    // Immediately update Redis state — don't wait for Gateway confirmation
+    await this.redis.hset(
+      `gamma:state:${windowId}`,
+      'status', 'aborted',
+      'runId', '',
+    );
+
+    // Push aborted lifecycle event to SSE stream
+    await this.redis.xadd(
+      `gamma:sse:${windowId}`, '*',
+      'type', 'lifecycle_error',
+      'windowId', windowId,
+      'runId', '',
+      'message', 'Run aborted by user',
+    );
+
+    // Clear watchdog timers for this window
+    this.toolWatchdog.clearWindow(windowId);
+
+    return true;
   }
 
   /** Get F5 recovery snapshot from gamma:state:<windowId> (spec §4.1) */

@@ -16,6 +16,7 @@ import {
   classifyGatewayEventKind,
   isReasoningStream,
 } from './event-classifier';
+import { ToolWatchdogService } from './tool-watchdog.service';
 import type { GWAgentEventPayload, WindowSession } from '@gamma/types';
 
 // ── Local types ───────────────────────────────────────────────────────────
@@ -99,6 +100,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly toolWatchdog: ToolWatchdogService,
   ) {
     this.gatewayUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
     this.gatewayToken = this.config.get('OPENCLAW_GATEWAY_TOKEN', '');
@@ -376,8 +378,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         );
         await this.redis.expire(`gamma:state:${windowId}`, 14400); // 4h TTL
 
-        // Cleanup run tracking
+        // Cleanup run tracking + watchdog timers
         this.runStepCounters.delete(runId);
+        this.toolWatchdog.clearWindow(windowId);
         return;
       }
 
@@ -398,6 +401,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         );
 
         this.runStepCounters.delete(runId);
+        this.toolWatchdog.clearWindow(windowId);
         return;
       }
 
@@ -525,6 +529,29 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           'lastEventId', eventId,
         );
 
+        // Register tool watchdog (spec §6.2) — fires after 30s if no result
+        if (toolCallId) {
+          this.toolWatchdog.register(windowId, toolCallId, runId, async () => {
+            const timeoutMsg = `Tool '${name}' timed out after ${ToolWatchdogService.TIMEOUT_MS / 1000}s`;
+            this.logger.warn(`[Watchdog] ${timeoutMsg} (window=${windowId})`);
+
+            const errEventId = await this.pushSSE(sseKey, {
+              type: 'lifecycle_error',
+              windowId,
+              runId,
+              message: timeoutMsg,
+            });
+
+            await this.redis.hset(
+              `gamma:state:${windowId}`,
+              'status', 'error',
+              'runId', '',
+              'lastEventAt', String(Date.now()),
+              'lastEventId', errEventId,
+            );
+          });
+        }
+
         // Memory bus — tool_call with parent = last thinking step
         const stepId = this.nextStepId(runId);
         const tracker = this.runStepCounters.get(runId);
@@ -545,6 +572,11 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           parentId,
         });
       } else {
+        // Resolve watchdog before processing result
+        if (toolCallId) {
+          this.toolWatchdog.resolve(windowId, toolCallId);
+        }
+
         // Tool result received
         const eventId = await this.pushSSE(sseKey, {
           type: 'tool_result',

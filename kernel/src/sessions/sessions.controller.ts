@@ -31,6 +31,18 @@ export class SessionsController {
     return this.sessions.findAll();
   }
 
+  @Post(':windowId/abort')
+  @HttpCode(HttpStatus.OK)
+  async abort(
+    @Param('windowId') windowId: string,
+  ): Promise<{ ok: boolean }> {
+    const aborted = await this.sessions.abort(windowId);
+    if (!aborted) {
+      throw new NotFoundException(`No session for window ${windowId}`);
+    }
+    return { ok: true };
+  }
+
   @Get(':windowId/sync')
   async sync(
     @Param('windowId') windowId: string,
