@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@gamma/types": path.resolve(__dirname, "../packages/gamma-types/index.ts"),
+      "@gamma/os": path.resolve(__dirname, "hooks/os-api.ts"),
     },
   },
   server: {
