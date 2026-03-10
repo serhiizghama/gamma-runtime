@@ -30,8 +30,11 @@
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.10.0",
     "@types/ws": "^8.18.1",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
     "typescript": "^5.7.2"
   }
 }
