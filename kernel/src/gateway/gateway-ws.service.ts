@@ -83,6 +83,12 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
   // ── Hierarchy tracking for memory bus (spec §3.6) ──
   // Maps runId → { seq, lastThinkingStepId, toolCallStepIds }
+  /** In-memory cumulative text tracker — avoids Redis race on rapid events */
+  private cumulativeText = new Map<string, string>();
+
+  /** Serialize event processing per-window to prevent race conditions */
+  private eventQueue = new Map<string, Promise<void>>();
+
   private runStepCounters = new Map<
     string,
     {
@@ -279,12 +285,8 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       const kind = classifyGatewayEventKind(frame.event);
 
       if (kind === 'runtime-agent') {
-        this.handleAgentEvent(frame.payload as unknown as GWAgentEventPayload).catch(
-          (err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            this.logger.error(`Event bridge error: ${msg}`);
-          },
-        );
+        this.logger.log(`raw agent payload keys: ${Object.keys(frame.payload ?? {}).join(', ')}`);
+        this.enqueueAgentEvent(frame.payload as unknown as GWAgentEventPayload);
       }
       // runtime-chat, summary-refresh, ignore — no-op for now
     }
@@ -294,8 +296,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
   // ══  PHASE-AWARE EVENT BRIDGE (spec §6)  ═════════════════════════════
   // ══════════════════════════════════════════════════════════════════════
 
-  private async handleAgentEvent(payload: GWAgentEventPayload): Promise<void> {
-    // Gateway uses "agent:main:system-architect" format — normalize by stripping "agent:main:" prefix
+  /** Enqueue agent event processing — serialized per session to prevent race conditions */
+  private enqueueAgentEvent(payload: GWAgentEventPayload): void {
+    // Normalize session key
     let sessionKey = payload.sessionKey;
     if (sessionKey.startsWith('agent:main:')) {
       sessionKey = sessionKey.replace('agent:main:', '');
@@ -303,10 +306,23 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       sessionKey = sessionKey.replace(/^agent:[^:]+:/, '');
     }
 
-    this.logger.log(`agentEvent: sessionKey=${sessionKey} (raw=${payload.sessionKey}), stream=${payload.stream}`);
+    const prev = this.eventQueue.get(sessionKey) ?? Promise.resolve();
+    const next = prev.then(() => this.handleAgentEvent({ ...payload, sessionKey })).catch(
+      (err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Event bridge error: ${msg}`);
+      },
+    );
+    this.eventQueue.set(sessionKey, next);
+  }
+
+  private async handleAgentEvent(payload: GWAgentEventPayload): Promise<void> {
+    // sessionKey already normalized by enqueueAgentEvent
+    const sessionKey = payload.sessionKey;
+    this.logger.log(`handleAgentEvent: key=${sessionKey}, stream=${payload.stream}, data=${JSON.stringify(payload.data).slice(0, 200)}`);
     const windowId = this.sessionToWindow.get(sessionKey);
     if (!windowId) {
-      this.logger.warn(`agentEvent: no window mapping for sessionKey=${sessionKey}, known keys: [${[...this.sessionToWindow.keys()].join(', ')}]`);
+      this.logger.warn(`agentEvent: no window mapping for sessionKey=${sessionKey}, known=[${[...this.sessionToWindow.keys()]}]`);
       return;
     }
 
@@ -344,6 +360,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           windowId,
           runId,
         });
+
+        // Reset in-memory cumulative text tracker
+        this.cumulativeText.set(windowId, '');
 
         // Update Redis live state (spec §4.1)
         await this.redis.hset(
@@ -465,7 +484,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     // ── ASSISTANT TEXT ──────────────────────────────────────────────────
     if (stream === 'assistant') {
       const thinkingContent = data?.thinking;
-      const rawText: string = data?.text ?? data?.delta ?? '';
+      // OpenClaw sends BOTH data.text (cumulative) and data.delta (actual delta)
+      // Always prefer delta when available
+      const rawText: string = data?.delta ?? data?.text ?? '';
       const isDelta = !!data?.delta;
 
       // Intercept embedded thinking (e.g. <think> tags)
@@ -504,14 +525,14 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         // OpenClaw sends CUMULATIVE text in data.text — compute delta
         let deltaText: string;
         if (isDelta) {
-          // Already a delta — use as-is
           deltaText = rawText;
         } else {
-          // Cumulative: diff against previously stored streamText
-          const prev = (await this.redis.hget(`gamma:state:${windowId}`, 'streamText')) ?? '';
+          const prev = this.cumulativeText.get(windowId) ?? '';
           deltaText = rawText.startsWith(prev)
             ? rawText.slice(prev.length)
-            : rawText; // fallback: full text if mismatch
+            : rawText;
+          this.cumulativeText.set(windowId, rawText);
+          this.logger.log(`DELTA: prev=${prev.length}ch, raw=${rawText.length}ch, delta=${deltaText.length}ch`);
         }
 
         if (deltaText) {
