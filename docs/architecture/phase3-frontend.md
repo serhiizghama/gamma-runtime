@@ -4,7 +4,7 @@
 **Audience:** Senior Frontend Developer (React), Agent Architect  
 **Depends on:** Phase 2 Backend Integration Specification v1.6  
 **Changelog v1.5:** UI/UX hardening — truncated chat tool output to prevent DOM freezes on large results, and defined a graceful "tombstone" window state when an app is unscaffolded while its window is open (no more crashes on missing bundles).  
-**Changelog v1.4:** Hardened App Storage API & hooks — added unmount-safe debounce cleanup and error reset semantics in `useAppStorage`, made `API_BASE` resolution SSR-/proxy-safe, synchronized `AppDataController` with 64KB/50-keys limits, documented `redis.keys` usage constraints in unscaffold cleanup, and updated docs file structure to point Phase 3 to `IMPLEMENTATION_PLAN_PHASE3.md`.  
+**Changelog v1.4:** Hardened App Storage API & hooks — added unmount-safe debounce cleanup and error reset semantics in `useAppStorage`, made `API_BASE` resolution SSR-/proxy-safe, synchronized `AppDataController` with 64KB/50-keys limits, documented `redis.keys` usage constraints in unscaffold cleanup, and updated docs file structure to point Phase 3 to `docs/plans/phase3-implementation.md`.  
 **Changelog v1.3:** Resolved tool naming contradiction — App Owner uses `update_app` tool (translated to `POST /api/scaffold` by backend). Scaffold acts as PATCH/Merge — omitted fields preserve existing files. Fixed Vite dynamic import to use strongly-typed template literal for generated directory.  
 **Changelog v1.2.1:** Security fix — context injection in §6.1 must use `scaffoldService.jailPath()` for all file reads, preventing path traversal when reading `agent-prompt.md`, `context.md`, and source code.  
 **Changelog v1.2:** Fixed unscaffold memory leaks (app data + App Owner session cleanup on delete). Defined Vite alias for `@gamma/os` module resolution. Resolved Hot-Reload strategy: Full Remount with dynamic key (not Fast Refresh).  
@@ -215,7 +215,7 @@ interface AppRegistryEntry {
 
 **Identity:** The OS's global intelligence. Accessible from the menu bar at all times.
 
-**Persona file:** `docs/system-architect.md` (checked into the main repo, not in `generated/`)
+**Persona file:** `docs/agents/system-architect.md` (checked into the main repo, not in `generated/`)
 
 ```markdown
 # System Architect — Agent Persona
@@ -805,7 +805,7 @@ Each agent session maps to a separate OpenClaw Gateway session. The Gateway mana
 
 ```
 Gateway Sessions:
-├── system-architect     → system-architect.md persona, full OS context
+├── system-architect     → agents/system-architect.md persona, full OS context
 ├── app-owner-weather    → weather/agent-prompt.md, weather/context.md, scoped tools
 ├── app-owner-notes      → notes/agent-prompt.md, notes/context.md, scoped tools
 └── win-abc123           → terminal session (if agent-enabled)
@@ -1138,11 +1138,14 @@ Add to the System Architect's scaffold prompt:
 ```
 gamma-os/
 ├── docs/
-│   ├── PHASE2_BACKEND_SPEC.md
-│   ├── PHASE3_FRONTEND_AND_AGENTS.md       ← this document
-│   ├── system-architect.md                 ← System Architect persona
-│   ├── IMPLEMENTATION_PLAN.md              ← Phase 2 implementation plan
-│   └── IMPLEMENTATION_PLAN_PHASE3.md       ← Phase 3 implementation plan (executes this spec)
+│   ├── architecture/
+│   │   ├── phase2-backend.md              ← Phase 2 backend spec
+│   │   └── phase3-frontend.md             ← this document
+│   ├── plans/
+│   │   ├── phase2-implementation.md       ← Phase 2 implementation plan
+│   │   └── phase3-implementation.md       ← Phase 3 implementation plan (executes this spec)
+│   └── agents/
+│       └── system-architect.md            ← System Architect persona
 ├── kernel/
 │   └── src/
 │       ├── sessions/

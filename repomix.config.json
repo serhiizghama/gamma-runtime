@@ -1,0 +1,15 @@
+{
+    "include": [
+        "**/*.{ts,tsx,js,jsx,md,css,html,json}"
+    ],
+    "ignore": {
+        "customPatterns": [
+            "**/package-lock.json",
+            "**/*.spec.ts"
+        ]
+    },
+    "output": {
+        "filePath": "gamma-os-context.xml",
+        "style": "xml"
+    }
+}

@@ -14,4 +14,4 @@ web/apps/generated/
 packages/gamma-types/*.js
 packages/gamma-types/*.js.map
 packages/gamma-types/*.d.ts
-repomix-output.xml
+gamma-os-context.xml

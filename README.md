@@ -86,9 +86,12 @@ gamma-os/
 │       └── index.ts            # 27 exported types
 │
 ├── docs/
-│   ├── SPEC.md                 # Architecture specification
-│   ├── PHASE2_BACKEND_SPEC.md  # Backend integration spec v1.4
-│   └── IMPLEMENTATION_PLAN.md  # Phase 2 loop plan
+│   ├── architecture/
+│   │   ├── phase1-os-core.md       # Phase 1 architecture specification
+│   │   └── phase2-backend.md       # Backend integration spec v1.6
+│   ├── plans/
+│   │   └── phase2-implementation.md # Phase 2 loop plan
+│   └── roadmap.md                  # High-level roadmap
 │
 ├── package.json                # Root workspace scripts
 └── .gitignore

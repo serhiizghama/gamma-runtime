@@ -266,7 +266,7 @@ web/store/useOSStore.ts        ← add systemHealth state if needed
 - Create the System Architect session on OS boot:
   - On first load, check if `system-architect` session exists (`GET /api/sessions`)
   - If not, create it: `POST /api/sessions { windowId: "system-architect", appId: "system-architect", sessionKey: "system-architect", agentId: "architect" }`
-- Create `docs/system-architect.md` persona file (content from Phase 3 §3.2)
+- Create `docs/agents/system-architect.md` persona file (content from Phase 3 §3.2)
 - The Architect window should be a special window type in the OS store — always available via menu bar, cannot be closed (only minimized)
 
 **Acceptance criteria:**
@@ -282,7 +282,7 @@ web/store/useOSStore.ts        ← add systemHealth state if needed
 
 **Files to create/update:**
 ```
-docs/system-architect.md                    ← NEW: persona file
+docs/agents/system-architect.md             ← NEW: persona file
 web/components/AgentChat.tsx                ← wire to useAgentStream + send API
 web/hooks/useAgentStream.ts                 ← NEW or update existing
 web/components/GammaOS.tsx                  ← boot session creation
@@ -461,8 +461,8 @@ Before marking Phase 3 complete, verify:
 
 | Document | Location |
 |---|---|
-| Phase 3 Spec v1.4 | `docs/PHASE3_FRONTEND_AND_AGENTS.md` |
-| Phase 2 Backend Spec v1.6 | `docs/PHASE2_BACKEND_SPEC.md` |
-| Phase 2 Implementation Plan | `docs/IMPLEMENTATION_PLAN.md` |
-| This Plan | `docs/IMPLEMENTATION_PLAN_PHASE3.md` |
+| Phase 3 Spec v1.4 | `docs/architecture/phase3-frontend.md` |
+| Phase 2 Backend Spec v1.6 | `docs/architecture/phase2-backend.md` |
+| Phase 2 Implementation Plan | `docs/plans/phase2-implementation.md` |
+| This Plan | `docs/plans/phase3-implementation.md` |
 | Project README | `README.md` |

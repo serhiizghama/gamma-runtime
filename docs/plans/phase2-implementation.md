@@ -599,7 +599,7 @@ Before marking Phase 2 complete, verify:
 
 | Document | Location |
 |---|---|
-| Backend Spec v1.6 | `docs/PHASE2_BACKEND_SPEC.md` |
-| Frontend Architecture | `docs/SPEC.md` |
-| This Plan | `docs/IMPLEMENTATION_PLAN.md` |
+| Backend Spec v1.6 | `docs/architecture/phase2-backend.md` |
+| Frontend Architecture | `docs/architecture/phase1-os-core.md` |
+| This Plan | `docs/plans/phase2-implementation.md` |
 | Project README | `README.md` |
