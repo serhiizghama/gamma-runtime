@@ -5,3 +5,7 @@ dist/
 gamma-os-server/node_modules/
 gamma-os-server/.env
 gamma-os-server/dist/
+gamma-os-server/tsconfig.build.tsbuildinfo
+packages/gamma-types/*.js
+packages/gamma-types/*.js.map
+packages/gamma-types/*.d.ts

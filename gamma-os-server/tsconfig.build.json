@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "outDir": "./dist",
+    "declaration": false
+  },
+  "include": ["src/**/*", "../packages/gamma-types/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+}

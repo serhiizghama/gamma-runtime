@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { RedisModule } from './redis/redis.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { SessionsModule } from './sessions/sessions.module';
+import { SseModule } from './sse/sse.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { SessionsModule } from './sessions/sessions.module';
     RedisModule,
     GatewayModule,
     SessionsModule,
+    SseModule,
   ],
   controllers: [AppController],
 })

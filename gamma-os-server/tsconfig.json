@@ -24,6 +24,6 @@
       "@gamma/types": ["../packages/gamma-types/index.ts"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../packages/gamma-types/**/*"],
   "exclude": ["node_modules", "dist"]
 }
