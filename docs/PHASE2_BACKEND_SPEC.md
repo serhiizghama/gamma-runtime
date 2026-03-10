@@ -22,7 +22,7 @@ Phase 2 connects Gamma OS (React-based Web OS) to the **OpenClaw Gateway** runni
 Browser (Gamma OS React)
     │  SSE /api/stream/:windowId
     ▼
-NestJS Backend (gamma-os-server)
+NestJS Backend (kernel/)
     │         │
     │  WS     │  Redis Streams
     ▼         ▼
@@ -1136,7 +1136,7 @@ streamText      → live-printing assistant response (shown while running)
 ```typescript
 @Injectable()
 export class ScaffoldService {
-  private readonly appsDir = path.resolve(GAMMA_OS_REPO, "apps/generated");
+  private readonly appsDir = path.resolve(GAMMA_OS_REPO, "web/apps/generated");
   private readonly git = simpleGit(GAMMA_OS_REPO);
 
   async scaffold(req: ScaffoldRequest): Promise<ScaffoldResult> {
@@ -1163,7 +1163,7 @@ export class ScaffoldService {
       commitHash = result.commit;
     }
 
-    const modulePath = `./apps/generated/${fileName.replace(".tsx", "")}`;
+    const modulePath = `./web/apps/generated/${fileName.replace(".tsx", "")}`;
     await this.redis.xadd("gamma:sse:broadcast", "*",
       ...flattenEntry({ type: "component_ready", appId: safeId, modulePath })
     );
@@ -1292,7 +1292,7 @@ export interface ScaffoldRequest {
 }
 ```
 
-Write assets to `apps/generated/assets/:appId/`:
+Write assets to `web/apps/generated/assets/:appId/`:
 
 ```typescript
 // In ScaffoldService.scaffold(), after writing sourceCode:
@@ -1317,7 +1317,7 @@ if (req.files?.length) {
 // src/scaffold/scaffold-assets.controller.ts
 @Controller("api/assets")
 export class ScaffoldAssetsController {
-  private readonly assetsRoot = path.join(GAMMA_OS_REPO, "apps/generated/assets");
+  private readonly assetsRoot = path.join(GAMMA_OS_REPO, "web/apps/generated/assets");
 
   @Get(":appId/*")
   async serveAsset(
@@ -1352,11 +1352,11 @@ npm install @fastify/static
 
 ### 9.5 Path Jail Guard (v1.4)
 
-All scaffold file writes are **jailed** to `apps/generated/`. The service must reject any path that escapes this boundary — protecting `src/`, `node_modules/`, `.env`, and other project files.
+All scaffold file writes are **jailed** to `web/apps/generated/`. The service must reject any path that escapes this boundary — protecting `kernel/`, `web/src/`, `node_modules/`, `.env`, and other project files.
 
 ```typescript
 // src/scaffold/scaffold.service.ts — path jail utility
-private readonly JAIL_ROOT = path.resolve(GAMMA_OS_REPO, "apps/generated");
+private readonly JAIL_ROOT = path.resolve(GAMMA_OS_REPO, "web/apps/generated");
 
 /**
  * Resolves a relative path and verifies it stays within JAIL_ROOT.
@@ -1628,7 +1628,7 @@ GIT_AUTHOR_EMAIL=zmrser@gmail.com
 ## 13. NestJS Module Structure
 
 ```
-gamma-os-server/
+kernel/
 ├── src/
 │   ├── app.module.ts
 │   ├── gateway/
@@ -1658,7 +1658,7 @@ gamma-os-server/
 │   │   └── memory-bus.module.ts
 │   └── redis/
 │       └── redis.module.ts
-├── .env
+├── .env.example         # Template; copy to .env for local use
 └── package.json
 ```
 

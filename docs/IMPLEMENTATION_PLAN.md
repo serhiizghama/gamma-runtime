@@ -35,10 +35,10 @@
 
 **Files to create:**
 ```
-gamma-os-server/
+kernel/
 ├── src/app.module.ts
 ├── src/main.ts          ← Fastify adapter + CORS setup here
-├── .env
+├── .env.example         ← Template; copy to .env for local use
 └── package.json
 ```
 
@@ -174,12 +174,12 @@ src/sessions/
 ### Task 2.4 — Shared Types Extraction
 
 **What to build:**
-- Create a shared types package `packages/gamma-os-types/` at the monorepo root (or symlinked into both `src/` and the NestJS server)
+- Create a shared types package `packages/gamma-types/` at the monorepo root (or symlinked into both `src/` and the NestJS server)
 - Move all Phase 2 interfaces out of `types/os.ts` into this shared package:
   - `AgentStatus`, `GammaSSEEvent`, `WindowAgentState`, `WindowStateSyncSnapshot`
   - `MemoryBusEntry`, `WindowSession`, `ScaffoldRequest`, `ScaffoldAsset`, `SystemHealthReport`
-- Both frontend and backend import from `@gamma-os/types` instead of duplicating definitions
-- Add a `tsconfig` path alias so both projects resolve `@gamma-os/types` without publishing to npm
+- Both frontend and backend import from `@gamma/types` instead of duplicating definitions
+- Add a `tsconfig` path alias so both projects resolve `@gamma/types` without publishing to npm
 
 **Why this matters:**
 When `GammaSSEEvent` is updated (e.g., adding a new stream type in v1.5), the TypeScript compiler will immediately flag every handler that needs updating — in both frontend and backend — at build time, not at runtime.
@@ -188,22 +188,22 @@ When `GammaSSEEvent` is updated (e.g., adding a new stream type in v1.5), the Ty
 ```
 gamma-os/
 ├── packages/
-│   └── gamma-os-types/
+│   └── gamma-types/
 │       ├── index.ts        ← re-exports all shared interfaces
 │       ├── events.ts       ← GammaSSEEvent union type
 │       ├── state.ts        ← WindowAgentState, AgentStatus
 │       ├── session.ts      ← WindowSession, WindowStateSyncSnapshot
 │       ├── scaffold.ts     ← ScaffoldRequest, ScaffoldAsset
 │       └── system.ts       ← SystemHealthReport
-├── src/                    ← frontend (React) imports from @gamma-os/types
-├── gamma-os-server/        ← backend (NestJS) imports from @gamma-os/types
-└── tsconfig.base.json      ← shared paths: { "@gamma-os/types": ["packages/gamma-os-types"] }
+├── web/                    ← frontend (React) imports from @gamma/types
+├── kernel/                 ← backend (NestJS) imports from @gamma/types
+└── package.json            ← root workspace scripts
 ```
 
 **Acceptance criteria:**
-- Change `GammaSSEEvent` in `packages/gamma-os-types/events.ts` → TypeScript errors appear in both frontend and backend until all handlers are updated
+- Change `GammaSSEEvent` in `packages/gamma-types/events.ts` → TypeScript errors appear in both frontend and backend until all handlers are updated
 - `npm run typecheck` in both projects passes with the shared types
-- No copy-pasted interface definitions exist in `src/` or `gamma-os-server/src/`
+- No copy-pasted interface definitions exist in `web/` or `kernel/src/`
 
 **Key spec reference:** §3 (TypeScript Interfaces) — all interfaces in that section move here
 
@@ -410,7 +410,7 @@ Redis key: `gamma:metrics:event_lag` — List, keep last 100 samples, no TTL.
 
 **What to build:**
 - `jailPath(relativePath: string): string` utility method in `ScaffoldService`
-  - Resolves path, verifies it stays within `apps/generated/`
+  - Resolves path, verifies it stays within `web/web/apps/generated/`
   - Throws `ForbiddenException` on traversal attempts
 - Security scan in `validateSource()` — 8 deny patterns:
   - `eval()`, `innerHTML`, `outerHTML`, `document.write`
@@ -440,7 +440,7 @@ Redis key: `gamma:metrics:event_lag` — List, keep last 100 samples, no TTL.
 - Register/unregister app in `gamma:app:registry` Redis Hash
 
 **Acceptance criteria:**
-- `POST /api/scaffold { appId: "weather", sourceCode: "...", commit: true }` → file appears in `apps/generated/`, git log shows commit, SSE delivers `component_ready`
+- `POST /api/scaffold { appId: "weather", sourceCode: "...", commit: true }` → file appears in `web/web/apps/generated/`, git log shows commit, SSE delivers `component_ready`
 - `DELETE /api/scaffold/weather` → file gone, git log shows removal commit, SSE delivers `component_removed`
 - Submitting code with `eval()` → `400 Bad Request` with validation errors
 
@@ -461,9 +461,9 @@ src/scaffold/
 
 **What to build:**
 - `GET /api/assets/:appId/*` endpoint using `@fastify/static`
-- Path jail: resolve asset path and verify it stays within `apps/generated/assets/`
+- Path jail: resolve asset path and verify it stays within `web/web/apps/generated/assets/`
 - Support: PNG, JPEG, SVG, JSON, WOFF2 (MIME type auto-detection)
-- `ScaffoldRequest.files[]` handling — write base64/utf8 assets to `apps/generated/assets/:appId/`
+- `ScaffoldRequest.files[]` handling — write base64/utf8 assets to `web/web/apps/generated/assets/:appId/`
 
 **Acceptance criteria:**
 - Scaffold an app with a PNG asset → `GET /api/assets/weather/icons/sun.png` returns the image
