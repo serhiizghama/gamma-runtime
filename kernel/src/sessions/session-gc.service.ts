@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { SessionsService } from './sessions.service';
+import { SessionRegistryService } from './session-registry.service';
 import type { WindowSession } from '@gamma/types';
 import { REDIS_KEYS } from '@gamma/types';
 
@@ -26,6 +27,7 @@ export class SessionGcService {
     private readonly config: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly sessionsService: SessionsService,
+    private readonly registry: SessionRegistryService,
   ) {
     const ttlHours = parseInt(
       this.config.get<string>('SESSION_GC_TTL_HOURS', '24'),
@@ -62,6 +64,9 @@ export class SessionGcService {
               `(sessionKey=${session.sessionKey}, idle ${Math.round(age / 3600_000)}h)`,
           );
 
+          // registry.remove is also called inside sessionsService.remove,
+          // but we call it explicitly here so orphan cleanup is self-contained.
+          await this.registry.remove(session.sessionKey);
           await this.sessionsService.remove(windowId);
           collected++;
         }

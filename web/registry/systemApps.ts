@@ -54,6 +54,14 @@ const _registry = new Map<string, LazyApp>([
       })),
     ),
   ],
+  [
+    "agent-monitor",
+    lazy(() =>
+      import("../apps/system/agent-monitor/AgentMonitorApp").then((m) => ({
+        default: m.AgentMonitorApp,
+      })),
+    ),
+  ],
 ]);
 
 /** Returns the lazy-loaded component for a built-in system app, or undefined. */

@@ -17,7 +17,8 @@ import {
   isReasoningStream,
 } from './event-classifier';
 import { ToolWatchdogService } from './tool-watchdog.service';
-import type { GWAgentEventPayload, MemoryBusEntry, WindowSession } from '@gamma/types';
+import { SessionRegistryService } from '../sessions/session-registry.service';
+import type { GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
 // ── Local types ───────────────────────────────────────────────────────────
 
@@ -112,6 +113,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly toolWatchdog: ToolWatchdogService,
+    private readonly sessionRegistry: SessionRegistryService,
   ) {
     this.gatewayUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
     this.gatewayToken = this.config.get('OPENCLAW_GATEWAY_TOKEN', '');
@@ -402,7 +404,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
       if (phase === 'end') {
         // Extract tokenUsage (v1.4)
-        const tokenUsage =
+        const tokenUsage: TokenUsage | undefined =
           data?.inputTokens != null
             ? {
                 inputTokens: Number(data.inputTokens ?? 0),
@@ -434,6 +436,16 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         );
         await this.redis.expire(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 14400); // 4h TTL
 
+        // Update session registry — accumulate tokens then flip status to idle
+        if (tokenUsage) {
+          await this.sessionRegistry.accumulateTokens(sessionKey, tokenUsage);
+        }
+        await this.sessionRegistry.upsert({
+          sessionKey,
+          status: 'idle',
+          lastActiveAt: nowMs,
+        });
+
         // Cleanup run tracking + watchdog timers
         this.runStepCounters.delete(runId);
         this.toolWatchdog.clearWindow(windowId);
@@ -455,6 +467,13 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           'lastEventAt', String(nowMs),
           'lastEventId', eventId,
         );
+
+        // Update session registry status
+        await this.sessionRegistry.upsert({
+          sessionKey,
+          status: 'error',
+          lastActiveAt: nowMs,
+        });
 
         this.runStepCounters.delete(runId);
         this.toolWatchdog.clearWindow(windowId);

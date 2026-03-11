@@ -14,6 +14,7 @@ import type {
   WindowStateSyncSnapshot,
 } from '@gamma/types';
 import { REDIS_KEYS } from '@gamma/types';
+import { SessionRegistryService } from './session-registry.service';
 import { ScaffoldService } from '../scaffold/scaffold.service';
 const APP_OWNER_PREFIX = 'app-owner-';
 const APP_OWNER_INIT_FIELD = 'appOwnerInitialized';
@@ -54,6 +55,7 @@ export class SessionsService {
     private readonly toolWatchdog: ToolWatchdogService,
     @Inject(forwardRef(() => ScaffoldService))
     private readonly scaffoldService: ScaffoldService,
+    private readonly registry: SessionRegistryService,
   ) {}
 
   /** Create a new window↔session mapping */
@@ -68,6 +70,25 @@ export class SessionsService {
     };
 
     await this.redis.hset(REDIS_KEYS.SESSIONS, dto.windowId, JSON.stringify(session));
+
+    // Register initial telemetry entry in the session registry
+    await this.registry.upsert({
+      sessionKey: dto.sessionKey,
+      windowId: dto.windowId,
+      appId: dto.appId,
+      status: 'idle',
+      createdAt: session.createdAt,
+      lastActiveAt: session.createdAt,
+      runCount: 0,
+      systemPromptSnippet: '',
+      tokenUsage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        contextUsedPct: 0,
+      },
+    });
 
     // Keep Gateway's in-memory mapping in sync so events can be routed
     this.gatewayWs.registerWindowSession(dto.sessionKey, dto.windowId);
@@ -110,7 +131,7 @@ export class SessionsService {
     return all.find((s) => s.sessionKey === sessionKey) ?? null;
   }
 
-  /** Update session status in Redis */
+  /** Update session status in Redis and mirror to the session registry */
   async updateStatus(
     windowId: string,
     status: WindowSession['status'],
@@ -123,6 +144,35 @@ export class SessionsService {
       windowId,
       JSON.stringify(session),
     );
+
+    // Mirror to registry — onRunStart handles the atomic increment for 'running'
+    if (status === 'running') {
+      await this.registry.onRunStart(session.sessionKey);
+    } else {
+      await this.registry.upsert({
+        sessionKey: session.sessionKey,
+        status,
+        lastActiveAt: Date.now(),
+      });
+    }
+  }
+
+  /** Return all session keys currently tracked in gamma:sessions */
+  async getActiveSessionKeys(): Promise<string[]> {
+    const sessions = await this.findAll();
+    return sessions.map((s) => s.sessionKey);
+  }
+
+  /**
+   * Abort the run and mark the registry as aborted, looked up by sessionKey.
+   * Used by the Agent Control Plane kill endpoint.
+   */
+  async killBySessionKey(sessionKey: string): Promise<boolean> {
+    const session = await this.findBySessionKey(sessionKey);
+    if (!session) return false;
+    await this.abort(session.windowId);
+    await this.registry.upsert({ sessionKey, status: 'aborted', lastActiveAt: Date.now() });
+    return true;
   }
 
   /** Abort a running agent session (spec §4.2) */
@@ -361,6 +411,16 @@ export class SessionsService {
       return;
     }
 
+    // Persist full prompt as context + snippet in registry
+    await Promise.all([
+      this.registry.setContext(sessionKey, systemPrompt),
+      this.registry.upsert({
+        sessionKey,
+        systemPromptSnippet: systemPrompt.slice(0, 2000),
+        lastActiveAt: Date.now(),
+      }),
+    ]);
+
     await this.redis.hset(stateKey, APP_OWNER_INIT_FIELD, '1');
   }
 
@@ -529,10 +589,11 @@ export class SessionsService {
       this.logger.warn(`Failed to kill Gateway session ${existing.sessionKey}: ${msg}`);
     }
 
-    // 2. Clean up Redis
+    // 2. Clean up Redis (session hash, SSE stream, state hash, registry)
     await this.redis.hdel(REDIS_KEYS.SESSIONS, windowId);
     await this.redis.del(`${REDIS_KEYS.SSE_PREFIX}${windowId}`);
     await this.redis.del(`${REDIS_KEYS.STATE_PREFIX}${windowId}`);
+    await this.registry.remove(existing.sessionKey);
 
     // 3. Clear watchdog timers
     this.toolWatchdog.clearWindow(windowId);

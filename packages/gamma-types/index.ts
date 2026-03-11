@@ -63,6 +63,8 @@ export type GammaSSEEvent =
   // System
   | { type: 'gateway_status'; status: 'connected' | 'disconnected'; ts: number }
   | { type: 'keep_alive' }
+  // Agent Control Plane (Stage 4)
+  | { type: 'session_registry_update'; records: SessionRecord[] }
   // Error
   | { type: 'error'; windowId: string; message: string };
 
@@ -224,6 +226,26 @@ export type GatewayEventKind =
   | 'runtime-chat'
   | 'ignore';
 
+// ── §16 Session Registry ─────────────────────────────────────────────────
+
+/**
+ * Telemetry record persisted in Redis for every active agent session.
+ * Stored as a Hash at gamma:session-registry:<sessionKey>.
+ */
+export interface SessionRecord {
+  sessionKey: string;
+  windowId: string;
+  appId: string;
+  status: AgentStatus;
+  createdAt: number;
+  lastActiveAt: number;
+  tokenUsage: TokenUsage;
+  /** Slice of the assembled system prompt (max 2000 chars) */
+  systemPromptSnippet: string;
+  /** Total number of agent runs fired within this session */
+  runCount: number;
+}
+
 // ── Redis Key Constants ──────────────────────────────────────────────────
 
 export const REDIS_KEYS = {
@@ -235,6 +257,8 @@ export const REDIS_KEYS = {
   APP_DATA_PREFIX: 'gamma:app-data:',
   STATE_PREFIX: 'gamma:state:',
   EVENT_LAG: 'gamma:metrics:event_lag',
+  SESSION_REGISTRY_PREFIX: 'gamma:session-registry:',
+  SESSION_CONTEXT_PREFIX: 'gamma:session-context:',
 } as const;
 
 /** Stream ID is always a string — never parse as number (precision loss) */
