@@ -6,11 +6,12 @@ interface TerminalLine {
 }
 
 /**
- * TerminalApp — demonstrates the MANDATORY cleanup contract (spec §7).
+ * TerminalApp — built-in demo terminal.
  *
- * Sets up a heartbeat interval on mount, clears it on unmount.
- * Unmount is triggered when `closeWindow` removes the WindowNode from the store.
- * The ErrorBoundary wrapping each window will catch any crash inside this tree.
+ * This is NOT a real shell. It is a self-contained UI process that:
+ * - Appends a heartbeat line every 2s
+ * - Echoes user input and prints a faux "command not found"
+ * - Demonstrates the mandatory cleanup contract for long-running effects
  */
 export function TerminalApp(): React.ReactElement {
   const [lines, setLines] = useState<TerminalLine[]>([
@@ -109,3 +110,4 @@ export function TerminalApp(): React.ReactElement {
     </div>
   );
 }
+

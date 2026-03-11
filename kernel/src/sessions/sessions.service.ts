@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import Redis from 'ioredis';
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import { ulid } from 'ulid';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { GatewayWsService } from '../gateway/gateway-ws.service';
@@ -256,8 +257,18 @@ export class SessionsService {
     const pascalName = pascal(appId);
     const tsxFileName = `${pascalName}App.tsx`;
 
+    // Resolve candidate bundle locations for this appId.
+    // 1) Generated apps: web/apps/generated/{appId}/ (via ScaffoldService jail)
+    // 2) Built-in system apps: web/apps/system/{appId}/ (direct filesystem read)
+    const repoRoot = path.resolve(__dirname, '../../..');
+    const systemBundleDir = path.resolve(
+      repoRoot,
+      'web/apps/system',
+      appId,
+    );
+
     try {
-      // agent-prompt.md (optional — skip if missing / ENOENT / EACCES)
+      // agent-prompt.md (optional — generated apps only; skip if missing)
       try {
         const agentPath = this.scaffoldService.jailPath(
           `${appId}/agent-prompt.md`,
@@ -276,37 +287,72 @@ export class SessionsService {
         );
       }
 
-      // context.md (graceful skip on ENOENT, EACCES, or any read error)
+      // context.md (first match wins: generated → system)
       try {
-        const contextPath = this.scaffoldService.jailPath(
-          `${appId}/context.md`,
-        );
-        const content = await fs.readFile(contextPath, 'utf8');
-        parts.push('--- APP CONTEXT ---', content.trim(), '');
+        const contextCandidates = [
+          this.scaffoldService.jailPath(`${appId}/context.md`),
+          path.join(systemBundleDir, 'context.md'),
+        ];
+        let contextContent: string | null = null;
+
+        for (const candidate of contextCandidates) {
+          try {
+            const content = await fs.readFile(candidate, 'utf8');
+            contextContent = content;
+            break;
+          } catch {
+            // try next candidate
+          }
+        }
+
+        if (contextContent) {
+          parts.push('--- APP CONTEXT ---', contextContent.trim(), '');
+        } else {
+          this.logger.debug(
+            `App Owner context.md not found for ${appId} in generated or system bundles`,
+          );
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.debug(
-          `App Owner context.md not found for ${appId}: ${msg}`,
+          `App Owner context lookup failed for ${appId}: ${msg}`,
         );
       }
 
-      // Main .tsx source (graceful skip on ENOENT, EACCES, or any read error)
+      // Main .tsx source (first match wins: generated → system)
       try {
-        const sourcePath = this.scaffoldService.jailPath(
-          `${appId}/${tsxFileName}`,
-        );
-        const sourceCode = await fs.readFile(sourcePath, 'utf8');
-        parts.push(
-          '--- CURRENT SOURCE CODE ---',
-          '```tsx',
-          sourceCode.trim(),
-          '```',
-          '',
-        );
+        const sourceCandidates = [
+          this.scaffoldService.jailPath(`${appId}/${tsxFileName}`),
+          path.join(systemBundleDir, tsxFileName),
+        ];
+        let sourceCode: string | null = null;
+
+        for (const candidate of sourceCandidates) {
+          try {
+            sourceCode = await fs.readFile(candidate, 'utf8');
+            break;
+          } catch {
+            // try next candidate
+          }
+        }
+
+        if (sourceCode) {
+          parts.push(
+            '--- CURRENT SOURCE CODE ---',
+            '```tsx',
+            sourceCode.trim(),
+            '```',
+            '',
+          );
+        } else {
+          this.logger.warn(
+            `App Owner source ${tsxFileName} for ${appId} not found in generated or system bundles — skipping source injection`,
+          );
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `App Owner source ${tsxFileName} for ${appId}: ${msg} — skipping source injection`,
+        this.logger.error(
+          `App Owner source lookup failed for ${appId}: ${msg}`,
         );
       }
 

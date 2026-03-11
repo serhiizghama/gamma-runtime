@@ -14,15 +14,29 @@ import { AgentChat } from "./AgentChat";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { API_BASE } from "../constants/api";
 
-// ── App registry — lazy-load per appId ──────────────────────────────────────
+// ── Built-in system apps — lazy-load per appId ─────────────────────────────
 const TerminalApp = lazy(() =>
-  import("../apps/TerminalApp").then((m) => ({ default: m.TerminalApp })),
+  import("../apps/system/terminal/TerminalApp").then((m) => ({
+    default: m.TerminalApp,
+  })),
 );
 const SettingsApp = lazy(() =>
-  import("../apps/SettingsApp").then((m) => ({ default: m.SettingsApp })),
+  import("../apps/system/settings/SettingsApp").then((m) => ({
+    default: m.SettingsApp,
+  })),
+);
+const BrowserApp = lazy(() =>
+  import("../apps/system/browser/BrowserApp").then((m) => ({
+    default: m.BrowserApp,
+  })),
+);
+const NotesApp = lazy(() =>
+  import("../apps/system/notes/NotesApp").then((m) => ({
+    default: m.NotesApp,
+  })),
 );
 const KernelMonitorApp = lazy(() =>
-  import("../apps/KernelMonitorApp").then((m) => ({
+  import("../apps/system/kernel-monitor/KernelMonitorApp").then((m) => ({
     default: m.KernelMonitorApp,
   })),
 );
@@ -76,6 +90,10 @@ function AppContent({
       return wrap(<TerminalApp />, "Terminal");
     case "settings":
       return wrap(<SettingsApp />, "Settings");
+    case "browser":
+      return wrap(<BrowserApp />, "Browser");
+    case "notes":
+      return wrap(<NotesApp />, "Notes");
     case "kernel-monitor":
       return wrap(<KernelMonitorApp />, "Kernel Monitor");
     default:

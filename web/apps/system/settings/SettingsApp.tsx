@@ -1,6 +1,6 @@
 import React from "react";
-import { useOSStore } from "../store/useOSStore";
-import type { UISettings } from "../types/os";
+import { useOSStore } from "../../../store/useOSStore";
+import type { UISettings } from "../../../types/os";
 
 const SECTION: React.CSSProperties = {
   display: "flex",
@@ -36,8 +36,8 @@ const VALUE_BADGE: React.CSSProperties = {
 
 export function SettingsApp(): React.ReactElement {
   const uiSettings = useOSStore((s) => s.uiSettings);
-  const updateUI   = useOSStore((s) => s.updateUISettings);
-  const resetAll   = useOSStore((s) => s.resetAll);
+  const updateUI = useOSStore((s) => s.updateUISettings);
+  const resetAll = useOSStore((s) => s.resetAll);
 
   const set = <K extends keyof UISettings>(key: K, val: UISettings[K]) =>
     updateUI({ [key]: val } as Partial<UISettings>);
@@ -60,7 +60,7 @@ export function SettingsApp(): React.ReactElement {
           <span style={{ fontSize: 14 }}>Theme</span>
           <SegmentedControl
             options={[
-              { value: "dark",  label: "🌙 Dark"  },
+              { value: "dark", label: "🌙 Dark" },
               { value: "light", label: "☀️ Light" },
             ]}
             value={uiSettings.theme}
@@ -76,17 +76,27 @@ export function SettingsApp(): React.ReactElement {
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <SliderRow
             label="Blur Intensity"
-            min={40} max={140} step={5}
+            min={40}
+            max={140}
+            step={5}
             value={uiSettings.bgBlur}
             unit="px"
             onChange={(v) => set("bgBlur", v)}
           />
           <SliderRow
             label="Flow Speed"
-            min={10} max={60} step={2}
+            min={10}
+            max={60}
+            step={2}
             value={uiSettings.bgSpeed}
             unit="s"
-            hint={uiSettings.bgSpeed <= 16 ? "Fast" : uiSettings.bgSpeed >= 50 ? "Slow" : "Medium"}
+            hint={
+              uiSettings.bgSpeed <= 16
+                ? "Fast"
+                : uiSettings.bgSpeed >= 50
+                ? "Slow"
+                : "Medium"
+            }
             onChange={(v) => set("bgSpeed", v)}
           />
         </div>
@@ -98,7 +108,13 @@ export function SettingsApp(): React.ReactElement {
         <div style={ROW}>
           <div>
             <p style={{ fontSize: 14, margin: 0 }}>Reset All Settings</p>
-            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.38)", margin: "4px 0 0" }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: "rgba(255,255,255,0.38)",
+                margin: "4px 0 0",
+              }}
+            >
               Clears session, windows, and preferences
             </p>
           </div>
@@ -112,10 +128,19 @@ export function SettingsApp(): React.ReactElement {
 }
 
 /* ── Segmented Control ─────────────────────────────────────────── */
-interface SegOption { value: string; label: string; }
+interface SegOption {
+  value: string;
+  label: string;
+}
 function SegmentedControl({
-  options, value, onChange,
-}: { options: SegOption[]; value: string; onChange: (v: string) => void }) {
+  options,
+  value,
+  onChange,
+}: {
+  options: SegOption[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <div
       style={{
@@ -139,15 +164,14 @@ function SegmentedControl({
             fontFamily: "var(--font-system)",
             fontWeight: 500,
             transition: "background 160ms ease, color 160ms ease",
-            background: value === o.value
-              ? "rgba(255,255,255,0.14)"
-              : "transparent",
-            color: value === o.value
-              ? "rgba(255,255,255,0.92)"
-              : "rgba(255,255,255,0.40)",
-            boxShadow: value === o.value
-              ? "0 1px 4px rgba(0,0,0,0.3)"
-              : "none",
+            background:
+              value === o.value ? "rgba(255,255,255,0.14)" : "transparent",
+            color:
+              value === o.value
+                ? "rgba(255,255,255,0.92)"
+                : "rgba(255,255,255,0.40)",
+            boxShadow:
+              value === o.value ? "0 1px 4px rgba(0,0,0,0.3)" : "none",
           }}
         >
           {o.label}
@@ -159,10 +183,22 @@ function SegmentedControl({
 
 /* ── Slider Row ────────────────────────────────────────────────── */
 function SliderRow({
-  label, min, max, step, value, unit, hint, onChange,
+  label,
+  min,
+  max,
+  step,
+  value,
+  unit,
+  hint,
+  onChange,
 }: {
-  label: string; min: number; max: number; step: number;
-  value: number; unit: string; hint?: string;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  unit: string;
+  hint?: string;
   onChange: (v: number) => void;
 }) {
   return (
@@ -170,12 +206,16 @@ function SliderRow({
       <div style={ROW}>
         <span style={{ fontSize: 14 }}>{label}</span>
         <span style={VALUE_BADGE}>
-          {value}{unit}{hint ? ` · ${hint}` : ""}
+          {value}
+          {unit}
+          {hint ? ` · ${hint}` : ""}
         </span>
       </div>
       <input
         type="range"
-        min={min} max={max} step={step}
+        min={min}
+        max={max}
+        step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         style={{
@@ -186,8 +226,12 @@ function SliderRow({
         }}
       />
       <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{min}{unit}</span>
-        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{max}{unit}</span>
+        <span
+          style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}
+        >{`${min}${unit}`}</span>
+        <span
+          style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}
+        >{`${max}${unit}`}</span>
       </div>
     </div>
   );
@@ -195,8 +239,14 @@ function SliderRow({
 
 /* ── Glass Button ──────────────────────────────────────────────── */
 function GlassButton({
-  children, onClick, danger = false,
-}: { children: React.ReactNode; onClick: () => void; danger?: boolean }) {
+  children,
+  onClick,
+  danger = false,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+}) {
   return (
     <button
       onClick={onClick}
@@ -233,3 +283,4 @@ function GlassButton({
     </button>
   );
 }
+

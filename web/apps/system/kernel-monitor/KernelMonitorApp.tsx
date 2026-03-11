@@ -20,9 +20,11 @@ interface SSELogEntry {
 // ── Config ───────────────────────────────────────────────────────────────
 
 // Auto-detect: if accessing via Tailscale, use the same hostname for API
-const API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-  ? "http://localhost:3001"
-  : `http://${window.location.hostname}:3001`;
+const API_BASE =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+    ? "http://localhost:3001"
+    : `http://${window.location.hostname}:3001`;
 
 // ── Styles ───────────────────────────────────────────────────────────────
 
@@ -213,6 +215,14 @@ export function KernelMonitorApp(): React.ReactElement {
 
   // ── SSE connect / disconnect ───────────────────────────────────────
 
+  const addLog = (data: Record<string, unknown>) => {
+    logIdRef.current++;
+    setLogs((prev) => [
+      ...prev.slice(-200), // keep last 200 entries
+      { id: logIdRef.current, ts: Date.now(), data },
+    ]);
+  };
+
   const connectSSE = () => {
     if (esRef.current) {
       esRef.current.close();
@@ -251,204 +261,198 @@ export function KernelMonitorApp(): React.ReactElement {
     addLog({ event: "SSE_DISCONNECTED" });
   };
 
-  const addLog = (data: Record<string, unknown>) => {
-    logIdRef.current++;
-    setLogs((prev) => [
-      ...prev.slice(-200), // keep last 200 entries
-      { id: logIdRef.current, ts: Date.now(), data },
-    ]);
-  };
-
-  // Auto-scroll log area
   useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
+    if (!logRef.current) return;
+    logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (esRef.current) {
-        esRef.current.close();
-      }
-    };
-  }, []);
-
-  // ── Push test event via backend (simulate agent output) ────────────
-
-  const pushTestEvent = async () => {
-    try {
-      // We'll push directly via the sessions send endpoint or redis
-      // For now, use a simple approach: create the event description
-      addLog({
-        event: "MANUAL_PUSH",
-        hint: `Run: redis-cli XADD gamma:sse:${windowId} '*' type assistant_delta windowId ${windowId} runId test-run text "Hello from debug"`,
-      });
-    } catch {
-      // silent
+  const statusColor = (status: string): string => {
+    switch (status) {
+      case "idle":
+        return "#22c55e";
+      case "running":
+        return "#eab308";
+      case "error":
+        return "#f97373";
+      default:
+        return "#64748b";
     }
-  };
-
-  // ── Render ─────────────────────────────────────────────────────────
-
-  const formatTime = (ts: number) => {
-    const d = new Date(ts);
-    return d.toLocaleTimeString("en-US", { hour12: false }) + "." + String(d.getMilliseconds()).padStart(3, "0");
   };
 
   return (
     <div style={ROOT}>
       {/* Header */}
-      <div style={HEADER}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 16 }}>🔬</span>
-          <span style={{ fontWeight: 700, fontSize: 13 }}>Kernel Monitor</span>
-          <span style={{ opacity: 0.3, fontSize: 10 }}>v1.4</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span
+      <header style={HEADER}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>
+            Gamma Kernel Monitor
+          </div>
+          <div
             style={{
-              ...STATUS_DOT,
-              background: sseConnected ? "#00ff41" : "#ff4444",
-              boxShadow: sseConnected
-                ? "0 0 6px rgba(0,255,65,0.5)"
-                : "0 0 6px rgba(255,68,68,0.5)",
+              fontSize: 11,
+              opacity: 0.8,
+              marginTop: 2,
             }}
-          />
-          <span style={{ fontSize: 11, opacity: 0.7 }}>
-            SSE: {sseConnected ? "Connected" : "Disconnected"}
-          </span>
-        </div>
-      </div>
-
-      {/* Sessions Panel */}
-      <div style={PANEL}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={SECTION_TITLE}>Active Sessions ({sessions.length})</div>
-          <button
-            style={{ ...BTN, opacity: loading ? 0.5 : 1 }}
-            onClick={spawnSession}
-            disabled={loading}
           >
-            + Spawn Mock Session
-          </button>
+            Sessions · SSE Streams · Lifecycle Events
+          </div>
         </div>
-
-        {sessions.length > 0 ? (
-          <table style={TABLE}>
-            <thead>
-              <tr>
-                <th style={TH}>Window ID</th>
-                <th style={TH}>App</th>
-                <th style={TH}>Session Key</th>
-                <th style={TH}>Status</th>
-                <th style={TH}>Age</th>
-                <th style={TH}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((s) => (
-                <tr key={s.windowId}>
-                  <td style={TD}>{s.windowId}</td>
-                  <td style={TD}>{s.appId}</td>
-                  <td style={{ ...TD, opacity: 0.6, fontSize: 10 }}>{s.sessionKey}</td>
-                  <td style={TD}>
-                    <span
-                      style={{
-                        padding: "2px 6px",
-                        borderRadius: 3,
-                        fontSize: 10,
-                        background:
-                          s.status === "running"
-                            ? "rgba(0,255,65,0.15)"
-                            : s.status === "error"
-                              ? "rgba(255,60,60,0.15)"
-                              : "rgba(255,255,255,0.05)",
-                        color:
-                          s.status === "running"
-                            ? "#00ff41"
-                            : s.status === "error"
-                              ? "#ff4444"
-                              : "#666",
-                      }}
-                    >
-                      {s.status}
-                    </span>
-                  </td>
-                  <td style={{ ...TD, opacity: 0.5 }}>
-                    {Math.round((Date.now() - s.createdAt) / 1000)}s
-                  </td>
-                  <td style={TD}>
-                    <button
-                      style={{ ...BTN_DANGER, padding: "2px 8px", fontSize: 10 }}
-                      onClick={() => deleteSession(s.windowId)}
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div style={{ opacity: 0.3, fontSize: 11, padding: "8px 0" }}>
-            No active sessions. Click "Spawn Mock Session" to create one.
-          </div>
-        )}
-      </div>
-
-      {/* SSE Debugger Panel */}
-      <div style={{ ...PANEL, display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ ...SECTION_TITLE, marginBottom: 0 }}>SSE Stream</div>
-        <input
-          style={INPUT}
-          value={windowId}
-          onChange={(e) => setWindowId(e.target.value)}
-          placeholder="windowId"
-        />
-        {!sseConnected ? (
-          <button style={BTN} onClick={connectSSE}>
-            ▶ Connect
-          </button>
-        ) : (
-          <button style={BTN_DANGER} onClick={disconnectSSE}>
-            ■ Disconnect
-          </button>
-        )}
-        <button style={{ ...BTN, opacity: 0.6 }} onClick={pushTestEvent}>
-          📡 Test Hint
-        </button>
         <button
-          style={{ ...BTN, opacity: 0.6 }}
-          onClick={() => setLogs([])}
+          type="button"
+          style={BTN}
+          disabled={loading}
+          onClick={spawnSession}
         >
-          🗑 Clear
+          {loading ? "Spawning…" : "Spawn Mock Session"}
         </button>
-      </div>
+      </header>
 
-      {/* Log Area */}
-      <div ref={logRef} style={LOG_AREA}>
-        {logs.length === 0 && (
-          <div style={{ opacity: 0.2, textAlign: "center", paddingTop: 40 }}>
-            SSE events will appear here...
+      {/* Sessions table */}
+      <section style={PANEL}>
+        <div style={SECTION_TITLE}>Active Sessions</div>
+        <table style={TABLE}>
+          <thead>
+            <tr>
+              <th style={TH}>Window</th>
+              <th style={TH}>App</th>
+              <th style={TH}>Status</th>
+              <th style={TH}>Agent</th>
+              <th style={TH}>Created</th>
+              <th style={TH}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.map((s) => (
+              <tr key={s.windowId}>
+                <td style={TD}>{s.windowId}</td>
+                <td style={TD}>{s.appId}</td>
+                <td style={TD}>
+                  <span
+                    style={{
+                      ...STATUS_DOT,
+                      backgroundColor: statusColor(s.status),
+                    }}
+                  />
+                  {s.status}
+                </td>
+                <td style={TD}>{s.agentId}</td>
+                <td style={TD}>
+                  {new Date(s.createdAt).toLocaleTimeString(undefined, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })}
+                </td>
+                <td style={TD}>
+                  <button
+                    type="button"
+                    style={BTN_DANGER}
+                    onClick={() => deleteSession(s.windowId)}
+                  >
+                    Kill
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {sessions.length === 0 && (
+              <tr>
+                <td style={{ ...TD, opacity: 0.7 }} colSpan={6}>
+                  No active sessions. Use "Spawn Mock Session" above or create an
+                  app-owner window.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      {/* SSE control + logs */}
+      <section style={PANEL}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 8,
+          }}
+        >
+          <div>
+            <div style={SECTION_TITLE}>SSE Stream</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11 }}>Window ID</span>
+              <input
+                value={windowId}
+                onChange={(e) => setWindowId(e.target.value)}
+                spellCheck={false}
+                style={INPUT}
+              />
+            </div>
           </div>
-        )}
-        {logs.map((entry) => (
-          <div key={entry.id} style={LOG_ENTRY}>
-            <span style={{ color: "#00aa33", opacity: 0.5 }}>
-              [{formatTime(entry.ts)}]
-            </span>{" "}
-            <span style={{ color: "#44ffaa" }}>
-              {(entry.data.type as string) ?? (entry.data.event as string) ?? "???"}
-            </span>
-            {"\n"}
-            {JSON.stringify(entry.data, null, 2)}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              style={BTN}
+              onClick={connectSSE}
+              disabled={sseConnected}
+            >
+              Connect
+            </button>
+            <button
+              type="button"
+              style={BTN_DANGER}
+              onClick={disconnectSSE}
+              disabled={!sseConnected}
+            >
+              Disconnect
+            </button>
           </div>
-        ))}
-      </div>
+        </div>
+        <div
+          ref={logRef}
+          style={{
+            ...LOG_AREA,
+            maxHeight: 260,
+            borderRadius: 4,
+            border: "1px solid rgba(0,255,65,0.25)",
+            background: "rgba(0,0,0,0.7)",
+          }}
+        >
+          {logs.map((entry) => (
+            <div key={entry.id} style={LOG_ENTRY}>
+              <div
+                style={{
+                  fontSize: 10,
+                  opacity: 0.7,
+                  marginBottom: 2,
+                }}
+              >
+                {new Date(entry.ts).toLocaleTimeString()} ·{" "}
+                {String(entry.data["event"] ?? "message")}
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  fontFamily: "inherit",
+                }}
+              >
+                {JSON.stringify(entry.data, null, 2)}
+              </pre>
+            </div>
+          ))}
+          {logs.length === 0 && (
+            <div
+              style={{
+                ...LOG_ENTRY,
+                opacity: 0.7,
+                textAlign: "center",
+              }}
+            >
+              No events yet. Connect to an SSE stream to start tailing events.
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
 
-export default KernelMonitorApp;
