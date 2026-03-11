@@ -279,6 +279,12 @@ export class SessionsService {
     windowId: string,
     appIdFromDto?: string | null,
   ): Promise<void> {
+    // TODO (Stage 4): Context Injection for specific apps is currently bypassed.
+    // The backend successfully reads the app's context.md, but OpenClaw session
+    // initialization requires a refactor to properly ingest the custom
+    // system_prompt. App Owner sessions currently fall back to the default
+    // Gamma OS Assistant persona despite the app-specific context being
+    // available here.
     if (!sessionKey || typeof sessionKey !== 'string') {
       this.logger.warn(
         'initializeAppOwnerSession: sessionKey is empty or invalid',
