@@ -411,11 +411,14 @@ export class SessionsService {
       return;
     }
 
-    // Persist full prompt as context + snippet in registry
+    // Persist full prompt as context + snippet in registry.
+    // Also re-assert windowId/appId defensively in case of stale/missing fields.
     await Promise.all([
       this.registry.setContext(sessionKey, systemPrompt),
       this.registry.upsert({
         sessionKey,
+        windowId,
+        appId,
         systemPromptSnippet: systemPrompt.slice(0, 2000),
         lastActiveAt: Date.now(),
       }),

@@ -399,21 +399,42 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           'pendingToolLines', '[]',
         );
         await this.redis.expire(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 14400); // 4h TTL
+
+        // Atomically increment runCount + mark running in session registry
+        await this.sessionRegistry.onRunStart(sessionKey);
         return;
       }
 
       if (phase === 'end') {
-        // Extract tokenUsage (v1.4)
-        const tokenUsage: TokenUsage | undefined =
-          data?.inputTokens != null
-            ? {
-                inputTokens: Number(data.inputTokens ?? 0),
-                outputTokens: Number(data.outputTokens ?? 0),
-                cacheReadTokens: Number(data.cacheReadTokens ?? 0),
-                cacheWriteTokens: Number(data.cacheWriteTokens ?? 0),
-                contextUsedPct: Number(data.contextUsedPct ?? 0),
-              }
-            : undefined;
+        // Debug: surface the raw payload to diagnose telemetry field paths
+        this.logger.debug(`[Telemetry] Lifecycle end payload: ${JSON.stringify(data ?? {})}`);
+
+        // Extract tokenUsage — try data directly, then common nested paths
+        const usageSource: Record<string, unknown> | null =
+          data?.inputTokens != null ? (data as Record<string, unknown>)
+          : (data as Record<string, unknown> | undefined)?.['usage'] != null
+            ? (data as Record<string, unknown>)['usage'] as Record<string, unknown>
+          : (data as Record<string, unknown> | undefined)?.['metrics'] != null
+            ? (data as Record<string, unknown>)['metrics'] as Record<string, unknown>
+          : (data as Record<string, unknown> | undefined)?.['tokenUsage'] != null
+            ? (data as Record<string, unknown>)['tokenUsage'] as Record<string, unknown>
+          : null;
+
+        const tokenUsage: TokenUsage | undefined = usageSource != null
+          ? {
+              inputTokens:      Number(usageSource['inputTokens']      ?? 0),
+              outputTokens:     Number(usageSource['outputTokens']     ?? 0),
+              cacheReadTokens:  Number(usageSource['cacheReadTokens']  ?? 0),
+              cacheWriteTokens: Number(usageSource['cacheWriteTokens'] ?? 0),
+              contextUsedPct:   Number(usageSource['contextUsedPct']   ?? 0),
+            }
+          : undefined;
+
+        if (tokenUsage) {
+          this.logger.debug(`[Telemetry] Parsed tokenUsage: in=${tokenUsage.inputTokens} out=${tokenUsage.outputTokens}`);
+        } else {
+          this.logger.warn('[Telemetry] lifecycle_end: no tokenUsage found in payload');
+        }
 
         const eventId = await this.pushSSE(sseKey, {
           type: 'lifecycle_end',

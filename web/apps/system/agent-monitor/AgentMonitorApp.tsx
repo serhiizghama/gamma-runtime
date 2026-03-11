@@ -6,9 +6,9 @@ import { API_BASE } from "../../../constants/api";
 // ── Styles ────────────────────────────────────────────────────────────────
 
 const ROOT: React.CSSProperties = {
-  background: "var(--monitor-bg)",
-  color: "var(--monitor-fg)",
-  fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
+  background: "var(--color-bg-base)",
+  color: "var(--color-text-primary)",
+  fontFamily: "var(--font-system)",
   fontSize: 12,
   height: "100%",
   display: "flex",
@@ -18,7 +18,7 @@ const ROOT: React.CSSProperties = {
 
 const HEADER: React.CSSProperties = {
   padding: "12px 16px",
-  borderBottom: "1px solid var(--monitor-border)",
+  borderBottom: "1px solid var(--color-border-subtle)",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -35,7 +35,7 @@ const GRID_PANE: React.CSSProperties = {
   flex: "0 0 60%",
   display: "flex",
   flexDirection: "column",
-  borderRight: "1px solid var(--monitor-border)",
+  borderRight: "1px solid var(--color-border-subtle)",
   overflow: "hidden",
 };
 
@@ -48,7 +48,7 @@ const INSPECTOR_PANE: React.CSSProperties = {
 
 const PANE_HEADER: React.CSSProperties = {
   padding: "8px 14px",
-  borderBottom: "1px solid var(--monitor-border)",
+  borderBottom: "1px solid var(--color-border-subtle)",
   fontSize: 10,
   fontWeight: 700,
   letterSpacing: "0.12em",
@@ -66,8 +66,8 @@ const TABLE: React.CSSProperties = {
 const TH: React.CSSProperties = {
   textAlign: "left",
   padding: "5px 10px",
-  borderBottom: "1px solid var(--monitor-border)",
-  color: "var(--monitor-fg)",
+  borderBottom: "1px solid var(--color-border-subtle)",
+  color: "var(--color-text-primary)",
   opacity: 0.5,
   fontWeight: 600,
   fontSize: 10,
@@ -78,8 +78,8 @@ const TH: React.CSSProperties = {
 
 const TD: React.CSSProperties = {
   padding: "5px 10px",
-  borderBottom: "1px solid var(--monitor-border-success-faint)",
-  color: "var(--monitor-fg-muted)",
+  borderBottom: "1px solid var(--color-border-subtle-strong)",
+  color: "var(--color-text-secondary)",
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -87,9 +87,9 @@ const TD: React.CSSProperties = {
 };
 
 const BTN: React.CSSProperties = {
-  background: "var(--monitor-surface-success)",
-  border: "1px solid var(--monitor-border-success)",
-  color: "var(--monitor-fg)",
+  background: "var(--color-surface-muted)",
+  border: "1px solid var(--color-border-subtle)",
+  color: "var(--color-text-primary)",
   padding: "5px 12px",
   borderRadius: 4,
   cursor: "pointer",
@@ -99,15 +99,16 @@ const BTN: React.CSSProperties = {
 
 const BTN_DANGER: React.CSSProperties = {
   ...BTN,
-  background: "var(--monitor-surface-error)",
-  border: "1px solid var(--monitor-border-error)",
-  color: "var(--monitor-fg-error)",
+  background: "var(--button-danger-bg)",
+  border: "1px solid var(--button-danger-border)",
+  color: "var(--button-danger-fg)",
 };
 
 const BTN_GHOST: React.CSSProperties = {
   ...BTN,
-  background: "transparent",
-  border: "1px solid var(--monitor-border)",
+  background: "var(--button-ghost-bg)",
+  border: "1px solid var(--button-ghost-border)",
+  color: "var(--button-ghost-fg)",
 };
 
 const CONTEXT_BLOCK: React.CSSProperties = {
@@ -115,8 +116,8 @@ const CONTEXT_BLOCK: React.CSSProperties = {
   overflow: "auto",
   margin: "10px 14px",
   padding: "10px 12px",
-  background: "var(--monitor-surface-overlay)",
-  border: "1px solid var(--monitor-border-overlay)",
+  background: "var(--glass-bg)",
+  border: "1px solid var(--glass-border)",
   borderRadius: 4,
   fontSize: 11,
   lineHeight: 1.6,
@@ -137,9 +138,9 @@ const STATUS_DOT: React.CSSProperties = {
 
 function statusColor(status: AgentStatus): string {
   switch (status) {
-    case "running": return "var(--monitor-status-running)";
-    case "idle":    return "var(--monitor-status-idle)";
-    case "error":   return "var(--monitor-status-error)";
+    case "running": return "#eab308";
+    case "idle":    return "#22c55e";
+    case "error":   return "var(--color-accent-error)";
     case "aborted": return "#c9a227";
     default:        return "var(--color-text-muted)";
   }
@@ -241,7 +242,7 @@ function Inspector({ record, onKill, killing }: InspectorProps): React.ReactElem
 
       {/* Context display */}
       {contextError && (
-        <div style={{ padding: "10px 14px", color: "var(--monitor-fg-error)", fontSize: 11 }}>
+        <div style={{ padding: "10px 14px", color: "var(--color-accent-error)", fontSize: 11 }}>
           {contextError}
         </div>
       )}
@@ -306,7 +307,7 @@ export function AgentMonitorApp(): React.ReactElement {
         </div>
         <div style={{ fontSize: 11, opacity: 0.6 }}>
           {loading ? "syncing…" : `${records.length} session${records.length !== 1 ? "s" : ""}`}
-          {error && <span style={{ color: "var(--monitor-fg-error)", marginLeft: 8 }}>⚠ {error}</span>}
+          {error && <span style={{ color: "var(--color-accent-error)", marginLeft: 8 }}>⚠ {error}</span>}
         </div>
       </header>
 
@@ -332,7 +333,7 @@ export function AgentMonitorApp(): React.ReactElement {
                 {records.map((r) => {
                   const isSelected = r.sessionKey === selectedKey;
                   const rowBg = isSelected
-                    ? "var(--monitor-surface-success-faint)"
+                    ? "var(--color-surface-muted)"
                     : "transparent";
                   return (
                     <tr
@@ -341,9 +342,9 @@ export function AgentMonitorApp(): React.ReactElement {
                       onClick={() => setSelectedKey(isSelected ? null : r.sessionKey)}
                     >
                       <td style={{ ...TD, fontWeight: isSelected ? 600 : 400 }}>
-                        {r.windowId}
+                        {r.windowId || "—"}
                       </td>
-                      <td style={TD}>{r.appId}</td>
+                      <td style={TD}>{r.appId || "—"}</td>
                       <td style={{ ...TD, maxWidth: "none" }}>
                         <span style={{ display: "inline-flex", alignItems: "center" }}>
                           <span style={{ ...STATUS_DOT, backgroundColor: statusColor(r.status) }} />
