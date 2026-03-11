@@ -50,9 +50,11 @@ function EmbeddedAgentChat({
   title: string;
   onClose: () => void;
 }): React.ReactElement {
-  const windowId = `app-owner-${appId}`;
+  const sessionKey = `app-owner-${appId}`;
+  // Debug: ensure embedded chats use the correct per-app session key
+  console.log("[Frontend] Embedded Chat sessionKey:", sessionKey);
   const { messages, status, pendingToolLines, sendMessage } =
-    useAgentStream(windowId);
+    useAgentStream(sessionKey);
   return (
     <AgentChat
       mode="live"

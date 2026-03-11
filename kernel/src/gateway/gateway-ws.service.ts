@@ -839,6 +839,57 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     } catch { /* fire-and-forget per spec */ }
   }
 
+  /**
+   * Create or initialize an OpenClaw session with an optional systemPrompt.
+   * This must run before the first chat.send for persona/context injection.
+   */
+  async createSession(
+    sessionKey: string,
+    systemPrompt?: string,
+  ): Promise<boolean> {
+    if (!this.connected) {
+      this.logger.warn(
+        `createSession: not connected, cannot create session for ${sessionKey}`,
+      );
+      return false;
+    }
+
+    const frameId = ulid();
+    const params: Record<string, unknown> = {
+      sessionKey,
+      ...(systemPrompt ? { systemPrompt } : {}),
+    };
+
+    // Surface the exact payload we send to OpenClaw for observability
+    console.log('[Backend] OpenClaw sessions.create payload:', params);
+
+    this.send({
+      type: 'req',
+      id: frameId,
+      method: 'sessions.create',
+      params,
+    });
+
+    try {
+      const res = await this.waitForResponse(frameId, 5000);
+      if (!res.ok) {
+        this.logger.warn(
+          `createSession: Gateway rejected sessions.create for ${sessionKey}: ${JSON.stringify(
+            res.error ?? res.payload ?? {},
+          )}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `createSession: Gateway sessions.create failed for ${sessionKey}: ${msg}`,
+      );
+      return false;
+    }
+  }
+
   // ── v1.6: Send user message to agent session ─────────────────────────
   // Fire-and-forget: returns immediately after dispatch. Ack/errors are routed
   // asynchronously via handleFrame → pushChatSendError for rejections.

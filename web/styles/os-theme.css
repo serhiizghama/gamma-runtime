@@ -43,6 +43,7 @@
   --window-border: 1px solid var(--color-border-subtle);
   --window-min-width: 320px;
   --window-min-height: 200px;
+  --desktop-taskbar-height: 32px;
 
   /* ── Dock ─────────────────────────────────────────────────── */
   --dock-bg: rgba(15, 23, 42, 0.65);
@@ -234,11 +235,12 @@
 }
 
 .window--maximized {
-  top: var(--space-12);
+  top: var(--desktop-taskbar-height);
   left: 0;
   margin: 0;
+  margin-top: 0 !important;
   width: 100vw;
-  height: calc(100vh - var(--space-12));
+  height: calc(100vh - var(--desktop-taskbar-height));
   transform: none;
   box-sizing: border-box;
 }
@@ -294,6 +296,13 @@
   opacity: 0.85;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   border: 1px solid transparent;
+}
+
+.window--maximized .window__frame {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .window--focused .window__frame {
@@ -448,8 +457,8 @@
 }
 
 .desktop-shell__taskbar {
-  height: 32px;
-  min-height: 32px;
+  height: var(--desktop-taskbar-height);
+  min-height: var(--desktop-taskbar-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;

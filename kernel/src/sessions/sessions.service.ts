@@ -303,6 +303,9 @@ export class SessionsService {
         : sessionKey.slice(APP_OWNER_PREFIX.length);
     const appId = rawAppId.replace(/[^a-z0-9-]/gi, '');
 
+    // Diagnostic: what app session did we actually intercept?
+    console.log('[Backend] Intercepted App Session:', appId);
+
     if (
       !appId ||
       appId === 'undefined' ||
@@ -337,14 +340,11 @@ export class SessionsService {
 
     const systemPrompt = systemPromptLines.join('\n');
 
-    const { accepted } = this.gatewayWs.sendMessage(
-      sessionKey,
-      systemPrompt,
-      windowId,
-    );
-    if (!accepted) {
+    // Explicitly create/initialize the OpenClaw session with a systemPrompt
+    const created = await this.gatewayWs.createSession(sessionKey, systemPrompt);
+    if (!created) {
       this.logger.warn(
-        `initializeAppOwnerSession: Gateway not connected, system prompt not sent for appId=${appId}`,
+        `initializeAppOwnerSession: Gateway sessions.create failed for appId=${appId}, sessionKey=${sessionKey}`,
       );
       // Do not mark as initialized so we can try again on a future attempt
       return;
@@ -398,6 +398,12 @@ export class SessionsService {
           this.scaffoldService.jailPath(`${appId}/context.md`),
           path.join(systemBundleDir, 'context.md'),
         ];
+        console.log(
+          '[Backend] Checking paths:',
+          contextCandidates[0],
+          contextCandidates[1],
+        );
+
         let contextContent: string | null = null;
 
         for (const candidate of contextCandidates) {
@@ -405,10 +411,18 @@ export class SessionsService {
             const content = await fs.readFile(candidate, 'utf8');
             contextContent = content;
             break;
-          } catch {
-            // try next candidate
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.log(
+              '[Backend] Failed to read context candidate',
+              candidate,
+              'error:',
+              msg,
+            );
           }
         }
+
+        console.log('[Backend] Context found?:', !!contextContent);
 
         if (contextContent) {
           parts.push('--- APP CONTEXT ---', contextContent.trim(), '');
@@ -436,8 +450,14 @@ export class SessionsService {
           try {
             sourceCode = await fs.readFile(candidate, 'utf8');
             break;
-          } catch {
-            // try next candidate
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.log(
+              '[Backend] Failed to read source candidate',
+              candidate,
+              'error:',
+              msg,
+            );
           }
         }
 
