@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 
-// ── Mock SessionsService before importing ScaffoldService ────────────────
+// ── Mock SessionsService before importing ────────────────────────────────
 
 jest.mock('../sessions/sessions.service', () => ({
   SessionsService: jest.fn().mockImplementation(() => ({
@@ -8,6 +8,7 @@ jest.mock('../sessions/sessions.service', () => ({
   })),
 }));
 
+// simple-git is mocked as a safety net (used by GitWorkspaceService internally)
 const mockGit = {
   checkIsRepo: jest.fn().mockResolvedValue(true),
   revparse: jest.fn().mockResolvedValue('private-apps'),
@@ -27,10 +28,7 @@ jest.mock('simple-git', () => ({
   default: jest.fn(() => mockGit),
 }));
 
-import { ScaffoldService } from './scaffold.service';
-import { REDIS_KEYS } from '@gamma/types';
-
-// ── fs/promises mock ─────────────────────────────────────────────────────
+// ── fs/promises mock (used by AppStorageService) ─────────────────────────
 
 jest.mock('fs/promises', () => ({
   mkdir: jest.fn().mockResolvedValue(undefined),
@@ -43,7 +41,12 @@ jest.mock('fs/promises', () => ({
 import * as fsMock from 'fs/promises';
 const mockedFs = fsMock as jest.Mocked<typeof fsMock>;
 
-// ── Mocks ────────────────────────────────────────────────────────────────
+import { ScaffoldService } from './scaffold.service';
+import { AppStorageService } from './app-storage.service';
+import { ValidationService } from './validation.service';
+import { REDIS_KEYS } from '@gamma/types';
+
+// ── Shared mock objects ───────────────────────────────────────────────────
 
 const mockConfig = {
   get: (key: string, fallback: string) => {
@@ -72,11 +75,29 @@ const mockSessionsService = {
   remove: jest.fn().mockResolvedValue(true),
 };
 
+/** GitWorkspaceService mock — prevents any real git I/O during tests */
+const mockGitWorkspaceService = {
+  commitChanges: jest.fn().mockResolvedValue('abc123'),
+  stageAndCommitIfChanged: jest.fn().mockResolvedValue(undefined),
+};
+
+// ── Test Suite ───────────────────────────────────────────────────────────
+
 describe('ScaffoldService', () => {
   let service: ScaffoldService;
+  let appStorageService: AppStorageService;
+  let validationService: ValidationService;
 
   beforeEach(() => {
-    service = new ScaffoldService(mockConfig as any, mockRedis as any, mockSessionsService as any);
+    appStorageService = new AppStorageService(mockConfig as any);
+    validationService = new ValidationService();
+    service = new ScaffoldService(
+      appStorageService,
+      mockGitWorkspaceService as any,
+      validationService,
+      mockRedis as any,
+      mockSessionsService as any,
+    );
     jest.clearAllMocks();
   });
 
@@ -282,7 +303,7 @@ describe('ScaffoldService', () => {
       const hsetCall = mockRedis.hset.mock.calls[0];
       expect(hsetCall[0]).toBe(REDIS_KEYS.APP_REGISTRY);
       expect(hsetCall[1]).toBe('weather');
-      const entry = JSON.parse(hsetCall[2]);
+      const entry = JSON.parse(hsetCall[2] as string);
       expect(entry.bundlePath).toBe('./web/apps/generated/weather/');
       expect(entry.hasAgent).toBe(false);
       expect(entry.updatedAt).toBeGreaterThan(0);
@@ -301,7 +322,7 @@ describe('ScaffoldService', () => {
         commit: false,
       });
 
-      const entry = JSON.parse(mockRedis.hset.mock.calls[0][2]);
+      const entry = JSON.parse(mockRedis.hset.mock.calls[0][2] as string);
       expect(entry.hasAgent).toBe(true);
     });
 
@@ -317,10 +338,10 @@ describe('ScaffoldService', () => {
         commit: false,
       });
 
-      const paths = mockedFs.writeFile.mock.calls.map(c => c[0] as string);
-      expect(paths.some(p => p.endsWith('WeatherApp.tsx'))).toBe(true);
-      expect(paths.some(p => p.endsWith('context.md'))).toBe(true);
-      expect(paths.some(p => p.endsWith('agent-prompt.md'))).toBe(true);
+      const paths = mockedFs.writeFile.mock.calls.map((c) => c[0] as string);
+      expect(paths.some((p) => p.endsWith('WeatherApp.tsx'))).toBe(true);
+      expect(paths.some((p) => p.endsWith('context.md'))).toBe(true);
+      expect(paths.some((p) => p.endsWith('agent-prompt.md'))).toBe(true);
     });
 
     it('should NOT write contextDoc/agentPrompt when undefined (PATCH semantics)', async () => {
@@ -331,9 +352,9 @@ describe('ScaffoldService', () => {
         commit: false,
       });
 
-      const paths = mockedFs.writeFile.mock.calls.map(c => c[0] as string);
-      expect(paths.some(p => p.endsWith('context.md'))).toBe(false);
-      expect(paths.some(p => p.endsWith('agent-prompt.md'))).toBe(false);
+      const paths = mockedFs.writeFile.mock.calls.map((c) => c[0] as string);
+      expect(paths.some((p) => p.endsWith('context.md'))).toBe(false);
+      expect(paths.some((p) => p.endsWith('agent-prompt.md'))).toBe(false);
     });
   });
 
@@ -346,6 +367,9 @@ describe('ScaffoldService', () => {
       mockRedis.hdel.mockReset().mockResolvedValue(1);
       mockRedis.xadd.mockReset().mockResolvedValue('1-0');
       mockSessionsService.remove.mockReset().mockResolvedValue(true);
+      mockGitWorkspaceService.stageAndCommitIfChanged
+        .mockReset()
+        .mockResolvedValue(undefined);
       mockedFs.rm.mockReset().mockResolvedValue(undefined);
     });
 
@@ -358,7 +382,9 @@ describe('ScaffoldService', () => {
 
       await service.remove('weather');
 
-      expect(mockRedis.keys).toHaveBeenCalledWith(`${REDIS_KEYS.APP_DATA_PREFIX}weather:*`);
+      expect(mockRedis.keys).toHaveBeenCalledWith(
+        `${REDIS_KEYS.APP_DATA_PREFIX}weather:*`,
+      );
       expect(mockRedis.del).toHaveBeenCalledWith(...fakeKeys);
     });
 
@@ -367,41 +393,54 @@ describe('ScaffoldService', () => {
 
       await service.remove('weather');
 
-      expect(mockRedis.keys).toHaveBeenCalledWith(`${REDIS_KEYS.APP_DATA_PREFIX}weather:*`);
+      expect(mockRedis.keys).toHaveBeenCalledWith(
+        `${REDIS_KEYS.APP_DATA_PREFIX}weather:*`,
+      );
       expect(mockRedis.del).not.toHaveBeenCalled();
     });
 
     it('should call sessionsService.remove for the App Owner session', async () => {
       await service.remove('weather');
 
-      expect(mockSessionsService.remove).toHaveBeenCalledWith('app-owner-weather');
+      expect(mockSessionsService.remove).toHaveBeenCalledWith(
+        'app-owner-weather',
+      );
     });
 
     it('should not throw if sessionsService.remove fails', async () => {
-      mockSessionsService.remove.mockRejectedValue(new Error('session not found'));
+      mockSessionsService.remove.mockRejectedValue(
+        new Error('session not found'),
+      );
 
       await expect(service.remove('weather')).resolves.toEqual({ ok: true });
-      expect(mockSessionsService.remove).toHaveBeenCalledWith('app-owner-weather');
+      expect(mockSessionsService.remove).toHaveBeenCalledWith(
+        'app-owner-weather',
+      );
     });
 
     it('should remove bundle directory, registry entry, and broadcast', async () => {
       await service.remove('weather');
 
-      // Bundle dir removal
+      // Bundle dir removal (via AppStorageService → fs.rm)
       expect(mockedFs.rm).toHaveBeenCalledWith(
         expect.stringContaining('weather'),
         { recursive: true, force: true },
       );
 
       // Registry removal
-      expect(mockRedis.hdel).toHaveBeenCalledWith(REDIS_KEYS.APP_REGISTRY, 'weather');
+      expect(mockRedis.hdel).toHaveBeenCalledWith(
+        REDIS_KEYS.APP_REGISTRY,
+        'weather',
+      );
 
       // SSE broadcast
       expect(mockRedis.xadd).toHaveBeenCalledWith(
         REDIS_KEYS.SSE_BROADCAST,
         '*',
-        'type', 'component_removed',
-        'appId', 'weather',
+        'type',
+        'component_removed',
+        'appId',
+        'weather',
       );
     });
   });

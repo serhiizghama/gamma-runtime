@@ -1,16 +1,11 @@
-import {
-  Injectable,
-  ForbiddenException,
-  Logger,
-  Inject,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import * as path from 'path';
-import * as fs from 'fs/promises';
-import simpleGit, { SimpleGit } from 'simple-git';
+import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { SessionsService } from '../sessions/sessions.service';
+import { AppStorageService } from './app-storage.service';
+import { GitWorkspaceService } from './git-workspace.service';
+import { ValidationService } from './validation.service';
 import type { ScaffoldRequest, ScaffoldResult } from '@gamma/types';
 import { REDIS_KEYS } from '@gamma/types';
 
@@ -33,53 +28,6 @@ function flattenEntry(obj: Record<string, unknown>): string[] {
   return args;
 }
 
-// ── Security deny patterns (spec §9.3) ──────────────────────────────────
-
-interface DenyPattern {
-  pattern: RegExp;
-  reason: string;
-}
-
-const SECURITY_DENY_PATTERNS: DenyPattern[] = [
-  {
-    pattern: /\beval\s*\(/,
-    reason: 'eval() is forbidden — arbitrary code execution risk',
-  },
-  {
-    pattern: /\.innerHTML\s*=/,
-    reason: 'innerHTML assignment — XSS risk; use React JSX instead',
-  },
-  {
-    pattern: /\.outerHTML\s*=/,
-    reason: 'outerHTML assignment — XSS risk',
-  },
-  {
-    pattern: /document\.write\s*\(/,
-    reason: 'document.write() — XSS risk',
-  },
-  {
-    pattern: /localStorage\s*\./,
-    reason:
-      'Direct localStorage access forbidden in generated apps — use OS store',
-  },
-  {
-    pattern: /sessionStorage\s*\./,
-    reason: 'Direct sessionStorage access forbidden in generated apps',
-  },
-  {
-    pattern: /require\s*\(\s*['"`]child_process/,
-    reason: 'child_process require — server-side escape attempt',
-  },
-  {
-    pattern: /process\.env\b/,
-    reason: 'process.env access forbidden in generated client apps',
-  },
-  {
-    pattern: /fetch\s*\(\s*['"`]https?:\/\/(?!localhost|127\.0\.0\.1)/,
-    reason: 'External fetch calls require explicit allowlisting',
-  },
-];
-
 // Re-export shared types so existing imports from this file keep working
 export type { ScaffoldAsset, ScaffoldRequest, ScaffoldResult } from '@gamma/types';
 
@@ -101,170 +49,45 @@ export interface JailedFileSaveResult {
 }
 
 /**
- * Scaffold Service — Path Jail, Security Scanner, Smart Commit (spec §9.2–§9.6).
+ * Scaffold Service — Orchestrator / Facade (spec §9.2–§9.6).
  *
- * Provides:
- * - jailPath(): prevents path traversal outside web/apps/generated/
- * - validateSource(): security scan + syntax validation for generated code
- * - scaffold(): full pipeline — validate → write → git commit → Redis → SSE
- * - remove(): delete app → git commit → Redis → SSE
+ * Coordinates the scaffold lifecycle by delegating to domain services:
+ * - AppStorageService: all file system I/O within the jail
+ * - GitWorkspaceService: all version-control operations
+ * - ValidationService: security scanning and structural validation
+ *
+ * Responsibilities retained here:
+ * - App registry management (Redis hash)
+ * - SSE lifecycle event broadcasting
+ * - Session cleanup during removal
  */
 @Injectable()
 export class ScaffoldService {
   private readonly logger = new Logger(ScaffoldService.name);
-  private readonly JAIL_ROOT: string;
-  private readonly branch: string;
-  private readonly autoPush: boolean;
-  private readonly privateRepoUrl: string | null;
-  private readonly gitAuthorName: string;
-  private readonly gitAuthorEmail: string;
-  private gitReady = false;
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly storage: AppStorageService,
+    private readonly gitWorkspace: GitWorkspaceService,
+    private readonly validation: ValidationService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly sessionsService: SessionsService,
-  ) {
-    const repoRoot = this.config.get<string>(
-      'GAMMA_OS_REPO',
-      path.resolve(__dirname, '../../..'),
-    );
-    this.JAIL_ROOT = path.resolve(repoRoot, 'web/apps/generated');
-    this.branch = this.config.get<string>(
-      'SCAFFOLD_GIT_BRANCH',
-      'private-apps',
-    );
-    this.autoPush =
-      this.config.get<string>('SCAFFOLD_AUTO_PUSH', 'false') === 'true';
-    this.privateRepoUrl =
-      this.config.get<string>('SCAFFOLD_PRIVATE_REPO_URL', '') || null;
-    this.gitAuthorName = this.config.get<string>(
-      'GIT_AUTHOR_NAME',
-      'gamma-os',
-    );
-    this.gitAuthorEmail = this.config.get<string>(
-      'GIT_AUTHOR_EMAIL',
-      'gamma@localhost',
-    );
-  }
+  ) {}
 
-  // ── Path Jail Guard (spec §9.5) ────────────────────────────────────────
+  // ── Delegated accessors (backward compat for SessionsService) ─────────
 
-  /**
-   * Resolves a relative path and verifies it stays within JAIL_ROOT.
-   * Throws ForbiddenException if path traversal is attempted.
-   *
-   * @param relativePath — path relative to web/apps/generated/
-   * @returns absolute resolved path within the jail
-   */
   jailPath(relativePath: string): string {
-    if (path.isAbsolute(relativePath)) {
-      throw new ForbiddenException(
-        `Path traversal attempt blocked: absolute path '${relativePath}' is forbidden`,
-      );
-    }
-
-    const normalized = path.normalize(relativePath);
-    if (
-      normalized.split(path.sep).some((segment) => segment.startsWith('.'))
-    ) {
-      throw new ForbiddenException(
-        `Hidden files and directories (.git, etc.) are strictly forbidden: '${relativePath}'`,
-      );
-    }
-
-    const resolved = path.resolve(this.JAIL_ROOT, normalized);
-
-    if (
-      resolved !== this.JAIL_ROOT &&
-      !resolved.startsWith(this.JAIL_ROOT + path.sep)
-    ) {
-      throw new ForbiddenException(
-        `Path traversal attempt blocked: '${relativePath}' resolves outside jail`,
-      );
-    }
-
-    return resolved;
+    return this.storage.jailPath(relativePath);
   }
 
-  // ── Security Scanner (spec §9.3) ───────────────────────────────────────
+  getJailRoot(): string {
+    return this.storage.getJailRoot();
+  }
 
   validateSource(
     source: string,
-    fileName = 'generated.tsx',
+    fileName?: string,
   ): { ok: boolean; errors: string[] } {
-    const errors: string[] = [];
-
-    for (const { pattern, reason } of SECURITY_DENY_PATTERNS) {
-      if (pattern.test(source)) {
-        errors.push(`Security violation in ${fileName}: ${reason}`);
-      }
-    }
-
-    if (errors.length > 0) {
-      return { ok: false, errors };
-    }
-
-    if (!source.includes('export')) {
-      errors.push(`${fileName}: must contain at least one export`);
-    }
-
-    if (!source.includes('React') && !source.includes('react')) {
-      errors.push(
-        `${fileName}: must import React or reference react for JSX`,
-      );
-    }
-
-    return { ok: errors.length === 0, errors };
-  }
-
-  // ── Nested Git (spec §9.2 v1.5) ───────────────────────────────────────
-
-  /**
-   * Ensures the nested Git repo exists inside web/apps/generated/.
-   * Called lazily on first scaffold/remove operation.
-   * The main .gitignore excludes web/apps/generated/.
-   */
-  private async ensureNestedGit(): Promise<SimpleGit> {
-    const git = simpleGit(this.JAIL_ROOT);
-
-    if (!this.gitReady) {
-      await fs.mkdir(this.JAIL_ROOT, { recursive: true });
-
-      const isRepo = await git.checkIsRepo().catch(() => false);
-
-      if (!isRepo) {
-        this.logger.log('Initializing nested Git repo in web/apps/generated/');
-        await git.init();
-        await git.addConfig('user.name', this.gitAuthorName);
-        await git.addConfig('user.email', this.gitAuthorEmail);
-
-        await git.checkoutLocalBranch(this.branch);
-        await fs.writeFile(
-          path.join(this.JAIL_ROOT, '.gitkeep'),
-          '# AI-generated apps directory\n',
-        );
-        await git.add('.');
-        await git.commit('init: generated apps workspace');
-
-        if (this.privateRepoUrl) {
-          await git.addRemote('origin', this.privateRepoUrl);
-        }
-      } else {
-        const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
-        if (currentBranch.trim() !== this.branch) {
-          try {
-            await git.checkout(this.branch);
-          } catch {
-            await git.checkoutLocalBranch(this.branch);
-          }
-        }
-      }
-
-      this.gitReady = true;
-    }
-
-    return git;
+    return this.validation.validateSource(source, fileName);
   }
 
   // ── Main Scaffold Flow (spec §9.2) ────────────────────────────────────
@@ -275,91 +98,73 @@ export class ScaffoldService {
     const fileName = `${pascalName}App.tsx`;
 
     // Security scan + structural validation
-    const validation = this.validateSource(req.sourceCode, fileName);
-    if (!validation.ok) {
+    const result = this.validation.validateSource(req.sourceCode, fileName);
+    if (!result.ok) {
       return {
         ok: false,
-        error: `Validation failed:\n${validation.errors.join('\n')}`,
+        error: `Validation failed:\n${result.errors.join('\n')}`,
       };
     }
 
-    // Bundle directory: web/apps/generated/{safeId}/
-    const bundleDir = this.jailPath(safeId);
-    await fs.mkdir(bundleDir, { recursive: true });
+    // Write source file into bundle directory
+    const bundleDir = this.storage.jailPath(safeId);
+    await this.storage.ensureDir(bundleDir);
 
-    // Write source file into bundle
-    const filePath = this.jailPath(`${safeId}/${fileName}`);
-    await fs.writeFile(filePath, req.sourceCode, 'utf8');
+    const filePath = this.storage.jailPath(`${safeId}/${fileName}`);
+    await this.storage.writeFile(filePath, req.sourceCode);
 
     // PATCH/Merge semantics: only write contextDoc/agentPrompt if provided
     if (req.contextDoc !== undefined) {
-      const contextPath = this.jailPath(`${safeId}/context.md`);
-      await fs.writeFile(contextPath, req.contextDoc, 'utf8');
+      await this.storage.writeFile(
+        this.storage.jailPath(`${safeId}/context.md`),
+        req.contextDoc,
+      );
     }
 
     if (req.agentPrompt !== undefined) {
-      const agentPath = this.jailPath(`${safeId}/agent-prompt.md`);
-      await fs.writeFile(agentPath, req.agentPrompt, 'utf8');
+      await this.storage.writeFile(
+        this.storage.jailPath(`${safeId}/agent-prompt.md`),
+        req.agentPrompt,
+      );
     }
 
     // Write assets into bundle (v1.3)
     if (req.files?.length) {
       for (const asset of req.files) {
-        const assetPath = this.jailPath(
+        const assetPath = this.storage.jailPath(
           `${safeId}/assets/${safeId}/${path.basename(asset.path)}`,
         );
-        await fs.mkdir(path.dirname(assetPath), { recursive: true });
+        await this.storage.ensureDir(path.dirname(assetPath));
         const buffer =
           asset.encoding === 'base64'
             ? Buffer.from(asset.content, 'base64')
             : Buffer.from(asset.content, 'utf8');
-        await fs.writeFile(assetPath, buffer);
+        await this.storage.writeFile(assetPath, buffer);
       }
     }
 
-    // Git commit in the NESTED repo (v1.5)
+    // Git commit in the nested repo (v1.5)
     let commitHash: string | undefined;
     if (req.commit) {
-      const git = await this.ensureNestedGit();
-      await git.add('.');
-      const result = await git.commit(
+      commitHash = await this.gitWorkspace.commitChanges(
         `feat: generated ${req.displayName} app`,
-        {
-          '--author': `${this.gitAuthorName} <${this.gitAuthorEmail}>`,
-        },
       );
-      commitHash = result.commit || undefined;
-
-      if (this.autoPush && this.privateRepoUrl) {
-        try {
-          await git.push('origin', this.branch);
-        } catch (err) {
-          this.logger.warn(`Auto-push failed (best-effort): ${err}`);
-        }
-      }
     }
 
-    // Determine hasAgent: true if agent-prompt.md exists on disk (written now or previously)
-    const agentPromptPath = this.jailPath(`${safeId}/agent-prompt.md`);
-    let hasAgent = false;
-    try {
-      await fs.access(agentPromptPath);
-      hasAgent = true;
-    } catch {
-      /* file doesn't exist */
-    }
+    // Determine hasAgent: true if agent-prompt.md exists on disk
+    const agentPromptPath = this.storage.jailPath(`${safeId}/agent-prompt.md`);
+    const hasAgent = await this.storage.fileExists(agentPromptPath);
 
-    // Register in app registry with bundle fields
+    // Register in app registry — preserve createdAt from existing entry
     const modulePath = `./web/apps/generated/${safeId}/${pascalName}App`;
     const bundlePath = `./web/apps/generated/${safeId}/`;
     const now = Date.now();
 
-    // Preserve createdAt from existing entry if present
     let createdAt = now;
     try {
       const existing = await this.redis.hget(REDIS_KEYS.APP_REGISTRY, safeId);
       if (existing) {
-        const parsed = JSON.parse(existing);
+        const parsed = JSON.parse(existing) as { createdAt?: number };
         if (parsed.createdAt) createdAt = parsed.createdAt;
       }
     } catch {
@@ -412,15 +217,17 @@ export class ScaffoldService {
     }
 
     try {
-      const targetPath = this.jailPath(`${safeId}/${params.relativePath}`);
-      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      const targetPath = this.storage.jailPath(
+        `${safeId}/${params.relativePath}`,
+      );
+      await this.storage.ensureDir(path.dirname(targetPath));
 
       const buffer =
         params.encoding === 'base64'
           ? Buffer.from(params.content, 'base64')
           : Buffer.from(params.content, 'utf8');
 
-      await fs.writeFile(targetPath, buffer);
+      await this.storage.writeFile(targetPath, buffer);
 
       const now = Date.now();
 
@@ -439,7 +246,8 @@ export class ScaffoldService {
       const modulePath =
         entry?.modulePath ??
         `./web/apps/generated/${safeId}/${pascalName}App`;
-      const bundlePath = entry?.bundlePath ?? `./web/apps/generated/${safeId}/`;
+      const bundlePath =
+        entry?.bundlePath ?? `./web/apps/generated/${safeId}/`;
 
       const registryEntry: import('@gamma/types').AppRegistryEntry = {
         appId: safeId,
@@ -457,7 +265,6 @@ export class ScaffoldService {
         JSON.stringify(registryEntry),
       );
 
-      // Broadcast component_ready so DynamicAppRenderer hot-reloads
       await this.redis.xadd(
         REDIS_KEYS.SSE_BROADCAST,
         '*',
@@ -484,12 +291,19 @@ export class ScaffoldService {
   }
 
   /** Return full app registry from Redis for frontend */
-  async getRegistry(): Promise<Record<string, import('@gamma/types').AppRegistryEntry>> {
+  async getRegistry(): Promise<
+    Record<string, import('@gamma/types').AppRegistryEntry>
+  > {
     const raw = await this.redis.hgetall(REDIS_KEYS.APP_REGISTRY);
-    const registry: Record<string, import('@gamma/types').AppRegistryEntry> = {};
+    const registry: Record<
+      string,
+      import('@gamma/types').AppRegistryEntry
+    > = {};
     for (const [id, json] of Object.entries(raw)) {
       try {
-        registry[id] = JSON.parse(json) as import('@gamma/types').AppRegistryEntry;
+        registry[id] = JSON.parse(
+          json,
+        ) as import('@gamma/types').AppRegistryEntry;
       } catch {
         /* skip malformed entries */
       }
@@ -503,18 +317,17 @@ export class ScaffoldService {
     const safeId = appId.replace(/[^a-z0-9-]/gi, '');
 
     // Remove entire bundle directory
-    const bundleDir = this.jailPath(safeId);
-    try {
-      await fs.rm(bundleDir, { recursive: true, force: true });
-    } catch {
-      /* already gone */
-    }
+    await this.storage.removeDir(this.storage.jailPath(safeId));
 
     // Clean up user-persisted app data from Redis
-    const dataKeys = await this.redis.keys(`${REDIS_KEYS.APP_DATA_PREFIX}${safeId}:*`);
+    const dataKeys = await this.redis.keys(
+      `${REDIS_KEYS.APP_DATA_PREFIX}${safeId}:*`,
+    );
     if (dataKeys.length > 0) {
       await this.redis.del(...dataKeys);
-      this.logger.log(`Deleted ${dataKeys.length} app-data keys for '${safeId}'`);
+      this.logger.log(
+        `Deleted ${dataKeys.length} app-data keys for '${safeId}'`,
+      );
     }
 
     // Kill App Owner Gateway session (best-effort)
@@ -524,28 +337,13 @@ export class ScaffoldService {
       /* session may not exist — that's fine */
     }
 
-    // Git: stage removal and commit in the NESTED repo (v1.5)
-    const git = await this.ensureNestedGit();
-    await git.add('.');
-    const hasChanges = (await git.status()).files.length > 0;
-    if (hasChanges) {
-      await git.commit(`chore: remove generated ${safeId} app`, {
-        '--author': `${this.gitAuthorName} <${this.gitAuthorEmail}>`,
-      });
+    // Git: stage removal and commit in the nested repo (v1.5)
+    await this.gitWorkspace.stageAndCommitIfChanged(
+      `chore: remove generated ${safeId} app`,
+    );
 
-      if (this.autoPush && this.privateRepoUrl) {
-        try {
-          await git.push('origin', this.branch);
-        } catch (err) {
-          this.logger.warn(`Auto-push failed (best-effort): ${err}`);
-        }
-      }
-    }
-
-    // Remove from app registry
+    // Remove from app registry and broadcast removal
     await this.redis.hdel(REDIS_KEYS.APP_REGISTRY, safeId);
-
-    // Broadcast removal
     await this.redis.xadd(
       REDIS_KEYS.SSE_BROADCAST,
       '*',
@@ -554,10 +352,5 @@ export class ScaffoldService {
 
     this.logger.log(`Removed app '${safeId}'`);
     return { ok: true };
-  }
-
-  /** Expose jail root for other services (e.g. asset serving) */
-  getJailRoot(): string {
-    return this.JAIL_ROOT;
   }
 }
