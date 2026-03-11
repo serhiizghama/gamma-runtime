@@ -29,8 +29,8 @@ const API_BASE =
 // ── Styles ───────────────────────────────────────────────────────────────
 
 const ROOT: React.CSSProperties = {
-  background: "#0a0a0a",
-  color: "#00ff41",
+  background: "var(--monitor-bg)",
+  color: "var(--monitor-fg)",
   fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
   fontSize: 12,
   height: "100%",
@@ -41,7 +41,7 @@ const ROOT: React.CSSProperties = {
 
 const HEADER: React.CSSProperties = {
   padding: "12px 16px",
-  borderBottom: "1px solid #1a3a1a",
+  borderBottom: "1px solid var(--monitor-border)",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -53,14 +53,14 @@ const SECTION_TITLE: React.CSSProperties = {
   fontWeight: 700,
   letterSpacing: "0.12em",
   textTransform: "uppercase",
-  color: "#00ff41",
+  color: "var(--monitor-fg)",
   opacity: 0.6,
   marginBottom: 8,
 };
 
 const PANEL: React.CSSProperties = {
   padding: "12px 16px",
-  borderBottom: "1px solid #1a3a1a",
+  borderBottom: "1px solid var(--monitor-border)",
   flexShrink: 0,
 };
 
@@ -73,8 +73,8 @@ const TABLE: React.CSSProperties = {
 const TH: React.CSSProperties = {
   textAlign: "left",
   padding: "4px 8px",
-  borderBottom: "1px solid #1a3a1a",
-  color: "#00ff41",
+  borderBottom: "1px solid var(--monitor-border)",
+  color: "var(--monitor-fg)",
   opacity: 0.5,
   fontWeight: 600,
   fontSize: 10,
@@ -84,14 +84,14 @@ const TH: React.CSSProperties = {
 
 const TD: React.CSSProperties = {
   padding: "4px 8px",
-  borderBottom: "1px solid rgba(0,255,65,0.05)",
-  color: "#00cc33",
+  borderBottom: "1px solid var(--monitor-border-success-faint)",
+  color: "var(--monitor-fg-muted)",
 };
 
 const BTN: React.CSSProperties = {
-  background: "rgba(0,255,65,0.1)",
-  border: "1px solid rgba(0,255,65,0.3)",
-  color: "#00ff41",
+  background: "var(--monitor-surface-success)",
+  border: "1px solid var(--monitor-border-success)",
+  color: "var(--monitor-fg)",
   padding: "6px 14px",
   borderRadius: 4,
   cursor: "pointer",
@@ -102,15 +102,15 @@ const BTN: React.CSSProperties = {
 
 const BTN_DANGER: React.CSSProperties = {
   ...BTN,
-  background: "rgba(255,60,60,0.1)",
-  border: "1px solid rgba(255,60,60,0.3)",
-  color: "#ff4444",
+  background: "var(--monitor-surface-error)",
+  border: "1px solid var(--monitor-border-error)",
+  color: "var(--monitor-fg-error)",
 };
 
 const INPUT: React.CSSProperties = {
-  background: "rgba(0,255,65,0.05)",
-  border: "1px solid rgba(0,255,65,0.2)",
-  color: "#00ff41",
+  background: "var(--monitor-surface-success-faint)",
+  border: "1px solid var(--monitor-border-success-faint)",
+  color: "var(--monitor-fg)",
   padding: "6px 10px",
   borderRadius: 4,
   fontSize: 12,
@@ -129,8 +129,8 @@ const LOG_AREA: React.CSSProperties = {
 };
 
 const LOG_ENTRY: React.CSSProperties = {
-  background: "rgba(0,255,65,0.03)",
-  border: "1px solid rgba(0,255,65,0.08)",
+  background: "var(--monitor-surface-success-ghost)",
+  border: "1px solid var(--monitor-border-success-ghost)",
   borderRadius: 4,
   padding: "6px 10px",
   fontSize: 11,
@@ -269,13 +269,13 @@ export function KernelMonitorApp(): React.ReactElement {
   const statusColor = (status: string): string => {
     switch (status) {
       case "idle":
-        return "#22c55e";
+        return "var(--monitor-status-idle)";
       case "running":
-        return "#eab308";
+        return "var(--monitor-status-running)";
       case "error":
-        return "#f97373";
+        return "var(--monitor-status-error)";
       default:
-        return "#64748b";
+        return "var(--color-text-muted)";
     }
   };
 
@@ -413,8 +413,8 @@ export function KernelMonitorApp(): React.ReactElement {
             ...LOG_AREA,
             maxHeight: 260,
             borderRadius: 4,
-            border: "1px solid rgba(0,255,65,0.25)",
-            background: "rgba(0,0,0,0.7)",
+            border: "1px solid var(--monitor-border-overlay)",
+            background: "var(--monitor-surface-overlay)",
           }}
         >
           {logs.map((entry) => (

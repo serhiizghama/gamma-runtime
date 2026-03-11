@@ -71,7 +71,7 @@ export function ArchitectWindow(): React.ReactElement | null {
         flexDirection: "column",
         background: "var(--color-bg-secondary)",
         borderLeft: "1px solid var(--color-border-subtle)",
-        boxShadow: "-4px 0 24px rgba(0, 0, 0, 0.3)",
+        boxShadow: "var(--shadow-panel-side)",
       }}
     >
       {/* Left-edge resize handle */}

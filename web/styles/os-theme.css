@@ -8,6 +8,27 @@
   --color-border-subtle: rgba(255, 255, 255, 0.1);
   --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.4);
 
+  /* ── Semantic surface & text tokens (utility-first) ────────── */
+  --color-bg-base: var(--color-bg-primary);
+  --color-surface: var(--color-bg-secondary);
+  --color-surface-elevated: #1E293B;
+  --color-text-muted: var(--color-text-secondary);
+  --color-accent: var(--color-accent-primary);
+  --color-text-muted-strong: rgba(248, 250, 252, 0.6);
+  --color-text-faint: rgba(248, 250, 252, 0.25);
+
+  /* ── Core window & panel aesthetics ────────────────────────── */
+  --shadow-window: 0 24px 64px rgba(0, 0, 0, 0.5);
+  --shadow-window-subtle: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-panel-overlay: 0 -4px 24px rgba(0, 0, 0, 0.25);
+  --shadow-panel-side: -4px 0 24px rgba(0, 0, 0, 0.3);
+  --shadow-button-primary: 0 8px 18px rgba(59, 130, 246, 0.35);
+  --shadow-accent-glow: 0 0 8px rgba(59, 130, 246, 0.5);
+
+  --radius-window: 12px;
+  --radius-panel: 10px;
+  --radius-control: 8px;
+
   /* ── 4pt spatial grid (1 unit = 4px) ──────────────────────── */
   --space-1: 4px;
   --space-2: 8px;
@@ -27,7 +48,6 @@
   --font-weight-bold: 700;
 
   /* ── Accent & brand ───────────────────────────────────────── */
-  --accent-primary: #3B82F6;
   --accent-primary-soft: #60a5fa;
 
   /* ── Glass morphism (Twilight Blue) ───────────────────────── */
@@ -37,9 +57,9 @@
   --glass-shadow: var(--shadow-elevated);
 
   /* ── macOS window chrome ──────────────────────────────────── */
-  --window-bg: #1E293B;
+  --window-bg: var(--color-surface-elevated);
   --window-titlebar-height: 28px;
-  --window-radius: 12px;
+  --window-radius: var(--radius-window);
   --window-border: 1px solid var(--color-border-subtle);
   --window-min-width: 320px;
   --window-min-height: 200px;
@@ -55,13 +75,62 @@
   /* ── Typography ───────────────────────────────────────────── */
   --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui,
     sans-serif;
-  --text-primary: #F8FAFC;
-  --text-secondary: #94A3B8;
 
   /* ── Notifications ────────────────────────────────────────── */
   --notif-bg: rgba(15, 23, 42, 0.92);
   --notif-radius: 14px;
   --notif-shadow: var(--shadow-elevated);
+
+  /* ── Console / terminal & controls (utility) ──────────────── */
+  --color-bg-console: rgba(0, 0, 0, 0.85);
+  --color-text-console: #e2e2e2;
+  --color-border-subtle-strong: rgba(255, 255, 255, 0.08);
+  --color-accent-success-strong: var(--btn-maximize);
+  --color-surface-muted: rgba(255, 255, 255, 0.06);
+  --color-surface-muted-strong: rgba(255, 255, 255, 0.14);
+  --color-text-on-muted-strong: rgba(255, 255, 255, 0.92);
+  --color-text-on-muted: rgba(255, 255, 255, 0.8);
+  --shadow-soft: 0 1px 4px rgba(0, 0, 0, 0.3);
+
+  /* ── Kernel Monitor (matrix terminal) ──────────────────────── */
+  --monitor-bg: #0a0a0a;
+  --monitor-fg: #00ff41;
+  --monitor-fg-muted: #00cc33;
+  --monitor-border: #1a3a1a;
+  --monitor-surface-success: rgba(0, 255, 65, 0.1);
+  --monitor-border-success: rgba(0, 255, 65, 0.3);
+  --monitor-surface-success-faint: rgba(0, 255, 65, 0.05);
+  --monitor-border-success-faint: rgba(0, 255, 65, 0.2);
+  --monitor-surface-success-ghost: rgba(0, 255, 65, 0.03);
+  --monitor-border-success-ghost: rgba(0, 255, 65, 0.08);
+  --monitor-surface-error: rgba(255, 60, 60, 0.1);
+  --monitor-border-error: rgba(255, 60, 60, 0.3);
+  --monitor-surface-overlay: rgba(0, 0, 0, 0.7);
+  --monitor-border-overlay: rgba(0, 255, 65, 0.25);
+  --monitor-fg-error: #ff4444;
+
+  --monitor-status-idle: #22c55e;
+  --monitor-status-running: #eab308;
+  --monitor-status-error: #f97373;
+
+  --button-danger-border: rgba(255, 95, 87, 0.35);
+  --button-danger-bg: rgba(255, 95, 87, 0.15);
+  --button-danger-bg-hover: rgba(255, 95, 87, 0.28);
+  --button-danger-fg: var(--btn-close);
+  --button-ghost-border: rgba(255, 255, 255, 0.12);
+  --button-ghost-bg: rgba(255, 255, 255, 0.08);
+  --button-ghost-bg-hover: var(--color-surface-muted-strong);
+  --button-ghost-fg: var(--color-text-on-muted);
+
+  /* ── Status / primary call-to-action ──────────────────────── */
+  --color-indicator-online-bg: radial-gradient(circle at 30% 30%, #4ade80, #16a34a);
+  --shadow-indicator-online: 0 0 0 1px rgba(22, 163, 74, 0.6);
+  --button-primary-bg: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.95),
+    rgba(129, 140, 248, 0.95)
+  );
+  --button-primary-fg: #020617;
 
   /* ── Traffic lights ───────────────────────────────────────── */
   --btn-close: #ff5f57;
@@ -198,7 +267,7 @@
     border-color 300ms ease-out;
   transform: scale(0.985);
   opacity: 0.85;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-window-subtle);
   border: 1px solid transparent;
 }
 
@@ -212,7 +281,7 @@
 .window--focused .window__frame {
   transform: scale(1);
   opacity: 1;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-window);
   border-color: transparent;
 }
 
@@ -316,11 +385,11 @@
 
 /* Dock: white label with shadow for contrast on any background */
 .app-icon--dock .app-icon__label {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--color-text-on-muted-strong);
   text-shadow: 0 1px 4px rgba(0,0,0,0.70), 0 0 8px rgba(0,0,0,0.40);
 }
 .app-icon--launchpad .app-icon__label {
-  color: rgba(255, 255, 255, 0.90);
+  color: var(--color-text-primary);
   font-size: 12px;
   text-shadow: 0 1px 4px rgba(0,0,0,0.60);
 }
@@ -328,6 +397,7 @@
 .app-icon:hover .app-icon__glyph { transform: translateY(-8px) scale(1.1); }
 .app-icon:hover .app-icon__glyph::after { opacity: 1; transform: translateX(-50%) scaleX(1); }
 .app-icon--launchpad:hover { background: rgba(255,255,255,0.10); }
+.app-icon--launchpad:hover { background: var(--color-border-subtle); }
 
 /* ── Toast Notifications ──────────────────────────────────────── */
 @keyframes toastSlideIn {
@@ -354,7 +424,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: linear-gradient(135deg, #0F172A 0%, #151F32 100%);
+  background: linear-gradient(135deg, var(--color-bg-base) 0%, var(--color-surface) 100%);
   font-family: var(--font-system);
   color: var(--color-text-primary);
   user-select: none;
@@ -394,7 +464,7 @@
 
 .desktop-shell__menu-item:hover {
   color: var(--color-accent-primary);
-  text-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  text-shadow: var(--shadow-accent-glow);
 }
 
 .desktop-shell__tray-btn {

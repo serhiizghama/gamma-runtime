@@ -7,7 +7,7 @@ const SECTION: React.CSSProperties = {
   flexDirection: "column",
   gap: 16,
   padding: "20px 0",
-  borderBottom: "1px solid rgba(255,255,255,0.06)",
+  borderBottom: "1px solid var(--color-border-subtle)",
 };
 
 const LABEL: React.CSSProperties = {
@@ -15,7 +15,7 @@ const LABEL: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: "0.06em",
   textTransform: "uppercase",
-  color: "rgba(255,255,255,0.35)",
+  color: "var(--color-text-muted)",
   marginBottom: 4,
 };
 
@@ -28,7 +28,7 @@ const ROW: React.CSSProperties = {
 
 const VALUE_BADGE: React.CSSProperties = {
   fontSize: 12,
-  color: "rgba(255,255,255,0.45)",
+  color: "var(--color-text-muted-strong)",
   fontVariantNumeric: "tabular-nums",
   minWidth: 36,
   textAlign: "right",
@@ -49,7 +49,7 @@ export function SettingsApp(): React.ReactElement {
         overflow: "auto",
         padding: "0 24px 32px",
         fontFamily: "var(--font-system)",
-        color: "var(--text-primary)",
+        color: "var(--color-text-primary)",
       }}
     >
       {/* ── Appearance ─────────────────────────────────────────── */}
@@ -111,7 +111,7 @@ export function SettingsApp(): React.ReactElement {
             <p
               style={{
                 fontSize: 12,
-                color: "rgba(255,255,255,0.38)",
+                color: "var(--color-text-muted)",
                 margin: "4px 0 0",
               }}
             >
@@ -145,35 +145,35 @@ function SegmentedControl({
     <div
       style={{
         display: "flex",
-        background: "rgba(255,255,255,0.06)",
+        background: "var(--color-surface-muted)",
         borderRadius: 10,
         padding: 3,
         gap: 2,
       }}
     >
       {options.map((o) => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          style={{
-            padding: "5px 14px",
-            borderRadius: 8,
-            border: "none",
-            cursor: "pointer",
-            fontSize: 13,
-            fontFamily: "var(--font-system)",
-            fontWeight: 500,
-            transition: "background 160ms ease, color 160ms ease",
-            background:
-              value === o.value ? "rgba(255,255,255,0.14)" : "transparent",
-            color:
-              value === o.value
-                ? "rgba(255,255,255,0.92)"
-                : "rgba(255,255,255,0.40)",
-            boxShadow:
-              value === o.value ? "0 1px 4px rgba(0,0,0,0.3)" : "none",
-          }}
-        >
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            style={{
+              padding: "5px 14px",
+              borderRadius: 8,
+              border: "none",
+              cursor: "pointer",
+              fontSize: 13,
+              fontFamily: "var(--font-system)",
+              fontWeight: 500,
+              transition: "background 160ms ease, color 160ms ease",
+              background:
+                value === o.value ? "var(--color-surface-muted-strong)" : "transparent",
+              color:
+                value === o.value
+                  ? "var(--color-text-on-muted-strong)"
+                  : "var(--color-text-muted)",
+              boxShadow:
+                value === o.value ? "var(--shadow-soft)" : "none",
+            }}
+          >
           {o.label}
         </button>
       ))}
@@ -220,17 +220,17 @@ function SliderRow({
         onChange={(e) => onChange(Number(e.target.value))}
         style={{
           width: "100%",
-          accentColor: "#6366f1",
+          accentColor: "var(--color-accent)",
           cursor: "pointer",
           height: 4,
         }}
       />
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <span
-          style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}
+          style={{ fontSize: 10, color: "var(--color-text-faint)" }}
         >{`${min}${unit}`}</span>
         <span
-          style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}
+          style={{ fontSize: 10, color: "var(--color-text-faint)" }}
         >{`${max}${unit}`}</span>
       </div>
     </div>
@@ -254,12 +254,12 @@ function GlassButton({
         padding: "7px 18px",
         borderRadius: 9,
         border: danger
-          ? "1px solid rgba(255, 95, 87, 0.35)"
-          : "1px solid rgba(255,255,255,0.12)",
+          ? "1px solid var(--button-danger-border)"
+          : "1px solid var(--button-ghost-border)",
         background: danger
-          ? "rgba(255, 95, 87, 0.15)"
-          : "rgba(255,255,255,0.08)",
-        color: danger ? "#ff5f57" : "rgba(255,255,255,0.80)",
+          ? "var(--button-danger-bg)"
+          : "var(--button-ghost-bg)",
+        color: danger ? "var(--button-danger-fg)" : "var(--button-ghost-fg)",
         fontSize: 13,
         fontWeight: 500,
         fontFamily: "var(--font-system)",
@@ -270,13 +270,13 @@ function GlassButton({
       }}
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLButtonElement).style.background = danger
-          ? "rgba(255, 95, 87, 0.28)"
-          : "rgba(255,255,255,0.14)";
+          ? "var(--button-danger-bg-hover)"
+          : "var(--button-ghost-bg-hover)";
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLButtonElement).style.background = danger
-          ? "rgba(255, 95, 87, 0.15)"
-          : "rgba(255,255,255,0.08)";
+          ? "var(--button-danger-bg)"
+          : "var(--button-ghost-bg)";
       }}
     >
       {children}

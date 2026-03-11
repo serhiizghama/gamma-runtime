@@ -114,7 +114,7 @@ function AppPlaceholder({ label }: { label: string }): React.ReactElement {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: "var(--text-secondary)",
+        color: "var(--color-text-secondary)",
         fontSize: 13,
         fontFamily: "var(--font-system)",
       }}
@@ -431,7 +431,7 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
                 background: "var(--color-bg-secondary)",
                 borderTop: "2px solid var(--color-border-subtle)",
                 borderRadius: "8px 8px 0 0",
-                boxShadow: "0 -4px 24px rgba(0,0,0,0.25)",
+                boxShadow: "var(--shadow-panel-overlay)",
               }}
             >
               {/* Resize handle (top edge of panel) */}

@@ -61,10 +61,10 @@ export function TerminalApp(): React.ReactElement {
         flex: 1,
         display: "flex",
         flexDirection: "column",
-        background: "rgba(0,0,0,0.85)",
+        background: "var(--color-bg-console)",
         fontFamily: "'SF Mono', 'Fira Code', 'Menlo', monospace",
         fontSize: 12,
-        color: "#e2e2e2",
+        color: "var(--color-text-console)",
         overflow: "hidden",
       }}
     >
@@ -85,11 +85,11 @@ export function TerminalApp(): React.ReactElement {
           display: "flex",
           alignItems: "center",
           padding: "6px 14px",
-          borderTop: "1px solid rgba(255,255,255,0.08)",
+          borderTop: "1px solid var(--color-border-subtle-strong)",
           gap: 8,
         }}
       >
-        <span style={{ color: "#28c840", flexShrink: 0 }}>▸</span>
+        <span style={{ color: "var(--color-accent-success-strong)", flexShrink: 0 }}>▸</span>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -98,7 +98,7 @@ export function TerminalApp(): React.ReactElement {
             background: "transparent",
             border: "none",
             outline: "none",
-            color: "#e2e2e2",
+            color: "var(--color-text-console)",
             fontFamily: "inherit",
             fontSize: 12,
           }}

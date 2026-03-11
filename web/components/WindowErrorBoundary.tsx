@@ -33,14 +33,14 @@ export class WindowErrorBoundary extends Component<Props, State> {
             justifyContent: "center",
             height: "100%",
             gap: 12,
-            color: "var(--text-primary)",
+            color: "var(--color-text-primary)",
             fontFamily: "var(--font-system)",
             padding: 24,
           }}
         >
           <span style={{ fontSize: 32 }}>⚠️</span>
           <p style={{ margin: 0, fontWeight: 600 }}>{this.props.appId} crashed</p>
-          <p style={{ margin: 0, fontSize: 12, color: "var(--text-secondary)" }}>
+          <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-secondary)" }}>
             {this.state.error?.message}
           </p>
           <button
@@ -51,7 +51,7 @@ export class WindowErrorBoundary extends Component<Props, State> {
               borderRadius: 8,
               border: "1px solid var(--glass-border)",
               background: "var(--glass-bg)",
-              color: "var(--text-primary)",
+              color: "var(--color-text-primary)",
               cursor: "pointer",
               fontFamily: "var(--font-system)",
               fontSize: 13,

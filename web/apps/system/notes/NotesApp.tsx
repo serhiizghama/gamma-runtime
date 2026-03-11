@@ -56,9 +56,8 @@ export function NotesApp(): React.ReactElement {
       style={{
         flex: 1,
         display: "flex",
-        background:
-          "radial-gradient(circle at top left, #1e293b 0, #020617 40%, #020617 100%)",
-        color: "var(--text-primary)",
+        background: "var(--color-bg-base)",
+        color: "var(--color-text-primary)",
         fontFamily: "var(--font-system)",
       }}
     >
@@ -66,12 +65,12 @@ export function NotesApp(): React.ReactElement {
       <div
         style={{
           width: 220,
-          borderRight: "1px solid rgba(255,255,255,0.06)",
+          borderRight: "1px solid var(--color-surface-muted)",
           padding: "12px 10px",
           display: "flex",
           flexDirection: "column",
           gap: 8,
-          background: "rgba(15,23,42,0.96)",
+          background: "var(--color-surface)",
         }}
       >
         <div
@@ -88,7 +87,7 @@ export function NotesApp(): React.ReactElement {
               fontWeight: 600,
               letterSpacing: "0.1em",
               textTransform: "uppercase",
-              color: "rgba(248,250,252,0.6)",
+              color: "var(--color-text-muted-strong)",
             }}
           >
             Notes
@@ -106,10 +105,9 @@ export function NotesApp(): React.ReactElement {
               justifyContent: "center",
               fontSize: 14,
               cursor: "pointer",
-              background:
-                "linear-gradient(135deg, rgba(52,211,153,0.95), rgba(59,130,246,0.95))",
-              color: "#020617",
-              boxShadow: "0 6px 14px rgba(34,197,94,0.45)",
+              background: "var(--button-primary-bg)",
+              color: "var(--button-primary-fg)",
+              boxShadow: "var(--shadow-button-primary)",
             }}
           >
             +
@@ -140,8 +138,8 @@ export function NotesApp(): React.ReactElement {
                 cursor: "pointer",
                 background:
                   n.id === activeId
-                    ? "rgba(148,163,184,0.24)"
-                    : "rgba(15,23,42,0.7)",
+                    ? "var(--color-surface-muted-strong)"
+                    : "var(--color-surface)",
                 color: "inherit",
                 textAlign: "left",
               }}
@@ -161,7 +159,7 @@ export function NotesApp(): React.ReactElement {
               <span
                 style={{
                   fontSize: 11,
-                  color: "rgba(148,163,184,0.9)",
+                  color: "var(--color-text-muted-strong)",
                   whiteSpace: "nowrap",
                   textOverflow: "ellipsis",
                   overflow: "hidden",
@@ -205,9 +203,9 @@ export function NotesApp(): React.ReactElement {
                   padding: "8px 10px",
                   fontSize: 16,
                   fontWeight: 600,
-                  background: "rgba(15,23,42,0.8)",
+                  background: "var(--color-surface)",
                   outline: "none",
-                  color: "var(--text-primary)",
+                  color: "var(--color-text-primary)",
                 }}
               />
               <button
@@ -215,12 +213,12 @@ export function NotesApp(): React.ReactElement {
                 onClick={() => deleteNote(activeNote.id)}
                 style={{
                   borderRadius: 999,
-                  border: "1px solid rgba(248,113,113,0.6)",
+                  border: "1px solid var(--button-danger-border)",
                   padding: "6px 10px",
                   fontSize: 11,
                   cursor: "pointer",
-                  background: "rgba(248,113,113,0.08)",
-                  color: "#fecaca",
+                  background: "var(--button-danger-bg)",
+                  color: "var(--button-danger-fg)",
                 }}
               >
                 Delete
@@ -235,14 +233,14 @@ export function NotesApp(): React.ReactElement {
                 flex: 1,
                 resize: "none",
                 borderRadius: 12,
-                border: "1px solid rgba(148,163,184,0.45)",
+                border: "1px solid var(--color-border-subtle-strong)",
                 padding: "10px 12px",
                 fontFamily:
                   "system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
                 fontSize: 14,
                 lineHeight: 1.6,
-                background: "rgba(15,23,42,0.95)",
-                color: "var(--text-primary)",
+                background: "var(--color-surface-elevated)",
+                color: "var(--color-text-primary)",
                 outline: "none",
               }}
             />
@@ -254,7 +252,7 @@ export function NotesApp(): React.ReactElement {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "var(--text-secondary)",
+              color: "var(--color-text-secondary)",
             }}
           >
             No notes yet. Click + to create one.

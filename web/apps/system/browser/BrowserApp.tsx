@@ -47,8 +47,8 @@ export function BrowserApp(): React.ReactElement {
             width: 18,
             height: 18,
             borderRadius: "999px",
-            background: "radial-gradient(circle at 30% 30%, #4ade80, #16a34a)",
-            boxShadow: "0 0 0 1px rgba(22,163,74,0.6)",
+            background: "var(--color-indicator-online-bg)",
+            boxShadow: "var(--shadow-indicator-online)",
           }}
         />
         <input
@@ -73,13 +73,12 @@ export function BrowserApp(): React.ReactElement {
             borderRadius: 999,
             border: "none",
             padding: "7px 16px",
-            background:
-              "linear-gradient(135deg, rgba(56,189,248,0.95), rgba(129,140,248,0.95))",
-            color: "#020617",
+            background: "var(--button-primary-bg)",
+            color: "var(--button-primary-fg)",
             fontSize: 12,
             fontWeight: 600,
             cursor: "pointer",
-            boxShadow: "0 8px 18px rgba(59,130,246,0.35)",
+            boxShadow: "var(--shadow-button-primary)",
           }}
         >
           Go
@@ -92,7 +91,7 @@ export function BrowserApp(): React.ReactElement {
           <iframe
             src={url}
             title="Gamma Browser"
-            style={{ flex: 1, border: "none", background: "#020617" }}
+            style={{ flex: 1, border: "none", background: "var(--color-bg-base)" }}
           />
         ) : (
           <div
@@ -111,7 +110,7 @@ export function BrowserApp(): React.ReactElement {
             <p
               style={{
                 fontSize: 13,
-                color: "var(--text-secondary)",
+                color: "var(--color-text-secondary)",
                 maxWidth: 360,
                 marginTop: 8,
               }}

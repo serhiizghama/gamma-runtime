@@ -73,7 +73,7 @@ export function ToastNotification({ notification }: ToastNotificationProps): Rea
         <div
           style={{
             fontSize: 11,
-            color: "var(--text-secondary)",
+            color: "var(--color-text-secondary)",
             fontFamily: "var(--font-system)",
             marginBottom: 2,
             textTransform: "uppercase",
@@ -86,7 +86,7 @@ export function ToastNotification({ notification }: ToastNotificationProps): Rea
           style={{
             fontSize: 13,
             fontWeight: 600,
-            color: "var(--text-primary)",
+            color: "var(--color-text-primary)",
             fontFamily: "var(--font-system)",
             marginBottom: 3,
             whiteSpace: "nowrap",
@@ -99,7 +99,7 @@ export function ToastNotification({ notification }: ToastNotificationProps): Rea
         <div
           style={{
             fontSize: 12,
-            color: "var(--text-secondary)",
+            color: "var(--color-text-secondary)",
             fontFamily: "var(--font-system)",
             lineHeight: 1.4,
             display: "-webkit-box",
@@ -113,12 +113,12 @@ export function ToastNotification({ notification }: ToastNotificationProps): Rea
       </div>
 
       {/* Dismiss button */}
-      <button
+        <button
         onClick={(e) => { e.stopPropagation(); startDismiss(); }}
         style={{
           background: "transparent",
           border: "none",
-          color: "var(--text-secondary)",
+          color: "var(--color-text-secondary)",
           cursor: "pointer",
           fontSize: 14,
           lineHeight: 1,
