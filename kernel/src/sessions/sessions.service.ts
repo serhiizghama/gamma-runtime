@@ -304,7 +304,7 @@ export class SessionsService {
     const appId = rawAppId.replace(/[^a-z0-9-]/gi, '');
 
     // Diagnostic: what app session did we actually intercept?
-    console.log('[Backend] Intercepted App Session:', appId);
+    this.logger.debug(`Intercepted App Session for appId=${appId}`);
 
     if (
       !appId ||
@@ -362,15 +362,49 @@ export class SessionsService {
     const pascalName = pascal(appId);
     const tsxFileName = `${pascalName}App.tsx`;
 
-    // Resolve candidate bundle locations for this appId.
-    // 1) Generated apps: web/apps/generated/{appId}/ (via ScaffoldService jail)
-    // 2) Built-in system apps: web/apps/system/{appId}/ (direct filesystem read)
-    const repoRoot = path.resolve(__dirname, '../../..');
-    const systemBundleDir = path.resolve(
+    // Resolve candidate base directories for this appId.
+    // 1) System apps:   <repoRoot>/web/src/components/apps/system/<PascalAppId>/
+    // 2) Generated apps: <JAIL_ROOT>/<appId>/ (exposed via ScaffoldService)
+    const repoRoot = process.cwd();
+    const systemDir = path.join(
       repoRoot,
-      'web/apps/system',
-      appId,
+      'web/src/components/apps/system',
+      pascalName,
     );
+    const generatedRoot = this.scaffoldService.getJailRoot();
+    const generatedDir = path.join(generatedRoot, appId);
+
+    const candidateDirs = [systemDir, generatedDir];
+
+    let baseDir: string | null = null;
+    for (const dir of candidateDirs) {
+      try {
+        const stat = await fs.stat(dir);
+        if (stat.isDirectory()) {
+          this.logger.debug(
+            `App Owner context directory found for ${appId}: ${dir}`,
+          );
+          baseDir = dir;
+          break;
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if ((err as { code?: string })?.code === 'ENOENT') {
+          this.logger.debug(
+            `App Owner context directory missing for ${appId}: ${dir}`,
+          );
+        } else {
+          this.logger.warn(
+            `App Owner context directory probe failed for ${appId} at ${dir}: ${msg}`,
+          );
+        }
+      }
+    }
+
+    if (!baseDir) {
+      this.logger.warn(`[Context] Failed to locate source for ${appId}`);
+      // We still return the default persona-only block below (no context/source).
+    }
 
     try {
       // agent-prompt.md (optional — generated apps only; skip if missing)
@@ -393,92 +427,68 @@ export class SessionsService {
       }
 
       // context.md (first match wins: generated → system)
-      try {
-        const contextCandidates = [
-          this.scaffoldService.jailPath(`${appId}/context.md`),
-          path.join(systemBundleDir, 'context.md'),
-        ];
-        console.log(
-          '[Backend] Checking paths:',
-          contextCandidates[0],
-          contextCandidates[1],
-        );
-
-        let contextContent: string | null = null;
-
-        for (const candidate of contextCandidates) {
+      if (baseDir) {
+        try {
+          const contextPath = path.join(baseDir, 'context.md');
           try {
-            const content = await fs.readFile(candidate, 'utf8');
-            contextContent = content;
-            break;
-          } catch (err) {
+            const content = await fs.readFile(contextPath, 'utf8');
+            parts.push('--- APP CONTEXT ---', content.trim(), '');
+          } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
-            console.log(
-              '[Backend] Failed to read context candidate',
-              candidate,
-              'error:',
-              msg,
-            );
+            if ((err as { code?: string })?.code === 'ENOENT') {
+              this.logger.debug(
+                `App Owner context.md not found for ${appId} at ${contextPath}`,
+              );
+            } else {
+              this.logger.warn(
+                `App Owner context.md read failed for ${appId} at ${contextPath}: ${msg}`,
+              );
+            }
           }
-        }
-
-        console.log('[Backend] Context found?:', !!contextContent);
-
-        if (contextContent) {
-          parts.push('--- APP CONTEXT ---', contextContent.trim(), '');
-        } else {
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
           this.logger.debug(
-            `App Owner context.md not found for ${appId} in generated or system bundles`,
+            `App Owner context lookup failed for ${appId}: ${msg}`,
           );
         }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.debug(
-          `App Owner context lookup failed for ${appId}: ${msg}`,
-        );
       }
 
       // Main .tsx source (first match wins: generated → system)
-      try {
-        const sourceCandidates = [
-          this.scaffoldService.jailPath(`${appId}/${tsxFileName}`),
-          path.join(systemBundleDir, tsxFileName),
-        ];
-        let sourceCode: string | null = null;
+      if (baseDir) {
+        try {
+          const sourcePath = path.join(baseDir, tsxFileName);
+          let sourceCode: string | null = null;
 
-        for (const candidate of sourceCandidates) {
           try {
-            sourceCode = await fs.readFile(candidate, 'utf8');
-            break;
-          } catch (err) {
+            sourceCode = await fs.readFile(sourcePath, 'utf8');
+          } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
-            console.log(
-              '[Backend] Failed to read source candidate',
-              candidate,
-              'error:',
-              msg,
+            if ((err as { code?: string })?.code === 'ENOENT') {
+              this.logger.warn(
+                `App Owner source ${tsxFileName} for ${appId} not found at ${sourcePath} — skipping source injection`,
+              );
+            } else {
+              this.logger.error(
+                `App Owner source lookup failed for ${appId} at ${sourcePath}: ${msg}`,
+              );
+            }
+          }
+
+          if (sourceCode) {
+            parts.push(
+              '--- CURRENT SOURCE CODE ---',
+              '```tsx',
+              sourceCode.trim(),
+              '```',
+              '',
             );
           }
-        }
-
-        if (sourceCode) {
-          parts.push(
-            '--- CURRENT SOURCE CODE ---',
-            '```tsx',
-            sourceCode.trim(),
-            '```',
-            '',
-          );
-        } else {
-          this.logger.warn(
-            `App Owner source ${tsxFileName} for ${appId} not found in generated or system bundles — skipping source injection`,
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `App Owner source lookup failed for ${appId}: ${msg}`,
           );
         }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `App Owner source lookup failed for ${appId}: ${msg}`,
-        );
       }
 
       if (parts.length === 0) {
