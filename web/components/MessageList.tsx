@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -29,6 +29,15 @@ interface MessageListProps {
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 const MAX_TOOL_LEN = 64;
+
+/** Allow only safe image URLs: https, http, or data:image/* to prevent XSS. */
+function isAllowedImageSrc(src: string | undefined): boolean {
+  if (!src || typeof src !== "string") return false;
+  const s = src.trim().toLowerCase();
+  if (s.startsWith("https://") || s.startsWith("http://")) return true;
+  if (s.startsWith("data:image/")) return true;
+  return false;
+}
 
 function truncate(str: string, max = MAX_TOOL_LEN): string {
   if (str.length <= max) return str;
@@ -74,11 +83,93 @@ function ThinkingBlock({ text }: { text: string }): React.ReactElement {
           fontSize: 11,
           lineHeight: 1.5,
           color: "var(--color-text-secondary)",
+          userSelect: "text",
         }}
       >
         {text}
       </pre>
     </details>
+  );
+}
+
+// ── Secure Markdown Image ──────────────────────────────────────────
+
+function SafeMarkdownImage({
+  src,
+  alt,
+  ...props
+}: React.ImgHTMLAttributes<HTMLImageElement>): React.ReactElement | null {
+  if (!isAllowedImageSrc(src)) return null;
+  return (
+    <img
+      {...props}
+      src={src}
+      alt={alt ?? ""}
+      className="agent-chat-markdown-img"
+      loading="lazy"
+    />
+  );
+}
+
+// ── Code Block with Copy ──────────────────────────────────────────
+
+function CodeBlockWithCopy({
+  children,
+  ...preProps
+}: React.ComponentPropsWithoutRef<"pre">): React.ReactElement {
+  const [copied, setCopied] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleCopy = async (): Promise<void> => {
+    const codeEl = containerRef.current?.querySelector("code");
+    const text = codeEl?.textContent?.trim() ?? "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers or non-HTTPS
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const isBlockCode = React.Children.toArray(children).some(
+    (child) => typeof child === "object" && child !== null && (child as React.ReactElement).type === "code",
+  );
+
+  return (
+    <div className="agent-chat-code-block" ref={containerRef}>
+      {isBlockCode && (
+        <button
+          type="button"
+          className="agent-chat-code-copy"
+          onClick={handleCopy}
+          aria-label={copied ? "Copied" : "Copy to clipboard"}
+          title={copied ? "Copied!" : "Copy"}
+        >
+          {copied ? (
+            <span className="agent-chat-code-copy-icon" aria-hidden>✓</span>
+          ) : (
+            <span className="agent-chat-code-copy-icon" aria-hidden>⎘</span>
+          )}
+        </button>
+      )}
+      <pre {...preProps}>{children}</pre>
+    </div>
   );
 }
 
@@ -162,7 +253,13 @@ function MessageBubble({
           <span>{msg.text}</span>
         ) : (
           <div className="agent-chat-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                pre: CodeBlockWithCopy,
+                img: SafeMarkdownImage,
+              }}
+            >
               {msg.text}
             </ReactMarkdown>
           </div>

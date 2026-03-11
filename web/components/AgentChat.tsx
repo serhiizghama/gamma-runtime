@@ -165,6 +165,43 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
         .agent-chat-message-list::-webkit-scrollbar-thumb:hover {
           background: rgba(255, 255, 255, 0.2);
         }
+        .agent-chat-message-list,
+        .agent-chat-bubble,
+        .agent-chat-markdown {
+          user-select: text;
+          -webkit-user-select: text;
+        }
+        .agent-chat-code-block {
+          position: relative;
+          margin: var(--space-2) 0;
+        }
+        .agent-chat-code-block pre {
+          margin: 0;
+        }
+        .agent-chat-code-copy {
+          position: absolute;
+          top: var(--space-2);
+          right: var(--space-2);
+          padding: 4px 8px;
+          font-size: 11px;
+          font-family: var(--font-system);
+          color: var(--color-text-secondary);
+          user-select: none;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid var(--color-border-subtle);
+          border-radius: 4px;
+          cursor: pointer;
+          transition: background 0.15s, color 0.15s;
+          z-index: 1;
+        }
+        .agent-chat-code-copy:hover {
+          background: rgba(255, 255, 255, 0.15);
+          color: var(--color-text-primary);
+        }
+        .agent-chat-code-copy:focus {
+          outline: 2px solid var(--color-accent-primary);
+          outline-offset: 2px;
+        }
         .agent-chat-bubble .agent-chat-markdown {
           color: inherit;
         }
@@ -197,6 +234,14 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
           border: none;
           padding: 0;
           color: inherit;
+        }
+        .agent-chat-markdown-img {
+          max-width: 100%;
+          height: auto;
+          border-radius: 8px;
+          display: block;
+          margin: var(--space-2) 0;
+          object-fit: contain;
         }
         .agent-chat-markdown a {
           color: var(--color-accent-primary);
