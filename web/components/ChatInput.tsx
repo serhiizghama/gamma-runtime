@@ -3,14 +3,13 @@ import type { AgentStatus } from "@gamma/types";
 
 interface ChatInputProps {
   status: AgentStatus;
-  accentColor: string;
+  accentColor?: string; // reserved for future theming; uses theme vars when absent
   placeholder?: string;
   onSend: (text: string) => void;
 }
 
 export function ChatInput({
   status,
-  accentColor,
   placeholder = "Type a message…",
   onSend,
 }: ChatInputProps): React.ReactElement {
