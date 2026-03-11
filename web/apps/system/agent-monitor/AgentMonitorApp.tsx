@@ -6,7 +6,8 @@ import { API_BASE } from "../../../constants/api";
 // ── Styles ────────────────────────────────────────────────────────────────
 
 const ROOT: React.CSSProperties = {
-  background: "var(--color-bg-base)",
+  background: "var(--glass-bg)",
+  backdropFilter: "var(--glass-blur)",
   color: "var(--color-text-primary)",
   fontFamily: "var(--font-system)",
   fontSize: 12,
@@ -206,17 +207,17 @@ function Inspector({ record, onKill, killing }: InspectorProps): React.ReactElem
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* Inspector header */}
-      <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--monitor-border)", flexShrink: 0 }}>
+      <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--color-border-subtle)", flexShrink: 0 }}>
         <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>
-          {record.appId} · {record.windowId}
+          {record.appId || "—"} · {record.windowId || "—"}
         </div>
-        <div style={{ fontSize: 10, opacity: 0.7, fontFamily: "monospace" }}>
+        <div style={{ fontSize: 10, opacity: 0.6, fontFamily: "var(--font-system)" }}>
           {record.sessionKey}
         </div>
       </div>
 
       {/* Kill + context controls */}
-      <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--monitor-border)", display: "flex", gap: 8, flexShrink: 0 }}>
+      <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--color-border-subtle)", display: "flex", gap: 8, flexShrink: 0 }}>
         <button
           type="button"
           style={BTN_DANGER}

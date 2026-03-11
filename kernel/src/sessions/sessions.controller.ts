@@ -38,14 +38,41 @@ export class SessionsController {
   }
 
   // ── Agent Control Plane endpoints (Stage 4) ───────────────────────────
-  // Literal routes MUST be declared before parameterized routes so that
-  // Express does not shadow them with /:windowId or /:sessionKey matchers.
+  // ALL literal and sessionKey-based routes MUST come before any `:windowId`
+  // parameterized routes so NestJS/Express never shadows them. Do not reorder.
 
   /** Returns the full session registry — all active agent telemetry records. */
   @Get('active')
   @UseGuards(SystemAppGuard)
   async getActiveRegistry(): Promise<SessionRecord[]> {
     return this.registry.getAll();
+  }
+
+  /** Returns the full system prompt stored for the given session key. */
+  @Get(':sessionKey/context')
+  @UseGuards(SystemAppGuard)
+  async getContext(
+    @Param('sessionKey') sessionKey: string,
+  ): Promise<{ context: string }> {
+    const context = await this.registry.getContext(sessionKey);
+    if (context === null) {
+      throw new NotFoundException(`No context found for session ${sessionKey}`);
+    }
+    return { context };
+  }
+
+  /** Force-kill a session by its sessionKey — aborts the run and marks registry as aborted. */
+  @Post(':sessionKey/kill')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(SystemAppGuard)
+  async kill(
+    @Param('sessionKey') sessionKey: string,
+  ): Promise<{ ok: boolean }> {
+    const killed = await this.sessions.killBySessionKey(sessionKey);
+    if (!killed) {
+      throw new NotFoundException(`No session found for sessionKey ${sessionKey}`);
+    }
+    return { ok: true };
   }
 
   // ── Standard session endpoints ────────────────────────────────────────
@@ -64,19 +91,6 @@ export class SessionsController {
       throw new NotFoundException(`No session for window ${windowId}`);
     }
     return snapshot;
-  }
-
-  /** Returns the full system prompt stored for the given session key. */
-  @Get(':sessionKey/context')
-  @UseGuards(SystemAppGuard)
-  async getContext(
-    @Param('sessionKey') sessionKey: string,
-  ): Promise<{ context: string }> {
-    const context = await this.registry.getContext(sessionKey);
-    if (context === null) {
-      throw new NotFoundException(`No context found for session ${sessionKey}`);
-    }
-    return { context };
   }
 
   @Post(':windowId/send')
@@ -100,20 +114,6 @@ export class SessionsController {
     const aborted = await this.sessions.abort(windowId);
     if (!aborted) {
       throw new NotFoundException(`No session for window ${windowId}`);
-    }
-    return { ok: true };
-  }
-
-  /** Force-kill a session by its sessionKey — aborts the run and marks registry as aborted. */
-  @Post(':sessionKey/kill')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(SystemAppGuard)
-  async kill(
-    @Param('sessionKey') sessionKey: string,
-  ): Promise<{ ok: boolean }> {
-    const killed = await this.sessions.killBySessionKey(sessionKey);
-    if (!killed) {
-      throw new NotFoundException(`No session found for sessionKey ${sessionKey}`);
     }
     return { ok: true };
   }

@@ -987,6 +987,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     payload: Record<string, unknown>,
     source: string,
   ): Promise<void> {
+    // Temporary diagnostic: log the raw payload to identify the exact field structure
+    console.log('--- TOKEN DATA RECEIVED ---', source, payload);
+
     // Probe flat layout first, then common nested keys
     const candidate =
       payload['inputTokens'] != null ? payload
@@ -1011,6 +1014,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     this.logger.debug(
       `[Telemetry] ✓ usage from ${source}: in=${tokenUsage.inputTokens} out=${tokenUsage.outputTokens} (session=${sessionKey})`,
     );
+    // accumulateTokens() calls broadcastUpdate() internally — frontend will see the delta immediately
     await this.sessionRegistry.accumulateTokens(sessionKey, tokenUsage);
   }
 
