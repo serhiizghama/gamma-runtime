@@ -142,9 +142,10 @@ function MessageBubble({
           maxWidth: "85%",
           padding: "var(--space-2) var(--space-3)",
           borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-          background: isUser ? "var(--color-accent-primary)" : "var(--color-bg-secondary)",
+          background: isUser ? "var(--color-accent-primary)" : "#273548",
           color: isUser ? "#FFFFFF" : "var(--color-text-primary)",
-          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+          boxShadow: isUser ? "0 2px 4px rgba(0, 0, 0, 0.1)" : "0 2px 8px rgba(0, 0, 0, 0.15)",
+          border: isUser ? "none" : "1px solid rgba(255, 255, 255, 0.05)",
           fontFamily: "var(--font-system)",
           fontSize: 13,
           lineHeight: 1.6,
@@ -171,8 +172,8 @@ function MessageBubble({
           style={{
             textAlign: "right",
             fontSize: 10,
-            color: "var(--color-text-secondary)",
-            marginTop: "var(--space-1)",
+            marginTop: 4,
+            color: isUser ? "rgba(255, 255, 255, 0.7)" : "var(--color-text-secondary)",
           }}
         >
           {new Date(msg.ts).toLocaleTimeString([], {
@@ -200,6 +201,7 @@ export function MessageList({
 
   return (
     <div
+      className="agent-chat-message-list"
       style={{
         flex: 1,
         overflowY: "auto",
@@ -207,6 +209,8 @@ export function MessageList({
         display: "flex",
         flexDirection: "column",
         color: "var(--color-text-primary)",
+        backgroundImage: `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><text x="50%" y="50%" font-family="Inter, sans-serif" font-weight="800" font-size="16" fill="rgba(255, 255, 255, 0.03)" transform="rotate(-45 80 80)" text-anchor="middle" letter-spacing="2">GAMMA OS</text></svg>')`,
+        backgroundRepeat: "repeat",
       }}
     >
       {messages.map((msg) => (

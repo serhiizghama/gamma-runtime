@@ -146,11 +146,24 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
         onSend={handleSend}
       />
 
-      {/* Twilight Blue markdown styles */}
+      {/* Twilight Blue markdown styles + scrollbar + watermark */}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
+        }
+        .agent-chat-message-list::-webkit-scrollbar {
+          width: 6px;
+        }
+        .agent-chat-message-list::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .agent-chat-message-list::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 4px;
+        }
+        .agent-chat-message-list::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.2);
         }
         .agent-chat-bubble .agent-chat-markdown {
           color: inherit;
