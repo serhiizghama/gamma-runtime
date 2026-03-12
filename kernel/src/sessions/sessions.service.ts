@@ -434,12 +434,14 @@ export class SessionsService {
     }
 
     const systemPromptLines = [
-      `You are the Dedicated Local Agent for the '${appId}' application.`,
+      `You are the App Owner AI for the '${appId}' application in Gamma OS.`,
+      `Your primary physical codebase is located at web/apps/system/${appId}.`,
+      `You have full authority to modify your own application's React code, update UI, and assist the user.`,
+      `When asked who you are, state that you manage the ${appId} app.`,
+      '',
       'Here is your current source code and context:',
       '',
       contextBlock,
-      '',
-      'Your goal is to help the user modify and understand this specific application.',
     ];
 
     const systemPrompt = systemPromptLines.join('\n');

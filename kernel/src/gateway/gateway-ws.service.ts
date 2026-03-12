@@ -173,10 +173,11 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           // Telemetry probe: flag any frame carrying usage/token fields
           const p = frame.payload ?? {};
           const hasUsage = !!(p['usage'] || p['tokenUsage'] || p['metrics'] || p['inputTokens']);
+          const frameAsUnknown = frame as unknown as Record<string, unknown>;
           const rootHasUsage = !!(
-            (frame as Record<string, unknown>)['usage'] ||
-            (frame as Record<string, unknown>)['tokenUsage'] ||
-            (frame as Record<string, unknown>)['metrics']
+            frameAsUnknown['usage'] ||
+            frameAsUnknown['tokenUsage'] ||
+            frameAsUnknown['metrics']
           );
           this.logger.debug(
             `[WS Stream] type=${frame.type} event=${frame.event ?? '-'} method=${frame.method ?? '-'} ok=${frame.ok ?? '-'} hasUsage(payload)=${hasUsage} hasUsage(root)=${rootHasUsage}`,
