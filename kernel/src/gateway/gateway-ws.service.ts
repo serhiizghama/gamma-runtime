@@ -170,6 +170,20 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       this.ws.on('message', (raw: WebSocket.RawData) => {
         try {
           const frame = JSON.parse(raw.toString()) as GWFrame;
+          // Telemetry probe: flag any frame carrying usage/token fields
+          const p = frame.payload ?? {};
+          const hasUsage = !!(p['usage'] || p['tokenUsage'] || p['metrics'] || p['inputTokens']);
+          const rootHasUsage = !!(
+            (frame as Record<string, unknown>)['usage'] ||
+            (frame as Record<string, unknown>)['tokenUsage'] ||
+            (frame as Record<string, unknown>)['metrics']
+          );
+          this.logger.debug(
+            `[WS Stream] type=${frame.type} event=${frame.event ?? '-'} method=${frame.method ?? '-'} ok=${frame.ok ?? '-'} hasUsage(payload)=${hasUsage} hasUsage(root)=${rootHasUsage}`,
+          );
+          if (hasUsage || rootHasUsage) {
+            this.logger.log(`[WS Usage Hit] FULL FRAME: ${JSON.stringify(frame)}`);
+          }
           this.handleFrame(frame);
         } catch {
           this.logger.warn('Failed to parse Gateway frame');
