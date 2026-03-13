@@ -1,6 +1,9 @@
+import React, { useState } from "react";
+import { AboutModal } from "./AboutModal";
+
 const MENU_HEIGHT = 32;
 
-// ── Chat Bubble icon (MessageSquare-style, minimal) ───────────────────────
+// ── Chat Bubble icon ──────────────────────────────────────────────────────
 
 function MessageSquareIcon(): React.ReactElement {
   return (
@@ -21,73 +24,109 @@ export function MenuBar({
   onOpenArchitect,
   onOpenLaunchpad,
 }: MenuBarProps): React.ReactElement {
-  return (
-    <div
-      className="desktop-shell__taskbar"
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        height: MENU_HEIGHT,
-        minHeight: MENU_HEIGHT,
-        background: "rgba(15, 23, 42, 0.65)",
-        backdropFilter: "blur(16px) saturate(180%)",
-        WebkitBackdropFilter: "blur(16px) saturate(180%)",
-        borderBottom: "1px solid var(--color-border-subtle)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 16px",
-        zIndex: 10000,
-        fontFamily: "var(--font-system)",
-        color: "var(--color-text-primary)",
-        userSelect: "none",
-      }}
-    >
-      {/* Left: Branding */}
-      <span
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          color: "var(--color-text-primary)",
-          letterSpacing: 2,
-        }}
-      >
-        Gamma
-      </span>
+  const [aboutOpen, setAboutOpen] = useState(false);
 
-      {/* Right: Minimal tray (Apps + Chat) */}
+  return (
+    <>
       <div
+        className="desktop-shell__taskbar"
         style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: MENU_HEIGHT,
+          minHeight: MENU_HEIGHT,
+          background: "rgba(15, 23, 42, 0.65)",
+          backdropFilter: "blur(16px) saturate(180%)",
+          WebkitBackdropFilter: "blur(16px) saturate(180%)",
+          borderBottom: "1px solid var(--color-border-subtle)",
           display: "flex",
           alignItems: "center",
-          gap: 16,
+          justifyContent: "space-between",
+          padding: "0 16px",
+          zIndex: 10000,
+          fontFamily: "var(--font-system)",
+          color: "var(--color-text-primary)",
+          userSelect: "none",
         }}
       >
+        {/* Left: Branding — clickable "About" trigger */}
         <button
-          onClick={onOpenLaunchpad}
-          title="Apps"
-          className="desktop-shell__tray-btn"
-          aria-label="Open Apps"
+          onClick={() => setAboutOpen((v) => !v)}
+          title="About Gamma Agent Runtime"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: "2px 6px",
+            borderRadius: 5,
+            color: "inherit",
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <rect x="2" y="2" width="4" height="4" rx="0.5" />
-            <rect x="10" y="2" width="4" height="4" rx="0.5" />
-            <rect x="2" y="10" width="4" height="4" rx="0.5" />
-            <rect x="10" y="10" width="4" height="4" rx="0.5" />
+          <svg
+            viewBox="0 0 20 24"
+            width="14"
+            height="16"
+            style={{ opacity: 0.85, flexShrink: 0 }}
+            aria-hidden
+          >
+            <path
+              d="M2 3 L10 13 L10 22 M18 3 L10 13"
+              stroke="var(--color-accent-primary)"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
           </svg>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--color-text-primary)",
+              letterSpacing: 2,
+            }}
+          >
+            Gamma
+          </span>
         </button>
-        <button
-          onClick={onOpenArchitect}
-          title="System Architect"
-          className="desktop-shell__tray-btn"
-          aria-label="System Architect"
-        >
-          <MessageSquareIcon />
-        </button>
+
+        {/* Right: Minimal tray (Apps + Chat) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <button
+            onClick={onOpenLaunchpad}
+            title="Apps"
+            className="desktop-shell__tray-btn"
+            aria-label="Open Apps"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <rect x="2" y="2" width="4" height="4" rx="0.5" />
+              <rect x="10" y="2" width="4" height="4" rx="0.5" />
+              <rect x="2" y="10" width="4" height="4" rx="0.5" />
+              <rect x="10" y="10" width="4" height="4" rx="0.5" />
+            </svg>
+          </button>
+          <button
+            onClick={onOpenArchitect}
+            title="System Architect"
+            className="desktop-shell__tray-btn"
+            aria-label="System Architect"
+          >
+            <MessageSquareIcon />
+          </button>
+        </div>
       </div>
-    </div>
+
+      {/* About panel */}
+      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
+    </>
   );
 }
 

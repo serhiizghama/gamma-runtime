@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import WebSocket from 'ws';
-// crypto reserved for future device auth signing
+import { createPrivateKey, sign as cryptoSign } from 'crypto';
+import { readFileSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { ulid } from 'ulid';
 import { REDIS_KEYS } from '@gamma/types';
 import Redis from 'ioredis';
@@ -811,6 +814,77 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     //   client.id: one of the GATEWAY_CLIENT_IDS constants
     //   client.mode: one of GATEWAY_CLIENT_MODES (webchat|cli|ui|backend|node)
     //   auth.token: the gateway token
+    // Load device identity from OpenClaw identity files
+    let deviceId = process.env.OPENCLAW_DEVICE_ID;
+    let devicePublicKey = process.env.OPENCLAW_DEVICE_PUBLIC_KEY;
+    let deviceToken = process.env.OPENCLAW_DEVICE_TOKEN;
+    let devicePrivateKeyPem: string | undefined;
+
+    try {
+      const identityPath = join(homedir(), '.openclaw', 'identity', 'device.json');
+      const authPath = join(homedir(), '.openclaw', 'identity', 'device-auth.json');
+      const identity = JSON.parse(readFileSync(identityPath, 'utf8'));
+      const auth = JSON.parse(readFileSync(authPath, 'utf8'));
+      deviceId = identity.deviceId;
+      devicePrivateKeyPem = identity.privateKeyPem;
+      // Extract base64url raw public key from PEM
+      const pemBody = identity.publicKeyPem
+        .replace(/-----.*?-----/g, '')
+        .replace(/\s/g, '');
+      const derBytes = Buffer.from(pemBody, 'base64');
+      const rawKey = derBytes.slice(-32);
+      devicePublicKey = rawKey.toString('base64url');
+      deviceToken = auth?.tokens?.operator?.token;
+    } catch {
+      // Fall back to env vars if files not available
+    }
+
+    const scopes = ['operator.admin', 'operator.write', 'operator.read'];
+
+    // Build device auth signature if device identity is configured
+    let deviceAuth: Record<string, unknown> | undefined;
+    if (deviceId && devicePublicKey && deviceToken && devicePrivateKeyPem && nonce) {
+      try {
+        const signedAtMs = Date.now();
+        const clientId = 'gateway-client';
+        const clientMode = 'backend';
+        const role = 'operator';
+        const platform = 'macos';
+        const deviceFamily = '';
+
+        // Build v3 payload (matches OpenClaw gateway protocol)
+        // resolveSignatureToken uses auth.token (gateway token) first
+        const signatureToken = this.gatewayToken ?? '';
+        const payload = [
+          'v3',
+          deviceId,
+          clientId,
+          clientMode,
+          role,
+          scopes.join(','),
+          String(signedAtMs),
+          signatureToken,
+          nonce,
+          platform,
+          deviceFamily,
+        ].join('|');
+
+        const privateKey = createPrivateKey(devicePrivateKeyPem);
+        const sigBuf = cryptoSign(null, Buffer.from(payload, 'utf8'), privateKey);
+        const signature = sigBuf.toString('base64url');
+
+        deviceAuth = {
+          id: deviceId,
+          publicKey: devicePublicKey,
+          signature,
+          signedAt: signedAtMs,
+          nonce,
+        };
+      } catch (e) {
+        this.logger.warn(`Device signing failed: ${(e as Error).message} — connecting without device`);
+      }
+    }
+
     const params: Record<string, unknown> = {
       minProtocol: 3,
       maxProtocol: 3,
@@ -821,10 +895,12 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         mode: 'backend',
       },
       role: 'operator',
-      scopes: ['operator.admin'],
+      scopes,
       auth: {
         token: this.gatewayToken,
+        ...(deviceToken ? { deviceToken } : {}),
       },
+      ...(deviceAuth ? { device: deviceAuth } : {}),
     };
 
     // Device signing is optional — skip unless properly paired with the Gateway
