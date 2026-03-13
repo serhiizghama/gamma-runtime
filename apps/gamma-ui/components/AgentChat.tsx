@@ -124,9 +124,9 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
         flexDirection: "column",
         height: "100%",
         width: "100%",
-        background: "var(--color-bg-secondary)",
+        background: "rgba(6, 8, 18, 0.97)",
         borderRadius: isEmbedded ? "10px 10px 0 0" : 0,
-        border: isEmbedded ? `1px solid var(--color-border-subtle)` : "none",
+        border: isEmbedded ? `1px solid rgba(255,255,255,0.07)` : "none",
         overflow: "hidden",
         minHeight: 0,
       }}
@@ -155,128 +155,72 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
         onSend={handleSend}
       />
 
-      {/* Twilight Blue markdown styles + scrollbar + watermark */}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
         }
-        .agent-chat-message-list::-webkit-scrollbar {
-          width: 6px;
-        }
-        .agent-chat-message-list::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .agent-chat-message-list::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 4px;
-        }
-        .agent-chat-message-list::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
-        .agent-chat-message-list,
-        .agent-chat-bubble,
-        .agent-chat-markdown {
+        .agent-chat-message-list::-webkit-scrollbar { width: 4px; }
+        .agent-chat-message-list::-webkit-scrollbar-track { background: transparent; }
+        .agent-chat-message-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+        .agent-chat-message-list::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+        .agent-chat-message-list, .agent-chat-bubble, .agent-chat-markdown {
           user-select: text;
           -webkit-user-select: text;
         }
-        .agent-chat-code-block {
-          position: relative;
-          margin: var(--space-2) 0;
-        }
-        .agent-chat-code-block pre {
-          margin: 0;
-        }
+
+        .agent-chat-code-block { position: relative; margin: 6px 0; }
+        .agent-chat-code-block pre { margin: 0; }
         .agent-chat-code-copy {
-          position: absolute;
-          top: var(--space-2);
-          right: var(--space-2);
-          padding: 4px 8px;
-          font-size: 11px;
-          font-family: var(--font-system);
-          color: var(--color-text-secondary);
-          user-select: none;
-          background: rgba(255, 255, 255, 0.08);
-          border: 1px solid var(--color-border-subtle);
-          border-radius: 4px;
-          cursor: pointer;
-          transition: background 0.15s, color 0.15s;
-          z-index: 1;
+          position: absolute; top: 8px; right: 8px;
+          padding: 3px 8px; font-size: 11px;
+          color: rgba(180,200,255,0.5);
+          background: rgba(255,255,255,0.07);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 4px; cursor: pointer;
+          transition: background 0.15s, color 0.15s; z-index: 1;
         }
-        .agent-chat-code-copy:hover {
-          background: rgba(255, 255, 255, 0.15);
-          color: var(--color-text-primary);
-        }
-        .agent-chat-code-copy:focus {
-          outline: 2px solid var(--color-accent-primary);
-          outline-offset: 2px;
-        }
-        .agent-chat-bubble .agent-chat-markdown {
-          color: inherit;
-        }
-        .agent-chat-markdown p { margin: var(--space-1) 0; color: inherit; }
-        .agent-chat-markdown ul, .agent-chat-markdown ol {
-          margin: var(--space-2) 0;
-          padding-left: var(--space-6);
-          color: inherit;
-        }
-        .agent-chat-markdown strong { font-weight: var(--font-weight-semibold); color: inherit; }
+        .agent-chat-code-copy:hover { background: rgba(255,255,255,0.12); color: rgba(220,235,255,0.9); }
+
+        .agent-chat-markdown p { margin: 4px 0; color: inherit; }
+        .agent-chat-markdown ul, .agent-chat-markdown ol { margin: 6px 0; padding-left: 20px; color: inherit; }
+        .agent-chat-markdown strong { font-weight: 600; color: inherit; }
+        .agent-chat-markdown em { font-style: italic; }
         .agent-chat-markdown code {
-          background: var(--color-bg-primary);
-          color: inherit;
-          padding: 1px 5px;
-          border-radius: 3px;
-          font-size: 12px;
-          border: 1px solid var(--color-border-subtle);
+          background: rgba(255,255,255,0.07);
+          color: rgba(150,210,255,0.9);
+          padding: 1px 5px; border-radius: 4px; font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.08);
+          font-family: 'SF Mono', 'Fira Code', monospace;
         }
         .agent-chat-markdown pre {
-          background: var(--color-bg-primary);
-          padding: var(--space-3);
-          border-radius: 6px;
-          overflow-x: auto;
-          font-size: 12px;
-          border: 1px solid var(--color-border-subtle);
-          margin: var(--space-2) 0;
+          background: rgba(0,0,0,0.35);
+          padding: 12px 14px; border-radius: 8px;
+          overflow-x: auto; font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.07);
+          margin: 6px 0;
         }
-        .agent-chat-markdown pre code {
-          background: none;
-          border: none;
-          padding: 0;
-          color: inherit;
+        .agent-chat-markdown pre code { background: none; border: none; padding: 0; color: rgba(180,220,255,0.85); }
+        .agent-chat-markdown-img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 8px 0; }
+        .agent-chat-markdown a { color: rgba(96,165,250,0.9); text-decoration: underline; word-break: break-word; }
+        .agent-chat-markdown table { border-collapse: collapse; width: 100%; font-size: 12px; }
+        .agent-chat-markdown th, .agent-chat-markdown td {
+          border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; text-align: left;
         }
-        .agent-chat-markdown-img {
-          max-width: 100%;
-          height: auto;
-          border-radius: 8px;
-          display: block;
-          margin: var(--space-2) 0;
-          object-fit: contain;
+        .agent-chat-markdown th { background: rgba(255,255,255,0.04); }
+        .agent-chat-input::placeholder { color: rgba(255,255,255,0.25); }
+        .agent-chat-markdown h1, .agent-chat-markdown h2, .agent-chat-markdown h3 {
+          color: rgba(220,235,255,0.95); font-weight: 600; margin: 10px 0 4px;
         }
-        .agent-chat-markdown a {
-          color: var(--color-accent-primary);
-          text-decoration: underline;
-          word-break: break-word;
-        }
-        .agent-chat-markdown table {
-          border-collapse: collapse;
-          width: 100%;
-          font-size: 12px;
-        }
-        .agent-chat-markdown th,
-        .agent-chat-markdown td {
-          border: 1px solid var(--color-border-subtle);
-          padding: 4px 8px;
-          text-align: left;
-        }
-        .agent-chat-markdown th {
-          background: var(--color-bg-primary);
-          color: inherit;
-        }
-        .agent-chat-markdown td {
-          color: inherit;
-        }
-        .agent-chat-input::placeholder {
-          color: var(--color-text-secondary);
+        .agent-chat-markdown h1 { font-size: 16px; }
+        .agent-chat-markdown h2 { font-size: 14px; }
+        .agent-chat-markdown h3 { font-size: 13px; }
+        .agent-chat-markdown blockquote {
+          border-left: 3px solid rgba(59,130,246,0.4);
+          margin: 6px 0; padding: 4px 12px;
+          color: rgba(180,200,255,0.6);
+          font-style: italic;
         }
       `}</style>
     </div>

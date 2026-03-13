@@ -1,27 +1,26 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import type { AgentStatus } from "@gamma/types";
 
 interface ChatInputProps {
   status: AgentStatus;
-  accentColor?: string; // reserved for future theming; uses theme vars when absent
+  accentColor?: string;
   placeholder?: string;
   onSend: (text: string) => void;
 }
 
-export function ChatInput({
-  status,
-  placeholder = "Type a message…",
-  onSend,
-}: ChatInputProps): React.ReactElement {
+export function ChatInput({ status, placeholder = "Message Gamma…", onSend }: ChatInputProps): React.ReactElement {
   const [text, setText] = useState("");
-  const disabled = status === "running" || text.trim().length === 0;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const running = status === "running";
+  const canSend = text.trim().length > 0 && !running;
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
-    if (trimmed.length === 0 || status === "running") return;
+    if (!trimmed || running) return;
     onSend(trimmed);
     setText("");
-  }, [text, status, onSend]);
+    inputRef.current?.focus();
+  }, [text, running, onSend]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -30,66 +29,111 @@ export function ChatInput({
         handleSend();
       }
     },
-    [handleSend],
+    [handleSend]
   );
 
   return (
     <div
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "10px 14px",
-        background: "var(--color-bg-primary)",
-        borderTop: "1px solid var(--color-border-subtle)",
+        padding: "10px 12px 12px",
+        background: "rgba(6, 8, 16, 0.8)",
+        borderTop: "1px solid rgba(255,255,255,0.06)",
       }}
     >
-      <input
-        type="text"
-        className="agent-chat-input"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        disabled={status === "running"}
+      {/* Input row */}
+      <div
         style={{
-          flex: 1,
-          background: "var(--color-bg-secondary)",
-          border: "1px solid var(--color-border-subtle)",
-          borderRadius: 6,
-          padding: "8px 12px",
-          color: "var(--color-text-primary)",
-          fontFamily: "var(--font-system)",
-          fontSize: 13,
-          outline: "none",
-          transition: "border-color 200ms ease-out",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.09)",
+          borderRadius: 12,
+          padding: "6px 6px 6px 14px",
+          transition: "border-color 0.2s, box-shadow 0.2s",
         }}
-        onFocus={(e) => {
-          e.currentTarget.style.borderColor = "var(--color-accent-primary)";
+        onFocusCapture={(e) => {
+          (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(59,130,246,0.5)";
+          (e.currentTarget as HTMLDivElement).style.boxShadow = "0 0 0 3px rgba(59,130,246,0.08)";
         }}
-        onBlur={(e) => {
-          e.currentTarget.style.borderColor = "var(--color-border-subtle)";
-        }}
-      />
-      <button
-        onClick={handleSend}
-        disabled={disabled}
-        style={{
-          background: disabled ? "var(--color-bg-secondary)" : "var(--color-accent-primary)",
-          color: disabled ? "var(--color-text-secondary)" : "#ffffff",
-          border: "none",
-          borderRadius: 6,
-          padding: "8px 16px",
-          fontFamily: "var(--font-system)",
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: disabled ? "not-allowed" : "pointer",
-          transition: "background 200ms ease-out, color 200ms ease-out",
-          opacity: disabled ? 0.5 : 1,
+        onBlurCapture={(e) => {
+          (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255,255,255,0.09)";
+          (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
         }}
       >
-        Send
-      </button>
+        <input
+          ref={inputRef}
+          type="text"
+          className="agent-chat-input"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={running}
+          autoComplete="off"
+          style={{
+            flex: 1,
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: "rgba(220,232,255,0.9)",
+            fontFamily: "var(--font-system)",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        />
+
+        {/* Send button — icon only */}
+        <button
+          onClick={handleSend}
+          disabled={!canSend}
+          title="Send (Enter)"
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            border: "none",
+            cursor: canSend ? "pointer" : "not-allowed",
+            background: canSend
+              ? "linear-gradient(135deg, rgba(59,130,246,0.9), rgba(37,99,235,0.95))"
+              : "rgba(255,255,255,0.06)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            transition: "background 0.2s, transform 0.1s",
+            boxShadow: canSend ? "0 2px 8px rgba(59,130,246,0.35)" : "none",
+          }}
+          onMouseDown={(e) => { if (canSend) (e.currentTarget as HTMLButtonElement).style.transform = "scale(0.92)"; }}
+          onMouseUp={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
+        >
+          {running ? (
+            /* Spinner */
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <circle cx="7" cy="7" r="5" stroke="rgba(96,165,250,0.4)" strokeWidth="2" />
+              <path d="M7 2 A5 5 0 0 1 12 7" stroke="rgba(96,165,250,0.9)" strokeWidth="2" strokeLinecap="round">
+                <animateTransform attributeName="transform" type="rotate" from="0 7 7" to="360 7 7" dur="0.7s" repeatCount="indefinite" />
+              </path>
+            </svg>
+          ) : (
+            /* Arrow up */
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path
+                d="M7 11.5 L7 2.5 M3 6 L7 2.5 L11 6"
+                stroke={canSend ? "#fff" : "rgba(255,255,255,0.25)"}
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {/* Hint */}
+      <div style={{ textAlign: "center", marginTop: 6, fontSize: 10, color: "rgba(255,255,255,0.15)", letterSpacing: 0.2 }}>
+        Enter to send · Gamma Agent Runtime
+      </div>
     </div>
   );
 }
