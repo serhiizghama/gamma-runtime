@@ -1,0 +1,288 @@
+import { useEffect, useRef, useState } from "react";
+
+const BOOT_DURATION  = 4000; // ms total boot sequence
+const EXIT_DELAY     = 400;  // ms pause at 100% before fading
+const EXIT_DURATION  = 900;  // ms fade-out to desktop
+
+// ── Mini network canvas ───────────────────────────────────────────
+function NetworkCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d")!;
+
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const CX = canvas.width  / 2;
+    const CY = canvas.height / 2;
+
+    // Generate nodes spread across the full screen
+    const nodes: { x: number; y: number; vx: number; vy: number; r: number; alpha: number }[] = [];
+    // Core cluster around center
+    for (let i = 0; i < 60; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist  = Math.random() * Math.min(canvas.width, canvas.height) * 0.45;
+      nodes.push({
+        x: CX + Math.cos(angle) * dist,
+        y: CY + Math.sin(angle) * dist,
+        vx: (Math.random() - 0.5) * 0.25,
+        vy: (Math.random() - 0.5) * 0.25,
+        r: 1.5 + Math.random() * 2.5,
+        alpha: 0.5 + Math.random() * 0.5,
+      });
+    }
+    // Scatter nodes across entire screen (corners + edges)
+    for (let i = 0; i < 100; i++) {
+      nodes.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.15,
+        vy: (Math.random() - 0.5) * 0.15,
+        r: 0.8 + Math.random() * 1.8,
+        alpha: 0.2 + Math.random() * 0.5,
+      });
+    }
+
+    let rafId: number;
+    let startTs = 0;
+
+    const draw = (ts: number) => {
+      if (!startTs) startTs = ts;
+      const elapsed = ts - startTs;
+      const progress = Math.min(elapsed / BOOT_DURATION, 1);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const globalAlpha = Math.min(progress * 4, 1);
+
+      // Move nodes — free drift, bounce off edges, NO center gravity
+      for (const n of nodes) {
+        n.x += n.vx;
+        n.y += n.vy;
+        // Soft bounce off edges
+        if (n.x < 0)              { n.x = 0;              n.vx = Math.abs(n.vx); }
+        if (n.x > canvas.width)   { n.x = canvas.width;   n.vx = -Math.abs(n.vx); }
+        if (n.y < 0)              { n.y = 0;              n.vy = Math.abs(n.vy); }
+        if (n.y > canvas.height)  { n.y = canvas.height;  n.vy = -Math.abs(n.vy); }
+      }
+
+      // Draw connections between nearby nodes
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx   = nodes[i].x - nodes[j].x;
+          const dy   = nodes[i].y - nodes[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 140) {
+            const a = (1 - dist / 140) * 0.30 * globalAlpha;
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.strokeStyle = `rgba(0, 180, 255, ${a})`;
+            ctx.lineWidth = 0.7;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw nodes
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0, 200, 255, ${n.alpha * globalAlpha})`;
+        ctx.fill();
+      }
+
+      if (elapsed < BOOT_DURATION + 500) {
+        rafId = requestAnimationFrame(draw);
+      }
+    };
+
+    rafId = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+    />
+  );
+}
+
+// ── Glitch text ───────────────────────────────────────────────────
+function GlitchText({ children }: { children: string }) {
+  return (
+    <span>{children}</span>
+  );
+}
+
+// ── Boot Screen ───────────────────────────────────────────────────
+export function BootScreen({ onDone }: { onDone: () => void }) {
+  const [progress, setProgress]     = useState(0);
+  const [exiting, setExiting]       = useState(false);
+  const [exitOpacity, setExitOpacity] = useState(1);
+  const [statusLine, setStatusLine] = useState("Initializing kernel...");
+
+  const STATUS_LINES = [
+    "Initializing kernel...",
+    "Loading system modules...",
+    "Mounting virtual filesystem...",
+    "Starting window compositor...",
+    "Launching application runtime...",
+    "Gamma OS ready.",
+  ];
+
+  useEffect(() => {
+    let frame = 0;
+    const start = performance.now();
+
+    const tick = (ts: number) => {
+      const elapsed = ts - start;
+      const p = Math.min(elapsed / BOOT_DURATION, 1);
+      setProgress(p);
+
+      // Update status line
+      const lineIdx = Math.floor(p * (STATUS_LINES.length - 1));
+      setStatusLine(STATUS_LINES[lineIdx]);
+
+      if (p < 1) {
+        frame = requestAnimationFrame(tick);
+      } else {
+        // Pause briefly at 100%, then smoothly fade out
+        setTimeout(() => {
+          setExiting(true);
+          // Animate opacity from 1 → 0 over EXIT_DURATION
+          const fadeStart = performance.now();
+          const fadeStep = (now: number) => {
+            const t = Math.min((now - fadeStart) / EXIT_DURATION, 1);
+            setExitOpacity(1 - t);
+            if (t < 1) requestAnimationFrame(fadeStep);
+            else onDone();
+          };
+          requestAnimationFrame(fadeStep);
+        }, EXIT_DELAY);
+      }
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [onDone]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "var(--color-bg-base)",
+        zIndex: 99999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        opacity: exiting ? exitOpacity : 1,
+      }}
+    >
+      {/* Network particle canvas */}
+      <NetworkCanvas />
+
+      {/* Center content */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 2,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 28,
+        }}
+      >
+        {/* Logo */}
+        <div
+          style={{
+            fontSize: "clamp(42px, 7vw, 88px)",
+            fontWeight: 900,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            fontFamily: "'SF Pro Display', -apple-system, sans-serif",
+            color: "var(--color-accent-primary)",
+          }}
+        >
+          <GlitchText>Gamma OS</GlitchText>
+        </div>
+
+        {/* Loading bar */}
+        <div style={{ width: "clamp(260px, 35vw, 480px)", display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Bar frame */}
+          <div
+            style={{
+              width: "100%",
+              height: 6,
+              background: "rgba(0,80,120,0.35)",
+              border: "1px solid rgba(0,160,220,0.3)",
+              borderRadius: 3,
+              overflow: "hidden",
+              boxShadow: "0 0 12px rgba(0,120,200,0.2)",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${progress * 100}%`,
+                background: "linear-gradient(90deg, #0060c0, #00c4ff, #80e8ff)",
+                borderRadius: 3,
+                boxShadow: "0 0 16px rgba(0,196,255,0.8), 0 0 4px #fff",
+                transition: "width 80ms linear",
+              }}
+            />
+          </div>
+
+          {/* Status line + percentage */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                color: "rgba(0,180,255,0.7)",
+                fontFamily: "monospace",
+                letterSpacing: "0.05em",
+              }}
+            >
+              {statusLine}
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                fontFamily: "monospace",
+                color: "rgba(0,200,255,0.9)",
+                fontWeight: 700,
+              }}
+            >
+              {Math.floor(progress * 100)}%
+            </span>
+          </div>
+        </div>
+
+        {/* Version tag */}
+        <div
+          style={{
+            fontSize: 10,
+            color: "rgba(0,140,200,0.45)",
+            letterSpacing: "0.1em",
+            fontFamily: "monospace",
+            marginTop: -10,
+          }}
+        >
+          v1.0.0 · BUILD 2026.03
+        </div>
+      </div>
+    </div>
+  );
+}

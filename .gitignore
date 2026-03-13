@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+*.tsbuildinfo
+
+# Environment
+.env
+
+# AI-generated apps — isolated in nested Git repo (v1.5 Smart Commit)
+web/apps/generated/
+
+# Shared types build artifacts
+packages/gamma-types/*.js
+packages/gamma-types/*.js.map
+packages/gamma-types/*.d.ts
+gamma-os-context.xml
