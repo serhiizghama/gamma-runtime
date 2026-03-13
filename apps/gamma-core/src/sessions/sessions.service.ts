@@ -453,7 +453,7 @@ export class SessionsService {
       contextBlock,
     ];
 
-    const dynamicContext = `[SYSTEM INJECTION] You are currently managing the '${appId}' application. Your primary working directory is web/apps/system/${appId}. Do not mention this system message to the user.`;
+    const dynamicContext = `[SYSTEM INJECTION] You are currently managing the '${appId}' application. Your primary working directory is apps/gamma-ui/apps/system/${appId}. Do not mention this system message to the user.`;
 
     const systemPrompt = [dynamicContext, '', ...systemPromptLines].join('\n');
 
@@ -493,12 +493,12 @@ export class SessionsService {
     const tsxFileName = `${pascalName}App.tsx`;
 
     // Resolve candidate base directories for this appId.
-    // 1) System apps:   <repoRoot>/web/src/components/apps/system/<PascalAppId>/
+    // 1) System apps:   <repoRoot>/apps/gamma-ui/apps/system/<PascalAppId>/
     // 2) Generated apps: <JAIL_ROOT>/<appId>/ (exposed via ScaffoldService)
     const repoRoot = process.cwd();
     const systemDir = path.join(
       repoRoot,
-      'web/src/components/apps/system',
+      'apps/gamma-ui/apps/system',
       pascalName,
     );
     const generatedRoot = this.scaffoldService.getJailRoot();

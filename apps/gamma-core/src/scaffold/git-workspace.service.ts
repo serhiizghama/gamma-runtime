@@ -8,7 +8,7 @@ import { AppStorageService } from './app-storage.service';
  * Git Workspace Service — Nested Repository Management (spec §9.2 v1.5).
  *
  * Solely responsible for all version-control interactions within the
- * web/apps/generated/ nested Git repository:
+ * apps/gamma-ui/apps/generated/ nested Git repository:
  * - Lazy repo initialization with branch setup and optional remote
  * - Staging, committing, and optionally pushing changes
  */
@@ -45,7 +45,7 @@ export class GitWorkspaceService {
   }
 
   /**
-   * Ensures the nested Git repo exists inside web/apps/generated/.
+   * Ensures the nested Git repo exists inside apps/gamma-ui/apps/generated/.
    * Idempotent — safe to call on every scaffold/remove operation.
    */
   async ensureRepo(): Promise<SimpleGit> {
@@ -58,7 +58,7 @@ export class GitWorkspaceService {
       const isRepo = await git.checkIsRepo().catch(() => false);
 
       if (!isRepo) {
-        this.logger.log('Initializing nested Git repo in web/apps/generated/');
+        this.logger.log('Initializing nested Git repo in apps/gamma-ui/apps/generated/');
         await git.init();
         await git.addConfig('user.name', this.gitAuthorName);
         await git.addConfig('user.email', this.gitAuthorEmail);

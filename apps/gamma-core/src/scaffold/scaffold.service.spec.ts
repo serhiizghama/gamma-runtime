@@ -107,21 +107,21 @@ describe('ScaffoldService', () => {
     it('should resolve a valid relative path', () => {
       const result = service.jailPath('weather/WeatherApp.tsx');
       expect(result).toBe(
-        '/tmp/test-gamma-os/web/apps/generated/weather/WeatherApp.tsx',
+        '/tmp/test-gamma-os/apps/gamma-ui/apps/generated/weather/WeatherApp.tsx',
       );
     });
 
     it('should resolve nested paths', () => {
       const result = service.jailPath('weather/assets/weather/icon.png');
       expect(result).toBe(
-        '/tmp/test-gamma-os/web/apps/generated/weather/assets/weather/icon.png',
+        '/tmp/test-gamma-os/apps/gamma-ui/apps/generated/weather/assets/weather/icon.png',
       );
     });
 
     it('should resolve bundle directory', () => {
       const result = service.jailPath('weather');
       expect(result).toBe(
-        '/tmp/test-gamma-os/web/apps/generated/weather',
+        '/tmp/test-gamma-os/apps/gamma-ui/apps/generated/weather',
       );
     });
 
@@ -298,16 +298,16 @@ describe('ScaffoldService', () => {
       });
 
       expect(result.ok).toBe(true);
-      expect(result.modulePath).toBe('./web/apps/generated/weather/WeatherApp');
+      expect(result.modulePath).toBe('./apps/gamma-ui/apps/generated/weather/WeatherApp');
 
       const hsetCall = mockRedis.hset.mock.calls[0];
       expect(hsetCall[0]).toBe(REDIS_KEYS.APP_REGISTRY);
       expect(hsetCall[1]).toBe('weather');
       const entry = JSON.parse(hsetCall[2] as string);
-      expect(entry.bundlePath).toBe('./web/apps/generated/weather/');
+      expect(entry.bundlePath).toBe('./apps/gamma-ui/apps/generated/weather/');
       expect(entry.hasAgent).toBe(false);
       expect(entry.updatedAt).toBeGreaterThan(0);
-      expect(entry.modulePath).toBe('./web/apps/generated/weather/WeatherApp');
+      expect(entry.modulePath).toBe('./apps/gamma-ui/apps/generated/weather/WeatherApp');
     });
 
     it('should set hasAgent=true when agentPrompt is provided', async () => {

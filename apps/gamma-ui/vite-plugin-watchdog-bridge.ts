@@ -37,9 +37,9 @@ export function watchdogBridge(): Plugin {
 
   function inferSessionKey(filePath: string | undefined): string | null {
     if (!filePath) return null;
-    // Generated apps: .../web/apps/generated/{appId}/...
-    const genMatch = filePath.match(/web\/apps\/generated\/([a-z0-9-]+)\//i);
-    if (genMatch) return `app-owner-${genMatch[1]}`;
+    // Monorepo apps: apps/gamma-ui/apps/{system|generated|*}/{appId}/...
+    const match = filePath.match(/apps\/gamma-ui\/apps\/[^/]+\/([a-z0-9-]+)\//i);
+    if (match) return `app-owner-${match[1]}`;
     return null;
   }
 

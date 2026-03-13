@@ -14,7 +14,7 @@
 
 **Authorization**
 - All privileged endpoints require the `X-Gamma-System-Token` header.
-- Set `VITE_GAMMA_SYSTEM_TOKEN` in `web/.env.local` to match the kernel's `GAMMA_SYSTEM_TOKEN` env var.
+- Set `VITE_GAMMA_SYSTEM_TOKEN` in `apps/gamma-ui/.env.local` to match the kernel's `GAMMA_SYSTEM_TOKEN` env var.
 
 **UI structure**
 - Header: app title and live session count.

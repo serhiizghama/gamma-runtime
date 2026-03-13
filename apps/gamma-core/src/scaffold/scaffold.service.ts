@@ -156,8 +156,8 @@ export class ScaffoldService {
     const hasAgent = await this.storage.fileExists(agentPromptPath);
 
     // Register in app registry — preserve createdAt from existing entry
-    const modulePath = `./web/apps/generated/${safeId}/${pascalName}App`;
-    const bundlePath = `./web/apps/generated/${safeId}/`;
+    const modulePath = `./apps/gamma-ui/apps/generated/${safeId}/${pascalName}App`;
+    const bundlePath = `./apps/gamma-ui/apps/generated/${safeId}/`;
     const now = Date.now();
 
     let createdAt = now;
@@ -204,7 +204,7 @@ export class ScaffoldService {
   /**
    * Jailed, app-local file save for AI agents (File System tool).
    *
-   * - Writes directly under web/apps/generated/{appId}/ via jailPath()
+   * - Writes directly under apps/gamma-ui/apps/generated/{appId}/ via jailPath()
    * - Never touches the root git repo or executes git push
    * - Refreshes the app's registry updatedAt and broadcasts component_ready
    */
@@ -245,9 +245,9 @@ export class ScaffoldService {
       const pascalName = pascal(safeId);
       const modulePath =
         entry?.modulePath ??
-        `./web/apps/generated/${safeId}/${pascalName}App`;
+        `./apps/gamma-ui/apps/generated/${safeId}/${pascalName}App`;
       const bundlePath =
-        entry?.bundlePath ?? `./web/apps/generated/${safeId}/`;
+        entry?.bundlePath ?? `./apps/gamma-ui/apps/generated/${safeId}/`;
 
       const registryEntry: import('@gamma/types').AppRegistryEntry = {
         appId: safeId,
