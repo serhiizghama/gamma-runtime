@@ -1,4 +1,4 @@
-## Gamma OS Agent Monitor (system app)
+## Gamma Agent Runtime Agent Monitor (system app)
 
 **Purpose**
 - Observe and control all active AI agent sessions from within the desktop.

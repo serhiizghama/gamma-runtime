@@ -1,4 +1,4 @@
-## Gamma OS Kernel Monitor (system app)
+## Gamma Agent Runtime Kernel Monitor (system app)
 
 **Purpose**
 - Introspect and debug the Gamma kernel from within the desktop.

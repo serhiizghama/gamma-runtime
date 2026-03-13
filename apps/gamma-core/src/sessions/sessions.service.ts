@@ -391,7 +391,7 @@ export class SessionsService {
     // The backend successfully reads the app's context.md, but OpenClaw session
     // initialization requires a refactor to properly ingest the custom
     // system_prompt. App Owner sessions currently fall back to the default
-    // Gamma OS Assistant persona despite the app-specific context being
+    // Gamma Agent Runtime Assistant persona despite the app-specific context being
     // available here.
     if (!sessionKey || typeof sessionKey !== 'string') {
       this.logger.warn(
@@ -444,7 +444,7 @@ export class SessionsService {
     }
 
     const systemPromptLines = [
-      `You are the specialized AI App Owner for the '${appId}' application within Gamma OS.`,
+      `You are the specialized AI App Owner for the '${appId}' application within Gamma Agent Runtime.`,
       `You manage its state and UI.`,
       `If the user asks who you are, introduce yourself exclusively as the AI manager of the ${appId} app, not as a generic assistant.`,
       '',

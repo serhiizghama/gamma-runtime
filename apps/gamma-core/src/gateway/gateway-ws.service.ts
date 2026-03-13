@@ -88,7 +88,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
   // ── OpenClaw session key boundary translation ──────────────────────────
 
   /**
-   * Convert an internal Gamma OS session key to the OpenClaw native format.
+   * Convert an internal Gamma session key to the OpenClaw native format.
    * Internal keys are used everywhere inside Gamma; OpenClaw keys are only
    * used in the WS frame params that cross the Gateway boundary.
    *
@@ -106,7 +106,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Convert an OpenClaw native session key back to the internal Gamma OS key.
+   * Convert an OpenClaw native session key back to the internal Gamma key.
    * Applied immediately on inbound WS frames before any internal processing.
    *
    * agent:system-architect:main → system-architect

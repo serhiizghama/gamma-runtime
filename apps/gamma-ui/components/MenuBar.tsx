@@ -54,7 +54,7 @@ export function MenuBar({
           letterSpacing: 2,
         }}
       >
-        Gamma OS
+        Gamma
       </span>
 
       {/* Right: Minimal tray (Apps + Chat) */}

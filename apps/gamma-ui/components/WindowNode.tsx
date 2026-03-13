@@ -28,7 +28,7 @@ function EmbeddedAgentChat({
   // The backend successfully reads the app's context.md, but OpenClaw session
   // initialization requires a refactor to properly ingest the custom
   // system_prompt. The embedded chat currently falls back to the default
-  // Gamma OS Assistant persona, even when using app-owner session keys.
+  // Gamma Agent Runtime Assistant persona, even when using app-owner session keys.
   const { messages, status, pendingToolLines, sendMessage } =
     useAgentStream(sessionKey);
   return (

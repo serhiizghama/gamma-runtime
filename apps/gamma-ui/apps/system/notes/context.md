@@ -1,7 +1,7 @@
-## Gamma OS Notes (system app)
+## Gamma Agent Runtime Notes (system app)
 
 **Purpose**
-- Lightweight scratchpad for quick notes inside Gamma OS.
+- Lightweight scratchpad for quick notes inside Gamma Agent Runtime.
 - Demonstrates a simple, self-contained CRUD experience that can be evolved by the AI.
 
 **Current behavior**
@@ -21,7 +21,7 @@
 - There are no external dependencies (no OS store usage, no backend calls).
 
 **Extension ideas for the AI agent**
-- Persist notes to a backend or to Gamma OS's global store.
+- Persist notes to a backend or to Gamma Agent Runtime's global store.
 - Add tagging, search, and pinning.
 - Implement markdown support and rich text formatting.
 - Expose a small "notes API" the agent can use to store and retrieve structured facts.

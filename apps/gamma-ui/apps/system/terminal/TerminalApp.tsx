@@ -15,7 +15,7 @@ interface TerminalLine {
  */
 export function TerminalApp(): React.ReactElement {
   const [lines, setLines] = useState<TerminalLine[]>([
-    { text: "Gamma OS Terminal v1.0", ts: Date.now() },
+    { text: "Gamma Terminal v1.0", ts: Date.now() },
     { text: "Type anything. Heartbeat fires every 2s.", ts: Date.now() },
   ]);
   const [input, setInput] = useState("");
@@ -23,10 +23,10 @@ export function TerminalApp(): React.ReactElement {
 
   // ── Cleanup contract ────────────────────────────────────────────────────
   useEffect(() => {
-    console.log("[Gamma OS] Terminal process started");
+    console.log("[Gamma] Terminal process started");
 
     const id = setInterval(() => {
-      console.log("[Gamma OS] Terminal heartbeat");
+      console.log("[Gamma] Terminal heartbeat");
       setLines((prev) => [
         ...prev,
         { text: `$ heartbeat @ ${new Date().toLocaleTimeString()}`, ts: Date.now() },
@@ -35,7 +35,7 @@ export function TerminalApp(): React.ReactElement {
 
     return () => {
       clearInterval(id);
-      console.log("[Gamma OS] Terminal process killed");
+      console.log("[Gamma] Terminal process killed");
     };
   }, []);
 

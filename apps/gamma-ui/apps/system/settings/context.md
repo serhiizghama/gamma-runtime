@@ -1,7 +1,7 @@
-## Gamma OS Settings (system app)
+## Gamma Agent Runtime Settings (system app)
 
 **Purpose**
-- Central place to tune core Gamma OS UI behavior.
+- Central place to tune core Gamma Agent Runtime UI behavior.
 - Controls theme, live background parameters, and global reset.
 
 **Current behavior**
@@ -9,7 +9,7 @@
 - Lets the user:
   - Switch between light and dark themes.
   - Adjust live background blur (`bgBlur`) and animation speed (`bgSpeed`).
-  - Reset all Gamma OS state (windows, preferences, persisted session) via a single button.
+  - Reset all Gamma Agent Runtime state (windows, preferences, persisted session) via a single button.
 - All changes are persisted through the `gamma-os-session` local storage key.
 
 **Architecture notes**

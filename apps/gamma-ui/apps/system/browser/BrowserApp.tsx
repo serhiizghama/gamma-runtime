@@ -116,7 +116,7 @@ export function BrowserApp(): React.ReactElement {
               }}
             >
               Enter a URL above to open a site inside this window. This is a minimal shell
-              meant to be extended by the Gamma OS Architect and AI agent.
+              meant to be extended by the Gamma Agent Runtime Architect and AI agent.
             </p>
           </div>
         )}

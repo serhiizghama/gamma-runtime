@@ -1,4 +1,4 @@
-## Gamma OS Browser (system app)
+## Gamma Agent Runtime Browser (system app)
 
 **Purpose**
 - Simple in-window web shell for viewing external documentation and tools.
@@ -13,7 +13,7 @@
 
 **Architecture notes**
 - Implemented as a standalone React component with local `useState`.
-- Does not talk directly to the Gamma OS store or backend APIs.
+- Does not talk directly to the Gamma Agent Runtime store or backend APIs.
 - Uses a very small styling surface focused on a clean, glassy address bar and full-window content pane.
 
 **Extension ideas for the AI agent**

@@ -1,5 +1,5 @@
 /**
- * @gamma/types — Shared type definitions for Gamma OS
+ * @gamma/types — Shared type definitions for Gamma Agent Runtime
  * Spec reference: Phase 2 Backend Integration Specification v1.4, §3
  *
  * Single source of truth for both frontend (React) and backend (NestJS).
@@ -10,7 +10,7 @@
 /** v1.3: includes "aborted" — set on user abort or tool timeout */
 export type AgentStatus = 'idle' | 'running' | 'error' | 'aborted';
 
-// ── §3.3 Gamma OS SSE Events ─────────────────────────────────────────────
+// ── §3.3 SSE Events ──────────────────────────────────────────────────────
 
 export interface TokenUsage {
   inputTokens: number;

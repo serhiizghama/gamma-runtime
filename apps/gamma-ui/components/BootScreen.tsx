@@ -132,7 +132,7 @@ export function BootScreen({ onDone }: { onDone: () => void }) {
     "Mounting virtual filesystem...",
     "Starting window compositor...",
     "Launching application runtime...",
-    "Gamma OS ready.",
+    "Gamma Agent Runtime ready.",
   ];
 
   useEffect(() => {
@@ -210,7 +210,7 @@ export function BootScreen({ onDone }: { onDone: () => void }) {
             color: "var(--color-accent-primary)",
           }}
         >
-          <GlitchText>Gamma OS</GlitchText>
+          <GlitchText>Gamma</GlitchText>
         </div>
 
         {/* Loading bar */}

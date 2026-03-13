@@ -41,7 +41,7 @@ export class RedisModule implements OnModuleInit, OnModuleDestroy {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Failed to connect to Redis: ${message}`);
-      this.logger.error('Exiting — Redis is required for Gamma OS kernel');
+      this.logger.error('Exiting — Redis is required for Gamma Agent Runtime');
       process.exit(1);
     }
   }

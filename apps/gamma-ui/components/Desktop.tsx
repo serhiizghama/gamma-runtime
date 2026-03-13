@@ -2,7 +2,7 @@ import React from "react";
 import { useOSStore } from "../store/useOSStore";
 
 /**
- * Desktop — Live Nebula background + persistent "Gamma OS" brand watermark.
+ * Desktop — Live Nebula background + persistent "Gamma" brand watermark.
  */
 export function Desktop(): React.ReactElement {
   const launchpadOpen       = useOSStore((s) => s.launchpadOpen);
@@ -97,7 +97,7 @@ export function Desktop(): React.ReactElement {
             opacity: 0.7,
           }}
         >
-          Gamma OS
+          Gamma
         </span>
       </div>
     </div>

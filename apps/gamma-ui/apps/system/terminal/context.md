@@ -1,7 +1,7 @@
-## Gamma OS Terminal (system app)
+## Gamma Agent Runtime Terminal (system app)
 
 **Purpose**
-- Lightweight, in-browser demo terminal for Gamma OS.
+- Lightweight, in-browser demo terminal for Gamma Agent Runtime.
 - Showcases the long-running "process" pattern and cleanup contract.
 - Safe sandbox: does not execute real shell commands.
 
@@ -18,6 +18,6 @@
 
 **Extension ideas for the AI agent**
 - Replace the fake command handler with a real command router backed by APIs.
-- Add commands for inspecting Gamma OS state (windows, sessions, registry).
+- Add commands for inspecting Gamma Agent Runtime state (windows, sessions, registry).
 - Implement simple scripting or macros that operate over the desktop environment.
 
