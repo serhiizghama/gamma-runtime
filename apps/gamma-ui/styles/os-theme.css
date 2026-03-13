@@ -1,0 +1,503 @@
+:root {
+  /* ── Twilight Blue foundational palette ───────────────────── */
+  --color-bg-primary: #0F172A;
+  --color-bg-secondary: #1E293B;
+  --color-accent-primary: #3B82F6;
+  --color-text-primary: #F8FAFC;
+  --color-text-secondary: #94A3B8;
+  --color-border-subtle: rgba(255, 255, 255, 0.1);
+  --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+  /* ── Semantic surface & text tokens (utility-first) ────────── */
+  --color-bg-base: var(--color-bg-primary);
+  --color-surface: var(--color-bg-secondary);
+  --color-surface-elevated: #1E293B;
+  --color-text-muted: var(--color-text-secondary);
+  --color-accent: var(--color-accent-primary);
+  --color-text-muted-strong: rgba(248, 250, 252, 0.6);
+  --color-text-faint: rgba(248, 250, 252, 0.25);
+  --color-text-inverse: #FFFFFF;
+  --color-accent-error: #ff4d4f;
+
+  /* ── Core window & panel aesthetics ────────────────────────── */
+  --shadow-window: 0 24px 64px rgba(0, 0, 0, 0.5);
+  --shadow-window-subtle: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-panel-overlay: 0 -4px 24px rgba(0, 0, 0, 0.25);
+  --shadow-panel-side: -4px 0 24px rgba(0, 0, 0, 0.3);
+  --shadow-panel-subtle: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-bubble-assistant: 0 2px 8px rgba(0, 0, 0, 0.15);
+  --shadow-button-primary: 0 8px 18px rgba(59, 130, 246, 0.35);
+  --shadow-accent-glow: 0 0 8px rgba(59, 130, 246, 0.5);
+
+  --radius-window: 12px;
+  --radius-panel: 10px;
+  --radius-control: 8px;
+
+  /* ── 4pt spatial grid (1 unit = 4px) ──────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ── Typography weights ───────────────────────────────────── */
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ── Accent & brand ───────────────────────────────────────── */
+  --accent-primary-soft: #60a5fa;
+
+  /* ── Glass morphism (Twilight Blue) ───────────────────────── */
+  --glass-bg: rgba(15, 23, 42, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-blur: blur(16px) saturate(180%);
+  --glass-shadow: var(--shadow-elevated);
+
+  /* ── macOS window chrome ──────────────────────────────────── */
+  --window-bg: var(--color-surface-elevated);
+  --window-titlebar-height: 28px;
+  --window-radius: var(--radius-window);
+  --window-border: 1px solid var(--color-border-subtle);
+  --window-min-width: 320px;
+  --window-min-height: 200px;
+  --desktop-taskbar-height: 32px;
+
+  /* ── Dock ─────────────────────────────────────────────────── */
+  --dock-bg: rgba(15, 23, 42, 0.65);
+  --dock-blur: blur(16px) saturate(180%);
+  --dock-radius: 20px;
+  --dock-icon-size: 56px;
+  --dock-padding: 8px 14px;
+
+  /* ── Typography ───────────────────────────────────────────── */
+  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui,
+    sans-serif;
+
+  /* ── Notifications ────────────────────────────────────────── */
+  --notif-bg: rgba(15, 23, 42, 0.92);
+  --notif-radius: 14px;
+  --notif-shadow: var(--shadow-elevated);
+
+  /* ── Console / terminal & controls (utility) ──────────────── */
+  --color-bg-console: rgba(0, 0, 0, 0.85);
+  --color-text-console: #e2e2e2;
+  --color-border-subtle-strong: rgba(255, 255, 255, 0.08);
+  --color-accent-success-strong: var(--btn-maximize);
+  --color-surface-muted: rgba(255, 255, 255, 0.06);
+  --color-surface-muted-strong: rgba(255, 255, 255, 0.14);
+  --color-text-on-muted-strong: rgba(255, 255, 255, 0.92);
+  --color-text-on-muted: rgba(255, 255, 255, 0.8);
+  --shadow-soft: 0 1px 4px rgba(0, 0, 0, 0.3);
+
+  /* ── Kernel Monitor (matrix terminal) ──────────────────────── */
+  --monitor-bg: #0a0a0a;
+  --monitor-fg: #00ff41;
+  --monitor-fg-muted: #00cc33;
+  --monitor-border: #1a3a1a;
+  --monitor-surface-success: rgba(0, 255, 65, 0.1);
+  --monitor-border-success: rgba(0, 255, 65, 0.3);
+  --monitor-surface-success-faint: rgba(0, 255, 65, 0.05);
+  --monitor-border-success-faint: rgba(0, 255, 65, 0.2);
+  --monitor-surface-success-ghost: rgba(0, 255, 65, 0.03);
+  --monitor-border-success-ghost: rgba(0, 255, 65, 0.08);
+  --monitor-surface-error: rgba(255, 60, 60, 0.1);
+  --monitor-border-error: rgba(255, 60, 60, 0.3);
+  --monitor-surface-overlay: rgba(0, 0, 0, 0.7);
+  --monitor-border-overlay: rgba(0, 255, 65, 0.25);
+  --monitor-fg-error: #ff4444;
+
+  --monitor-status-idle: #22c55e;
+  --monitor-status-running: #eab308;
+  --monitor-status-error: #f97373;
+
+  --button-danger-border: rgba(255, 95, 87, 0.35);
+  --button-danger-bg: rgba(255, 95, 87, 0.15);
+  --button-danger-bg-hover: rgba(255, 95, 87, 0.28);
+  --button-danger-fg: var(--btn-close);
+  --button-ghost-border: rgba(255, 255, 255, 0.12);
+  --button-ghost-bg: rgba(255, 255, 255, 0.08);
+  --button-ghost-bg-hover: var(--color-surface-muted-strong);
+  --button-ghost-fg: var(--color-text-on-muted);
+
+  /* ── Status / primary call-to-action ──────────────────────── */
+  --color-indicator-online-bg: radial-gradient(circle at 30% 30%, #4ade80, #16a34a);
+  --shadow-indicator-online: 0 0 0 1px rgba(22, 163, 74, 0.6);
+  --button-primary-bg: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.95),
+    rgba(129, 140, 248, 0.95)
+  );
+  --button-primary-fg: #020617;
+
+  /* ── Traffic lights ───────────────────────────────────────── */
+  --btn-close: #ff5f57;
+  --btn-minimize: #febc2e;
+  --btn-maximize: #28c840;
+
+  /* ── Motion ───────────────────────────────────────────────── */
+  --spring-fast: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --duration-fast: 180ms;
+  --duration-normal: 280ms;
+  --duration-slow: 420ms;
+
+  /* ── Nebula blob colors (Twilight Blue tones) ──────────────── */
+  --blob-1: #3b82f6; /* accent blue    */
+  --blob-2: #60a5fa; /* soft blue      */
+  --blob-3: #38bdf8; /* cyan accent    */
+  --blob-4: #6366f1; /* indigo         */
+  --blob-5: #2563eb; /* deep blue      */
+}
+
+/* ── Blob keyframes ───────────────────────────────────────────── */
+@keyframes blobDrift1 {
+  0%   { transform: translate(0px,   0px)   scale(1);    }
+  33%  { transform: translate(50px, -40px)  scale(1.08); }
+  66%  { transform: translate(-30px, 25px)  scale(0.96); }
+  100% { transform: translate(0px,   0px)   scale(1);    }
+}
+@keyframes blobDrift2 {
+  0%   { transform: translate(0px,  0px)   scale(1);    }
+  40%  { transform: translate(-60px, 45px) scale(1.06); }
+  70%  { transform: translate(35px, -30px) scale(0.97); }
+  100% { transform: translate(0px,  0px)   scale(1);    }
+}
+@keyframes blobDrift3 {
+  0%   { transform: translate(0px, 0px)   scale(1);    }
+  35%  { transform: translate(55px,50px)  scale(1.05); }
+  70%  { transform: translate(-25px,-35px) scale(0.95); }
+  100% { transform: translate(0px, 0px)   scale(1);    }
+}
+@keyframes blobDrift4 {
+  0%   { transform: translate(0px, 0px)    scale(1);    }
+  50%  { transform: translate(-45px,-45px) scale(1.10); }
+  100% { transform: translate(0px, 0px)    scale(1);    }
+}
+@keyframes blobDrift5 {
+  0%   { transform: translate(0px,  0px)   scale(1);    }
+  40%  { transform: translate(40px,-55px)  scale(1.06); }
+  75%  { transform: translate(-40px,40px)  scale(0.94); }
+  100% { transform: translate(0px,  0px)   scale(1);    }
+}
+
+/* Base gradient breathes slowly via background-size shift */
+@keyframes bgBreath {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+
+/* Live background + boot screen keyframes removed for flat & fast design */
+
+.window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  width: var(--win-w, 800px);
+  height: var(--win-h, 560px);
+  transform: translate(var(--win-x, 0px), var(--win-y, 0px));
+  box-sizing: border-box;
+  transition:
+    top 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    left 300ms,
+    width 300ms;
+}
+
+.window--maximized {
+  top: var(--desktop-taskbar-height);
+  left: 0;
+  margin: 0;
+  margin-top: 0 !important;
+  width: 100vw;
+  height: calc(100vh - var(--desktop-taskbar-height));
+  transform: none;
+  box-sizing: border-box;
+}
+
+/* ── Bottom Dock (auto-hide) ─────────────────────────────────── */
+.dock-trigger-area {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 48px var(--space-4);
+  height: 48px;
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.dock-container {
+  background: var(--dock-bg);
+  border-radius: var(--dock-radius);
+  padding: var(--dock-padding);
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 80px;
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-elevated);
+  transform: translateY(calc(100% + var(--space-4)));
+  transition: transform 400ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dock-trigger-area:hover .dock-container {
+  transform: translateY(0);
+}
+
+.window__frame {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--window-radius);
+  animation: windowOpen var(--duration-normal) var(--spring-fast) forwards;
+  transform-origin: center center;
+  will-change: transform, opacity, box-shadow;
+  transition:
+    transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 300ms ease-out,
+    opacity 300ms ease-out,
+    border-color 300ms ease-out;
+  transform: scale(0.985);
+  opacity: 0.85;
+  box-shadow: var(--shadow-window-subtle);
+  border: 1px solid transparent;
+}
+
+.window--maximized .window__frame {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.window--focused .window__frame {
+  transform: scale(1);
+  opacity: 1;
+  box-shadow: var(--shadow-window);
+  border-color: transparent;
+}
+
+.window--minimized { visibility: hidden; pointer-events: none; }
+
+/* ── TitleBar ─────────────────────────────────────────────────── */
+.window-titlebar {
+  height: var(--window-titlebar-height);
+  display: flex; align-items: center;
+  padding: 0 12px; gap: 8px;
+  flex-shrink: 0; cursor: grab;
+  user-select: none;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.window-titlebar__lights { display: flex; gap: 6px; flex-shrink: 0; }
+
+.btn-close, .btn-minimize, .btn-maximize {
+  position: relative; width: 12px; height: 12px;
+  border-radius: 50%; border: none; cursor: pointer;
+  padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.btn-close    { background: var(--btn-close); }
+.btn-minimize { background: var(--btn-minimize); }
+.btn-maximize { background: var(--btn-maximize); }
+
+.btn-close::after, .btn-minimize::after, .btn-maximize::after {
+  content: ''; position: absolute; opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-smooth);
+  pointer-events: none;
+}
+.btn-close::after {
+  width: 6px; height: 6px;
+  background:
+    linear-gradient(45deg,
+      transparent calc(50% - 0.5px), rgba(0,0,0,0.65) calc(50% - 0.5px),
+      rgba(0,0,0,0.65) calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+    linear-gradient(-45deg,
+      transparent calc(50% - 0.5px), rgba(0,0,0,0.65) calc(50% - 0.5px),
+      rgba(0,0,0,0.65) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+}
+.btn-minimize::after { width: 6px; height: 1px; background: rgba(0,0,0,0.55); border-radius: 1px; }
+.btn-maximize::after {
+  width: 5px; height: 5px;
+  border: 1px solid rgba(0,0,0,0.6); border-radius: 1px;
+  background: transparent; transform: rotate(45deg) scale(0.85);
+}
+
+.window-titlebar:hover .btn-close::after,
+.window-titlebar:hover .btn-minimize::after,
+.window-titlebar:hover .btn-maximize::after { opacity: 1; }
+
+.btn-close:hover    { filter: brightness(0.88); }
+.btn-minimize:hover { filter: brightness(0.88); }
+.btn-maximize:hover { filter: brightness(0.88); }
+
+.window-titlebar__title {
+  flex: 1; text-align: center; font-size: 13px; font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  pointer-events: none; font-family: var(--font-system);
+}
+.window-titlebar__spacer { width: 42px; flex-shrink: 0; }
+
+/* ── AppIcon ─────────────────────────────────────────────────── */
+.app-icon {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 6px;
+  background: transparent; border: none; cursor: pointer;
+  padding: 8px 6px 4px; border-radius: 14px; position: relative;
+}
+
+.app-icon__glyph {
+  font-size: 34px; line-height: 1; display: block;
+  will-change: transform;
+  transform: translateY(0px) scale(1);
+  transition: transform var(--duration-normal) var(--spring-fast);
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.45));
+}
+
+.app-icon__glyph::after {
+  content: ''; display: block;
+  position: absolute; bottom: 26px; left: 50%;
+  width: 30px; height: 8px;
+  transform: translateX(-50%) scaleX(0.5);
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, transparent 75%);
+  opacity: 0;
+  transition:
+    opacity var(--duration-normal) var(--ease-smooth),
+    transform var(--duration-normal) var(--ease-smooth);
+  pointer-events: none;
+}
+
+.app-icon__label {
+  font-size: 11px; font-weight: 500;
+  font-family: var(--font-system);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 64px; line-height: 1;
+}
+
+/* Dock: white label with shadow for contrast on any background */
+.app-icon--dock .app-icon__label {
+  color: var(--color-text-on-muted-strong);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.70), 0 0 8px rgba(0,0,0,0.40);
+}
+.app-icon--launchpad .app-icon__label {
+  color: var(--color-text-primary);
+  font-size: 12px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.60);
+}
+
+.app-icon:hover .app-icon__glyph { transform: translateY(-8px) scale(1.1); }
+.app-icon:hover .app-icon__glyph::after { opacity: 1; transform: translateX(-50%) scaleX(1); }
+.app-icon--launchpad:hover { background: rgba(255,255,255,0.10); }
+.app-icon--launchpad:hover { background: var(--color-border-subtle); }
+
+/* ── Toast Notifications ──────────────────────────────────────── */
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateX(calc(100% + 20px)); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastSlideOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(calc(100% + 20px)); }
+}
+.toast-notification {
+  animation: toastSlideIn var(--duration-normal) var(--spring-fast) forwards;
+}
+.toast-notification--dismissing {
+  animation: toastSlideOut var(--duration-fast) var(--ease-smooth) forwards;
+}
+
+/* ── Desktop Shell ─────────────────────────────────────────────── */
+.desktop-shell {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--color-bg-base) 0%, var(--color-surface) 100%);
+  font-family: var(--font-system);
+  color: var(--color-text-primary);
+  user-select: none;
+}
+
+.desktop-shell__taskbar {
+  height: var(--desktop-taskbar-height);
+  min-height: var(--desktop-taskbar-height);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-secondary);
+  z-index: 10000;
+}
+
+.desktop-shell__menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.desktop-shell__menu-item {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+  font-size: 13px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-smooth),
+    text-shadow var(--duration-fast) var(--ease-smooth);
+}
+
+.desktop-shell__menu-item:hover {
+  color: var(--color-accent-primary);
+  text-shadow: var(--shadow-accent-glow);
+}
+
+.desktop-shell__tray-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  opacity: 0.9;
+  transition: color 200ms ease-out, opacity 200ms ease-out;
+}
+.desktop-shell__tray-btn:hover {
+  color: var(--color-accent-primary);
+  opacity: 1;
+}
+
+/* ── Desktop ──────────────────────────────────────────────────── */
+.desktop--launchpad-open {
+  background: var(--color-bg-secondary);
+}
+
+/* ── Agent Chat ────────────────────────────────────────────────── */
+.agent-chat-message-list {
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><text x="50%25" y="50%25" font-family="Inter, sans-serif" font-weight="800" font-size="16" fill="rgba(255, 255, 255, 0.03)" transform="rotate(-45 80 80)" text-anchor="middle" letter-spacing="2">GAMMA OS</text></svg>');
+  background-repeat: repeat;
+}
