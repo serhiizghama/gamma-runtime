@@ -1,0 +1,22 @@
+{
+  "name": "@gamma/watchdog",
+  "version": "0.1.0",
+  "description": "Gamma Watchdog — Self-Healing Build Daemon",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsup src/main.ts --format cjs --out-dir dist --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ioredis": "^5.10.0",
+    "pino": "^9.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.2"
+  }
+}
