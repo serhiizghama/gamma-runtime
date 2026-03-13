@@ -1,5 +1,6 @@
 import pino from 'pino';
 import { RedisListener } from './redis-listener';
+import { HealingLoop } from './healing-loop';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -14,22 +15,13 @@ const logger = pino({
 async function main() {
   logger.info('Gamma Watchdog daemon is starting...');
 
+  // ── Healing Loop (FREEZE → ROLLBACK → future: RESTART → FEEDBACK) ──
+  const healer = new HealingLoop(REDIS_URL, logger);
+
   // ── Redis Listener (Detect phase) ──────────────────────────────────
   const listener = new RedisListener(REDIS_URL, logger);
 
-  listener.onCrashReport((report) => {
-    logger.warn(
-      {
-        service: report.service,
-        crashType: report.crashType,
-        affectedFile: report.affectedFile,
-        agentSessionId: report.agentSessionId,
-        exitCode: report.exitCode,
-      },
-      `[HEALING] ${report.crashType} in ${report.service} — ${report.errorLog.slice(0, 200)}`,
-    );
-    // Future milestones: FREEZE → ROLLBACK → RESTART → FEEDBACK
-  });
+  listener.onCrashReport((report) => healer.handle(report));
 
   await listener.start();
   logger.info('Gamma Watchdog daemon is online');
@@ -38,6 +30,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Received shutdown signal, exiting...');
     await listener.stop();
+    await healer.stop();
     process.exit(0);
   };
 

@@ -7,6 +7,7 @@ import { SessionsService } from './sessions.service';
 import { SessionGcService } from './session-gc.service';
 import { SessionRegistryService } from './session-registry.service';
 import { SystemAppGuard } from './system-guard';
+import { WatchdogCommandListenerService } from '../gateway/watchdog-command-listener.service';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { SystemAppGuard } from './system-guard';
     SessionRegistryModule,
   ],
   controllers: [SessionsController],
-  providers: [SessionsService, SessionGcService, SystemAppGuard],
+  providers: [SessionsService, SessionGcService, SystemAppGuard, WatchdogCommandListenerService],
   exports: [SessionsService, SessionRegistryModule],
 })
 export class SessionsModule implements OnModuleInit {

@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { watchdogBridge } from "./vite-plugin-watchdog-bridge";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), watchdogBridge()],
   resolve: {
     alias: {
       "@gamma/types": path.resolve(__dirname, "../../packages/gamma-types/index.ts"),

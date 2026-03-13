@@ -76,6 +76,11 @@ export class AppStorageService {
   }
 
   async writeFile(absolutePath: string, content: string | Buffer): Promise<void> {
+    // Watchdog contract: create .bak before every agent write (§4 rollback)
+    if (await this.fileExists(absolutePath)) {
+      await fs.copyFile(absolutePath, `${absolutePath}.bak`);
+    }
+
     if (typeof content === 'string') {
       await fs.writeFile(absolutePath, content, 'utf8');
     } else {
