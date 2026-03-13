@@ -5,6 +5,6 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "tsConfigPath": "tsconfig.build.json",
-    "entryFile": "main"
+    "entryFile": "apps/gamma-core/src/main"
   }
 }

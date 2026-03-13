@@ -9,7 +9,7 @@
         ]
     },
     "output": {
-        "filePath": "gamma-os-context.xml",
+        "filePath": "gamma-runtime-context.xml",
         "style": "xml"
     }
 }

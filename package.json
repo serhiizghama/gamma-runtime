@@ -1,12 +1,13 @@
 {
-  "name": "gamma-os-monorepo",
+  "name": "gamma-runtime",
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "npm run dev --prefix web",
-    "dev:kernel": "npm run start:dev --prefix kernel",
-    "build": "npm run build --prefix web",
-    "build:kernel": "npm run build --prefix kernel",
-    "start:kernel": "npm run start:prod --prefix kernel"
+    "dev": "pnpm --filter @gamma/ui dev",
+    "dev:core": "pnpm --filter @gamma/core start:dev",
+    "build": "pnpm --filter @gamma/ui build",
+    "build:core": "pnpm --filter @gamma/core build",
+    "start:core": "pnpm --filter @gamma/core start:prod",
+    "typecheck": "pnpm --filter @gamma/ui typecheck && pnpm --filter @gamma/core typecheck"
   }
 }

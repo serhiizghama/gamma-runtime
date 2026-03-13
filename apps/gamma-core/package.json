@@ -8,7 +8,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main.js",
+    "start:prod": "node dist/apps/gamma-core/src/main.js",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit"
   },
@@ -22,6 +22,7 @@
     "@nestjs/schedule": "^6.1.1",
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
+    "fastify": "^4.28.1",
     "ioredis": "^5.10.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
