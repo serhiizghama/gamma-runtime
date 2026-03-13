@@ -252,14 +252,62 @@ function MessageBubble({ msg, status, isStreaming }: { msg: ChatMessage; accentC
 
 // ── Typing Indicator ─────────────────────────────────────────────────────
 
-function TypingIndicator(): React.ReactElement {
+const STATUS_LABELS = ["Thinking", "Working", "Processing"];
+let _labelIdx = 0;
+
+function TypingIndicator({ toolLines }: { toolLines?: string[] }): React.ReactElement {
+  const [label] = React.useState(() => STATUS_LABELS[_labelIdx++ % STATUS_LABELS.length]);
+
   return (
-    <div style={{ display: "flex", gap: 10, marginBottom: 14, paddingRight: "12%", alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 10, marginBottom: 14, paddingRight: "12%" }}>
       <GammaAvatar />
-      <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "10px 14px", borderRadius: "4px 18px 18px 18px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderLeft: "3px solid rgba(59,130,246,0.45)" }}>
-        {[0, 1, 2].map((i) => (
-          <span key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: "rgba(96,165,250,0.6)", display: "inline-block", animation: `typingDot 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-        ))}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          padding: "10px 14px",
+          borderRadius: "4px 18px 18px 18px",
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.07)",
+          borderLeft: "3px solid rgba(59,130,246,0.45)",
+          minWidth: 120,
+        }}
+      >
+        {/* Animated status row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Label */}
+          <span style={{ fontSize: 12, color: "rgba(150,180,255,0.6)", fontFamily: "var(--font-system)", letterSpacing: 0.2 }}>
+            {label}
+          </span>
+          {/* Wave dots after the word */}
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: "50%",
+                  background: "rgba(96,165,250,0.75)",
+                  display: "inline-block",
+                  animation: `waveDot 1.1s ease-in-out ${i * 0.18}s infinite`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Live tool lines if any */}
+        {toolLines && toolLines.length > 0 && (
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
+            {toolLines.slice(-3).map((line, i) => (
+              <div key={i} style={{ fontFamily: "'SF Mono', monospace", fontSize: 10, color: "rgba(96,165,250,0.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {line}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -288,21 +336,17 @@ export function MessageList({ messages, pendingToolLines, accentColor, status }:
         return <MessageBubble key={msg.id} msg={msg} accentColor={accentColor} status={status} isStreaming={isStreaming} />;
       })}
 
-      {/* Pending tool lines */}
-      {pendingToolLines.length > 0 && (
-        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-          <GammaAvatar />
-          <div style={{ padding: "10px 14px", borderRadius: "4px 18px 18px 18px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderLeft: "3px solid rgba(59,130,246,0.45)" }}>
-            {pendingToolLines.map((line, i) => (
-              <div key={i} style={{ fontFamily: "'SF Mono', monospace", fontSize: 11, color: "rgba(96,165,250,0.8)", padding: "1px 0" }}>{line}</div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Typing indicator when running and last message is from user */}
-      {status === "running" && messages.length > 0 && messages[messages.length - 1].role === "user" && (
-        <TypingIndicator />
+      {/* Typing indicator:
+            - Show when running + last msg is user (waiting for first token)
+            - OR when running + pending tool lines (agent is calling tools mid-stream)
+            - Absorbs tool lines so they live inside the indicator bubble      */}
+      {status === "running" && (
+        messages[messages.length - 1]?.role === "user" ||
+        pendingToolLines.length > 0
+      ) && (
+        <TypingIndicator
+          toolLines={pendingToolLines.length > 0 ? pendingToolLines : undefined}
+        />
       )}
 
       <div ref={bottomRef} />

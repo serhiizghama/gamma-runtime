@@ -160,6 +160,10 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
         }
+        @keyframes waveDot {
+          0%, 60%, 100% { transform: translateY(0);    opacity: 0.35; }
+          30%            { transform: translateY(-5px); opacity: 1;    }
+        }
         .agent-chat-message-list::-webkit-scrollbar { width: 4px; }
         .agent-chat-message-list::-webkit-scrollbar-track { background: transparent; }
         .agent-chat-message-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
