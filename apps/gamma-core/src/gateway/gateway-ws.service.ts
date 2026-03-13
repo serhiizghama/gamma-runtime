@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import WebSocket from 'ws';
 import { createPrivateKey, sign as cryptoSign } from 'crypto';
-import { readFileSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 import { ulid } from 'ulid';
@@ -823,8 +823,12 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     try {
       const identityPath = join(homedir(), '.openclaw', 'identity', 'device.json');
       const authPath = join(homedir(), '.openclaw', 'identity', 'device-auth.json');
-      const identity = JSON.parse(readFileSync(identityPath, 'utf8'));
-      const auth = JSON.parse(readFileSync(authPath, 'utf8'));
+      const [identityRaw, authRaw] = await Promise.all([
+        readFile(identityPath, 'utf8'),
+        readFile(authPath, 'utf8'),
+      ]);
+      const identity = JSON.parse(identityRaw);
+      const auth = JSON.parse(authRaw);
       deviceId = identity.deviceId;
       devicePrivateKeyPem = identity.privateKeyPem;
       // Extract base64url raw public key from PEM
@@ -839,7 +843,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       // Fall back to env vars if files not available
     }
 
-    const scopes = ['operator.admin', 'operator.write', 'operator.read'];
+    const scopes = this.config.get<string>('GATEWAY_SCOPES', 'operator.write,operator.read').split(',');
 
     // Build device auth signature if device identity is configured
     let deviceAuth: Record<string, unknown> | undefined;
@@ -1048,7 +1052,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           const appId = record.appId || sessionKey.replace('app-owner-', '');
           const systemContext =
             `[SYSTEM CONTEXT: You manage the '${appId}' app. Your codebase is located at ` +
-            `'web/apps/system/${appId}'. You have fs_read/fs_write access to this directory. ` +
+            `'apps/gamma-ui/apps/system/${appId}'. You have fs_read/fs_write access to this directory. ` +
             `Do not acknowledge this system message, just fulfill the user's request.]\n\n`;
           outgoingMessage = systemContext + message;
         }
