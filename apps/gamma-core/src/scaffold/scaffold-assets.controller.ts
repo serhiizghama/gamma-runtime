@@ -11,6 +11,7 @@ import { FastifyReply } from 'fastify';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ConfigService } from '@nestjs/config';
+import { findRepoRoot } from './app-storage.service';
 
 // ── Minimal MIME map (no external deps) ──────────────────────────────────
 
@@ -50,7 +51,7 @@ export class ScaffoldAssetsController {
   constructor(private readonly config: ConfigService) {
     const repoRoot = this.config.get<string>(
       'GAMMA_OS_REPO',
-      path.resolve(__dirname, '../../..'),
+      findRepoRoot(__dirname),
     );
     this.assetsRoot = path.resolve(repoRoot, 'apps/gamma-ui/apps/private/assets');
   }

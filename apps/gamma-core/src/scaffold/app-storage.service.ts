@@ -1,8 +1,34 @@
 import { Injectable, ForbiddenException, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { mkdirSync } from 'fs';
+import { mkdirSync, existsSync, readFileSync } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+
+/**
+ * Walks up from a starting directory to find the monorepo root.
+ * Identifies root by a package.json with `"name": "gamma-runtime"`.
+ * Works both from src/ (ts-node dev) and dist/ (compiled prod).
+ */
+export function findRepoRoot(startDir: string): string {
+  let dir = startDir;
+  for (let i = 0; i < 10; i++) {
+    const candidate = path.join(dir, 'package.json');
+    if (existsSync(candidate)) {
+      try {
+        const pkg = JSON.parse(readFileSync(candidate, 'utf8'));
+        if (pkg.name === 'gamma-runtime') return dir;
+      } catch {
+        // not valid JSON, keep walking
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // reached filesystem root
+    dir = parent;
+  }
+  throw new Error(
+    `Cannot find gamma-runtime monorepo root (searched up from ${startDir})`,
+  );
+}
 
 /**
  * App Storage Service — Jailed File System (spec §9.5).
@@ -23,13 +49,14 @@ export class AppStorageService implements OnModuleInit {
   constructor(private readonly config: ConfigService) {
     this.repoRoot = this.config.get<string>(
       'GAMMA_OS_REPO',
-      path.resolve(__dirname, '../../..'),
+      findRepoRoot(__dirname),
     );
     this.JAIL_ROOT = path.resolve(this.repoRoot, 'apps/gamma-ui/apps/private');
   }
 
   onModuleInit(): void {
     mkdirSync(this.JAIL_ROOT, { recursive: true });
+    this.logger.log(`Repo root: ${this.repoRoot}`);
     this.logger.log(`Jail root ensured: ${this.JAIL_ROOT}`);
   }
 
