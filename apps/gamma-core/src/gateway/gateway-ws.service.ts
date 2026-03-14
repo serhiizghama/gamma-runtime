@@ -21,6 +21,7 @@ import {
 } from './event-classifier';
 import { ToolWatchdogService } from './tool-watchdog.service';
 import { SessionRegistryService } from '../sessions/session-registry.service';
+import { AppStorageService } from '../scaffold/app-storage.service';
 import type { GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
 // ── Local types ───────────────────────────────────────────────────────────
@@ -154,6 +155,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly toolWatchdog: ToolWatchdogService,
     private readonly sessionRegistry: SessionRegistryService,
+    private readonly appStorage: AppStorageService,
   ) {
     this.gatewayUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
     this.gatewayToken = this.config.get('OPENCLAW_GATEWAY_TOKEN', '');
@@ -1058,6 +1060,16 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         }
       } catch {
         // Best-effort — if registry lookup fails, send the original message unchanged
+      }
+    }
+
+    // ── Pre-flight snapshot: capture app directory before agent run ──────
+    if (sessionKey.startsWith('app-owner-')) {
+      const appId = sessionKey.replace('app-owner-', '');
+      try {
+        await this.appStorage.snapshotApp(appId);
+      } catch (err) {
+        this.logger.warn(`sendMessage: snapshot failed for ${appId}, proceeding without backup`);
       }
     }
 

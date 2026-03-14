@@ -17,6 +17,6 @@ import { ScaffoldAssetsController } from './scaffold-assets.controller';
     ValidationService,
     ScaffoldService,
   ],
-  exports: [ScaffoldService],
+  exports: [ScaffoldService, AppStorageService],
 })
 export class ScaffoldModule {}

@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -15,6 +15,7 @@ import * as path from 'path';
  */
 @Injectable()
 export class AppStorageService {
+  private readonly logger = new Logger(AppStorageService.name);
   readonly JAIL_ROOT: string;
 
   constructor(private readonly config: ConfigService) {
@@ -91,6 +92,26 @@ export class AppStorageService {
   /** Removes a directory tree. Silently succeeds if path does not exist (force). */
   async removeDir(absolutePath: string): Promise<void> {
     await fs.rm(absolutePath, { recursive: true, force: true });
+  }
+
+  // ── Pre-flight Snapshot ────────────────────────────────────────────
+
+  /**
+   * Creates a directory-level snapshot of the app bundle before an agent run.
+   * Stored as `{appDir}.bak_session` — self-cleaning on next invocation.
+   */
+  async snapshotApp(appId: string): Promise<string> {
+    const appDir = this.jailPath(appId);
+    const bakDir = `${appDir}.bak_session`;
+
+    // Remove stale snapshot from previous run (Strategy B cleanup)
+    await fs.rm(bakDir, { recursive: true, force: true });
+
+    // Atomic recursive copy of the entire app directory
+    await fs.cp(appDir, bakDir, { recursive: true });
+
+    this.logger.log(`[SNAPSHOT] ${appId} → ${bakDir}`);
+    return bakDir;
   }
 
   async fileExists(absolutePath: string): Promise<boolean> {
