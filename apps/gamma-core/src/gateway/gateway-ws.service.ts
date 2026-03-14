@@ -1069,8 +1069,8 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       try {
         await this.appStorage.snapshotApp(appId);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(`sendMessage: pre-flight snapshot failed for '${appId}': ${msg}`);
+        const stack = err instanceof Error ? err.stack : String(err);
+        this.logger.error(`sendMessage: pre-flight snapshot failed for '${appId}':\n${stack}`);
       }
     }
 

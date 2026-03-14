@@ -105,16 +105,19 @@ export class AppStorageService implements OnModuleInit {
 
   /**
    * Creates a directory-level snapshot of the app bundle before an agent run.
-   * Resolves the app from system/ (PascalCase) or private/ (kebab-case).
+   * Resolves the app from system/ (lowercase) or private/ (kebab-case).
    * Stored as `{appDir}.bak_session` — self-cleaning on next invocation.
    */
   async snapshotApp(appId: string): Promise<string> {
+    this.logger.debug(`[SNAPSHOT] snapshotApp called for '${appId}'`);
     const appDir = await this.resolveAppRoot(appId);
     if (!appDir) {
       throw new Error(`[SNAPSHOT] App directory not found for '${appId}' in system/ or private/`);
     }
 
     const bakDir = `${appDir}.bak_session`;
+
+    this.logger.debug(`[SNAPSHOT] Copying '${appDir}' → '${bakDir}'`);
 
     // Remove stale snapshot from previous run (Strategy B cleanup)
     await fs.rm(bakDir, { recursive: true, force: true });
@@ -127,22 +130,21 @@ export class AppStorageService implements OnModuleInit {
   }
 
   /**
-   * Resolves the actual app directory, checking system/ first (PascalCase),
+   * Resolves the actual app directory, checking system/ first (lowercase),
    * then private/ (kebab-case). Returns null if neither exists.
    */
   private async resolveAppRoot(appId: string): Promise<string | null> {
-    const pascalName = appId
-      .split('-')
-      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-      .join('');
-
     const candidates = [
-      path.resolve(this.repoRoot, 'apps/gamma-ui/apps/system', pascalName),
+      path.resolve(this.repoRoot, 'apps/gamma-ui/apps/system', appId),
       path.resolve(this.JAIL_ROOT, appId),
     ];
 
+    this.logger.debug(`[SNAPSHOT] resolveAppRoot '${appId}' — candidates: ${JSON.stringify(candidates)}`);
+
     for (const dir of candidates) {
-      if (await this.fileExists(dir)) {
+      const exists = await this.fileExists(dir);
+      this.logger.debug(`[SNAPSHOT]   ${dir} → ${exists ? 'EXISTS' : 'MISSING'}`);
+      if (exists) {
         return dir;
       }
     }
