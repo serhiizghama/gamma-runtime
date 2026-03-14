@@ -12,6 +12,11 @@ interface AgentStreamState {
   sendMessage: (text: string) => void;
 }
 
+interface AgentStreamOptions {
+  /** Called when the backend returns 404 (session not found in Redis). */
+  onSessionMissing?: () => void;
+}
+
 // ── Hook ─────────────────────────────────────────────────────────────────
 
 /**
@@ -26,7 +31,7 @@ interface AgentStreamState {
  * flag. On lifecycle_end all flags are cleared atomically in one setState call,
  * preventing the unmount/remount flicker that plagued the old streamingMessage approach.
  */
-export function useAgentStream(windowId: string): AgentStreamState {
+export function useAgentStream(windowId: string, opts?: AgentStreamOptions): AgentStreamState {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [pendingToolLines, setPendingToolLines] = useState<string[]>([]);
@@ -252,7 +257,13 @@ export function useAgentStream(windowId: string): AgentStreamState {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
       });
-      if (!res.ok) throw new Error(`${res.status}`);
+      if (!res.ok) {
+        // Session not found — trigger re-init so the caller can recreate it
+        if (res.status === 404 && opts?.onSessionMissing) {
+          opts.onSessionMissing();
+        }
+        throw new Error(`${res.status}`);
+      }
     } catch {
       setMessages((prev) => [...prev, {
         id: `err-${Date.now()}`,
@@ -262,7 +273,7 @@ export function useAgentStream(windowId: string): AgentStreamState {
         ts: Date.now(),
       }]);
     }
-  }, [windowId]);
+  }, [windowId, opts]);
 
   return { messages, status, pendingToolLines, sendMessage };
 }

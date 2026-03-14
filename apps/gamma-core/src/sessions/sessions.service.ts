@@ -224,17 +224,24 @@ export class SessionsService {
    * Kill and fully remove ALL active sessions.
    * Calls remove() on each — which handles Gateway deletion, Redis cleanup,
    * registry removal, and watchdog teardown.
+   *
+   * NOTE: Global system sessions (e.g. system-architect) are intentionally
+   * excluded — they are infrastructure singletons and must survive flush
+   * operations. Only app-owner and user-spawned sessions are killed.
+   *
    * Returns the number of sessions that were removed.
    */
   async killAll(): Promise<number> {
     const sessions = await this.findAll();
+    // Exclude global system-level sessions from bulk kill
+    const killable = sessions.filter((s) => !GLOBAL_SESSION_IDENTITY[s.sessionKey]);
     await Promise.all(
-      sessions.map((s) => this.remove(s.windowId).catch((err: unknown) => {
+      killable.map((s) => this.remove(s.windowId).catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(`killAll: failed to remove session ${s.windowId}: ${msg}`);
       })),
     );
-    return sessions.length;
+    return killable.length;
   }
 
   /** Abort a running agent session (spec §4.2) */

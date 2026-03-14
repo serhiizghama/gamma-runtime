@@ -1,10 +1,55 @@
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState, useEffect } from "react";
 import { useOSStore } from "../store/useOSStore";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { AgentChat } from "./AgentChat";
 import { MENU_HEIGHT } from "./MenuBar";
+import { API_BASE } from "../constants/api";
 
 const ARCHITECT_WINDOW_ID = "system-architect";
+
+/**
+ * Ensure the system-architect session exists on the backend.
+ * Runs on every open of the Architect panel, and re-runs if the session
+ * has been wiped (e.g. by a registry flush). Returns a `reInit` callback
+ * that callers can invoke to force a re-check (e.g. after a send failure).
+ */
+function useArchitectSession(): { reInit: () => void } {
+  const busyRef = useRef(false);
+
+  const ensureSession = useCallback(async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions`);
+      if (!res.ok) return; // backend not ready yet — caller can retry
+      const sessions: { windowId: string }[] = await res.json();
+      const exists = sessions.some((s) => s.windowId === ARCHITECT_WINDOW_ID);
+      if (!exists) {
+        await fetch(`${API_BASE}/api/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            windowId: ARCHITECT_WINDOW_ID,
+            appId: "system-architect",
+            sessionKey: "system-architect",
+            agentId: "architect",
+          }),
+        });
+      }
+    } catch {
+      // Backend unavailable — allow the next reInit call to retry
+    } finally {
+      busyRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    ensureSession();
+  }, [ensureSession]);
+
+  return { reInit: ensureSession };
+}
+
 const MIN_WIDTH = 300;
 const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 420;
@@ -16,8 +61,10 @@ const DEFAULT_WIDTH = 420;
 export function ArchitectWindow(): React.ReactElement | null {
   const architectOpen = useOSStore((s) => s.architectOpen);
   const toggleArchitect = useOSStore((s) => s.toggleArchitect);
+  const { reInit } = useArchitectSession();
+
   const { messages, status, pendingToolLines, sendMessage } =
-    useAgentStream(ARCHITECT_WINDOW_ID);
+    useAgentStream(ARCHITECT_WINDOW_ID, { onSessionMissing: reInit });
 
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const containerRef = useRef<HTMLDivElement>(null);
