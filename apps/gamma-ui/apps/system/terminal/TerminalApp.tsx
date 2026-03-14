@@ -5,18 +5,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { API_BASE } from "../../../constants/api";
 
-// ─── WS URL ───────────────────────────────────────────────────────────────────
-
-function getPtyWsUrl(token: string, cols: number, rows: number): string {
-  // In the browser, use the current host (Vite proxies /pty → ws://localhost:3001/pty)
-  const wsBase =
-    typeof window !== "undefined"
-      ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`
-      : "ws://localhost:3001";
-  return `${wsBase}/pty?token=${encodeURIComponent(token)}&cols=${cols}&rows=${rows}`;
-}
-
-// ─── Status badge ─────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type ConnStatus = "connecting" | "connected" | "disconnected" | "error";
 
@@ -26,7 +15,6 @@ const STATUS_COLOR: Record<ConnStatus, string> = {
   disconnected: "#888",
   error:        "#ff5f5f",
 };
-
 const STATUS_LABEL: Record<ConnStatus, string> = {
   connecting:   "Connecting…",
   connected:    "Connected",
@@ -34,52 +22,50 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   error:        "Error",
 };
 
-// ─── TerminalApp ──────────────────────────────────────────────────────────────
+// ─── WS URL helper ────────────────────────────────────────────────────────────
 
-export function TerminalApp(): React.ReactElement {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const termRef      = useRef<Terminal | null>(null);
-  const fitAddonRef  = useRef<FitAddon | null>(null);
-  const wsRef        = useRef<WebSocket | null>(null);
-  const [status, setStatus] = useState<ConnStatus>("connecting");
-  const [errorMsg, setErrorMsg] = useState<string>("");
+function getPtyWsUrl(token: string, cols: number, rows: number): string {
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${window.location.host}/pty?token=${encodeURIComponent(token)}&cols=${cols}&rows=${rows}`;
+}
 
-  // ── Cleanup helper ──────────────────────────────────────────────────────
-  const cleanup = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.onopen    = null;
-      wsRef.current.onmessage = null;
-      wsRef.current.onerror   = null;
-      wsRef.current.onclose   = null;
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-  }, []);
+// ─── Inner session component (remounts on reconnect via key) ──────────────────
 
-  // ── Bootstrap: fetch token → open WS → attach xterm ───────────────────
+interface TerminalSessionProps {
+  onStatusChange: (s: ConnStatus, msg?: string) => void;
+}
+
+function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactElement {
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const termRef       = useRef<Terminal | null>(null);
+  const fitAddonRef   = useRef<FitAddon | null>(null);
+  const wsRef         = useRef<WebSocket | null>(null);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // 1. Create xterm instance
+    // ── 1. Create xterm ────────────────────────────────────────────────
     const term = new Terminal({
       fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace",
       fontSize: 13,
       lineHeight: 1.4,
       theme: {
-        background:    "#0d1117",
-        foreground:    "#e6edf3",
-        cursor:        "#3fb950",
-        cursorAccent:  "#0d1117",
+        background:          "#0d1117",
+        foreground:          "#e6edf3",
+        cursor:              "#3fb950",
+        cursorAccent:        "#0d1117",
         selectionBackground: "rgba(255,255,255,0.15)",
-        black:   "#0d1117", red:     "#ff5f5f", green:   "#5fff87", yellow:  "#ffd787",
-        blue:    "#5fd7ff", magenta: "#d787ff", cyan:    "#5fffff", white:   "#e6edf3",
-        brightBlack: "#444",  brightRed:  "#ff8787", brightGreen:  "#87ffd7",
-        brightYellow: "#ffffd7", brightBlue: "#87d7ff", brightMagenta: "#ffafff",
-        brightCyan: "#87ffff", brightWhite: "#ffffff",
+        black:          "#0d1117", red:          "#ff5f5f",
+        green:          "#5fff87", yellow:       "#ffd787",
+        blue:           "#5fd7ff", magenta:      "#d787ff",
+        cyan:           "#5fffff", white:        "#e6edf3",
+        brightBlack:    "#555",   brightRed:    "#ff8787",
+        brightGreen:    "#87ffd7", brightYellow: "#ffffd7",
+        brightBlue:     "#87d7ff", brightMagenta:"#ffafff",
+        brightCyan:     "#87ffff", brightWhite:  "#ffffff",
       },
       cursorBlink: true,
       scrollback: 5000,
-      allowTransparency: false,
       convertEol: true,
     });
 
@@ -88,73 +74,76 @@ export function TerminalApp(): React.ReactElement {
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
     fitAddon.fit();
-
-    termRef.current    = term;
+    termRef.current     = term;
     fitAddonRef.current = fitAddon;
 
     const { cols, rows } = term;
 
-    // 2. Request a one-time PTY auth token from the backend
-    const controller = new AbortController();
+    // ── 2. Fetch one-time token, then open WebSocket ───────────────────
+    const abortCtrl = new AbortController();
 
     (async () => {
+      onStatusChange("connecting");
+
       let token: string;
       try {
         const res = await fetch(`${API_BASE}/api/pty/token`, {
           method: "POST",
-          signal: controller.signal,
+          signal: abortCtrl.signal,
         });
         if (!res.ok) throw new Error(`Token request failed: HTTP ${res.status}`);
-        const data = await res.json() as { token: string };
-        token = data.token;
+        token = ((await res.json()) as { token: string }).token;
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") return;
         const msg = err instanceof Error ? err.message : String(err);
-        setStatus("error");
-        setErrorMsg(msg);
-        term.write(`\r\n\x1b[31mFailed to obtain PTY token: ${msg}\x1b[0m\r\n`);
+        onStatusChange("error", msg);
+        term.write(`\r\n\x1b[31mFailed to connect: ${msg}\x1b[0m\r\n`);
         return;
       }
 
-      // 3. Open WebSocket
+      // ── 3. Open WS ──────────────────────────────────────────────────
       const ws = new WebSocket(getPtyWsUrl(token, cols, rows));
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
       ws.onopen = () => {
-        setStatus("connected");
+        onStatusChange("connected");
         term.focus();
       };
 
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(
-            typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data)
+            typeof ev.data === "string"
+              ? ev.data
+              : new TextDecoder().decode(ev.data as ArrayBuffer)
           ) as { type: string; data?: string; code?: number };
-
-          if (msg.type === "data" && typeof msg.data === "string") {
+          if (msg.type === "data" && msg.data) {
             term.write(msg.data);
           } else if (msg.type === "exit") {
-            setStatus("disconnected");
-            term.write(`\r\n\x1b[33m[Process exited with code ${msg.code ?? 0}]\x1b[0m\r\n`);
+            onStatusChange("disconnected");
+            term.write(`\r\n\x1b[33m[Shell exited with code ${msg.code ?? 0}]\x1b[0m\r\n`);
           }
-        } catch { /* malformed frame — ignore */ }
+        } catch { /* malformed — ignore */ }
       };
 
       ws.onerror = () => {
-        setStatus("error");
-        setErrorMsg("WebSocket connection error");
-        term.write("\r\n\x1b[31m[WebSocket error — connection lost]\x1b[0m\r\n");
+        onStatusChange("error", "WebSocket error");
+        term.write("\r\n\x1b[31m[Connection error]\x1b[0m\r\n");
       };
 
       ws.onclose = (ev) => {
-        if (ev.code !== 1000 && ev.code !== 1001) {
-          setStatus("disconnected");
-          term.write(`\r\n\x1b[33m[Disconnected (${ev.code})]\x1b[0m\r\n`);
+        // 4500 = PTY spawn failed (our custom code)
+        if (ev.code === 4500) {
+          onStatusChange("error", "PTY spawn failed on server");
+          term.write("\r\n\x1b[31m[PTY spawn failed — check server logs]\x1b[0m\r\n");
+        } else if (ev.code !== 1000 && ev.code !== 1001) {
+          onStatusChange("disconnected");
+          term.write(`\r\n\x1b[33m[Disconnected (code ${ev.code})]\x1b[0m\r\n`);
         }
       };
 
-      // 4. Forward user input → ws
+      // ── 4. Forward user input ────────────────────────────────────────
       term.onData((data) => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "data", data }));
@@ -162,39 +151,61 @@ export function TerminalApp(): React.ReactElement {
       });
     })();
 
-    // 5. Resize observer — tell pty about terminal dimension changes
+    // ── 5. Sync terminal size to pty on resize ─────────────────────────
     const ro = new ResizeObserver(() => {
-      if (!containerRef.current || !fitAddonRef.current || !termRef.current) return;
       try {
-        fitAddonRef.current.fit();
-        const { cols: c, rows: r } = termRef.current;
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: "resize", cols: c, rows: r }));
+        fitAddonRef.current?.fit();
+        const t = termRef.current;
+        const w = wsRef.current;
+        if (t && w?.readyState === WebSocket.OPEN) {
+          w.send(JSON.stringify({ type: "resize", cols: t.cols, rows: t.rows }));
         }
-      } catch { /* ignore mid-unmount errors */ }
+      } catch { /* ignore mid-unmount */ }
     });
-    ro.observe(containerRef.current);
+    if (containerRef.current) ro.observe(containerRef.current);
 
+    // ── Cleanup ────────────────────────────────────────────────────────
     return () => {
-      controller.abort();
+      abortCtrl.abort();
       ro.disconnect();
-      cleanup();
+      const w = wsRef.current;
+      if (w) {
+        w.onopen = w.onmessage = w.onerror = w.onclose = null;
+        w.close();
+        wsRef.current = null;
+      }
       term.dispose();
       termRef.current     = null;
       fitAddonRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Reconnect ───────────────────────────────────────────────────────────
+  return (
+    <div
+      ref={containerRef}
+      style={{ flex: 1, overflow: "hidden", padding: "6px 4px 4px 6px" }}
+    />
+  );
+}
+
+// ─── TerminalApp (wrapper — manages reconnect via key) ────────────────────────
+
+export function TerminalApp(): React.ReactElement {
+  const [sessionKey, setSessionKey] = useState(0);
+  const [status, setStatus]         = useState<ConnStatus>("connecting");
+  const [errorMsg, setErrorMsg]     = useState("");
+
+  const handleStatusChange = useCallback((s: ConnStatus, msg?: string) => {
+    setStatus(s);
+    setErrorMsg(msg ?? "");
+  }, []);
+
+  // Reconnect: bump key → TerminalSession unmounts + remounts fresh
   const reconnect = useCallback(() => {
-    cleanup();
-    termRef.current?.clear();
     setStatus("connecting");
     setErrorMsg("");
-    // Re-run the effect by remounting; simplest approach is to bump a key from parent,
-    // but here we reload the page or trigger via state. For now, page reload:
-    window.location.reload();
-  }, [cleanup]);
+    setSessionKey((k) => k + 1);
+  }, []);
 
   return (
     <div
@@ -218,6 +229,7 @@ export function TerminalApp(): React.ReactElement {
           fontSize: 11,
           color: "#888",
           flexShrink: 0,
+          userSelect: "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -228,42 +240,55 @@ export function TerminalApp(): React.ReactElement {
               borderRadius: "50%",
               background: STATUS_COLOR[status],
               display: "inline-block",
-              boxShadow: status === "connected" ? `0 0 6px ${STATUS_COLOR[status]}` : "none",
+              flexShrink: 0,
+              boxShadow: status === "connected"
+                ? `0 0 6px ${STATUS_COLOR[status]}`
+                : "none",
+              transition: "box-shadow 0.3s",
             }}
           />
-          <span style={{ color: STATUS_COLOR[status] }}>{STATUS_LABEL[status]}</span>
-          {errorMsg && <span style={{ color: "#ff5f5f", marginLeft: 8 }}>— {errorMsg}</span>}
+          <span style={{ color: STATUS_COLOR[status] }}>
+            {STATUS_LABEL[status]}
+          </span>
+          {errorMsg && (
+            <span style={{ color: "#ff5f5f", marginLeft: 4 }}>
+              — {errorMsg}
+            </span>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ color: "#444" }}>zsh · macOS</span>
+          <span style={{ color: "#333" }}>zsh · macOS</span>
           {(status === "disconnected" || status === "error") && (
             <button
               onClick={reconnect}
               style={{
-                background: "#21262d",
+                background: "#161b22",
                 border: "1px solid #30363d",
                 borderRadius: 4,
                 color: "#e6edf3",
                 fontSize: 11,
-                padding: "2px 8px",
+                padding: "2px 10px",
                 cursor: "pointer",
+                transition: "background 0.15s",
               }}
+              onMouseEnter={(e) =>
+                ((e.target as HTMLButtonElement).style.background = "#21262d")
+              }
+              onMouseLeave={(e) =>
+                ((e.target as HTMLButtonElement).style.background = "#161b22")
+              }
             >
-              Reconnect
+              ↺ Reconnect
             </button>
           )}
         </div>
       </div>
 
-      {/* ── xterm.js container ──────────────────────────────────────────── */}
-      <div
-        ref={containerRef}
-        style={{
-          flex: 1,
-          overflow: "hidden",
-          padding: "6px 4px 4px 6px",
-        }}
+      {/* ── xterm session (key forces clean remount on reconnect) ────────── */}
+      <TerminalSession
+        key={sessionKey}
+        onStatusChange={handleStatusChange}
       />
     </div>
   );
