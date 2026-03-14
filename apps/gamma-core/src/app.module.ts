@@ -9,6 +9,7 @@ import { SseModule } from './sse/sse.module';
 import { SystemModule } from './system/system.module';
 import { ScaffoldModule } from './scaffold/scaffold.module';
 import { AppDataModule } from './app-data/app-data.module';
+import { PtyModule } from './pty/pty.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AppDataModule } from './app-data/app-data.module';
     SystemModule,
     ScaffoldModule,
     AppDataModule,
+    PtyModule,
   ],
   controllers: [AppController],
 })

@@ -1,479 +1,270 @@
-import React, { useEffect, useRef, useState, useCallback, KeyboardEvent } from "react";
+import React, { useEffect, useRef, useCallback, useState } from "react";
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import "@xterm/xterm/css/xterm.css";
 import { API_BASE } from "../../../constants/api";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── WS URL ───────────────────────────────────────────────────────────────────
 
-type Segment = { text: string; color?: string; bold?: boolean };
-
-interface TerminalLine {
-  id: number;
-  segments: Segment[];
+function getPtyWsUrl(token: string, cols: number, rows: number): string {
+  // In the browser, use the current host (Vite proxies /pty → ws://localhost:3001/pty)
+  const wsBase =
+    typeof window !== "undefined"
+      ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`
+      : "ws://localhost:3001";
+  return `${wsBase}/pty?token=${encodeURIComponent(token)}&cols=${cols}&rows=${rows}`;
 }
 
-// ─── Built-in Commands ────────────────────────────────────────────────────────
+// ─── Status badge ─────────────────────────────────────────────────────────────
 
-const COMMANDS: Record<string, string> = {
-  help:     "Show available commands",
-  clear:    "Clear the terminal",
-  echo:     "Print arguments",
-  date:     "Show current date and time",
-  whoami:   "Show current user info",
-  version:  "Show Gamma Runtime version",
-  health:   "Show system health (CPU, RAM, Redis, Gateway)",
-  sessions: "List active agent sessions",
-  uptime:   "Show system uptime",
-  env:      "Show environment info",
-  history:  "Show command history",
+type ConnStatus = "connecting" | "connected" | "disconnected" | "error";
+
+const STATUS_COLOR: Record<ConnStatus, string> = {
+  connecting:   "#ffd787",
+  connected:    "#5fff87",
+  disconnected: "#888",
+  error:        "#ff5f5f",
 };
 
-const COMMAND_NAMES = Object.keys(COMMANDS);
+const STATUS_LABEL: Record<ConnStatus, string> = {
+  connecting:   "Connecting…",
+  connected:    "Connected",
+  disconnected: "Disconnected",
+  error:        "Error",
+};
 
 // ─── TerminalApp ──────────────────────────────────────────────────────────────
 
 export function TerminalApp(): React.ReactElement {
-  // FIX #4: _lineId moved inside component as a ref — no longer a shared global.
-  const lineIdRef = useRef(0);
-  const makeId = useCallback(() => ++lineIdRef.current, []);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const termRef      = useRef<Terminal | null>(null);
+  const fitAddonRef  = useRef<FitAddon | null>(null);
+  const wsRef        = useRef<WebSocket | null>(null);
+  const [status, setStatus] = useState<ConnStatus>("connecting");
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  const makePlain = useCallback((text: string): TerminalLine => (
-    { id: makeId(), segments: [{ text }] }
-  ), [makeId]);
-
-  const makeColored = useCallback((segments: Segment[]): TerminalLine => (
-    { id: makeId(), segments }
-  ), [makeId]);
-
-  const makeError = useCallback((text: string): TerminalLine => (
-    makeColored([{ text, color: "#ff5f5f" }])
-  ), [makeColored]);
-
-  const makeDim = useCallback((text: string): TerminalLine => (
-    makeColored([{ text, color: "#666" }])
-  ), [makeColored]);
-
-  const [lines, setLines] = useState<TerminalLine[]>(() => [
-    { id: 1, segments: [
-      { text: "Gamma Terminal", color: "#5fffff", bold: true },
-      { text: " v2.0", color: "#888" },
-    ]},
-    { id: 2, segments: [{ text: "Type 'help' for available commands. Use ↑/↓ for history, Tab to autocomplete.", color: "#666" }]},
-    { id: 3, segments: [{ text: "─".repeat(55), color: "#666" }]},
-  ]);
-
-  const [input, setInput] = useState("");
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [commandHistory, setCommandHistory] = useState<string[]>([]);
-  const [suggestion, setSuggestion] = useState("");
-
-  // FIX #2: isExecuting flag — prevents parallel command execution
-  const isExecuting = useRef(false);
-
-  // FIX #1: store current AbortController to cancel in-flight requests on unmount
-  const abortRef = useRef<AbortController | null>(null);
-
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // FIX #1: cleanup — abort any in-flight fetch on unmount
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
+  // ── Cleanup helper ──────────────────────────────────────────────────────
+  const cleanup = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.onopen    = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onerror   = null;
+      wsRef.current.onclose   = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
   }, []);
 
-  // Auto-scroll
+  // ── Bootstrap: fetch token → open WS → attach xterm ───────────────────
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines]);
+    if (!containerRef.current) return;
 
-  // Update autocomplete suggestion
-  useEffect(() => {
-    if (!input.trim()) { setSuggestion(""); return; }
-    const cmd = input.split(" ")[0];
-    if (!input.includes(" ")) {
-      const match = COMMAND_NAMES.find((c) => c.startsWith(cmd) && c !== cmd);
-      setSuggestion(match ? match.slice(cmd.length) : "");
-    } else {
-      setSuggestion("");
-    }
-  }, [input]);
+    // 1. Create xterm instance
+    const term = new Terminal({
+      fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace",
+      fontSize: 13,
+      lineHeight: 1.4,
+      theme: {
+        background:    "#0d1117",
+        foreground:    "#e6edf3",
+        cursor:        "#3fb950",
+        cursorAccent:  "#0d1117",
+        selectionBackground: "rgba(255,255,255,0.15)",
+        black:   "#0d1117", red:     "#ff5f5f", green:   "#5fff87", yellow:  "#ffd787",
+        blue:    "#5fd7ff", magenta: "#d787ff", cyan:    "#5fffff", white:   "#e6edf3",
+        brightBlack: "#444",  brightRed:  "#ff8787", brightGreen:  "#87ffd7",
+        brightYellow: "#ffffd7", brightBlue: "#87d7ff", brightMagenta: "#ffafff",
+        brightCyan: "#87ffff", brightWhite: "#ffffff",
+      },
+      cursorBlink: true,
+      scrollback: 5000,
+      allowTransparency: false,
+      convertEol: true,
+    });
 
-  const append = useCallback((...newLines: TerminalLine[]) => {
-    setLines((prev) => [...prev, ...newLines]);
-  }, []);
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.loadAddon(new WebLinksAddon());
+    term.open(containerRef.current);
+    fitAddon.fit();
 
-  // ── Command handlers ──────────────────────────────────────────────────────
+    termRef.current    = term;
+    fitAddonRef.current = fitAddon;
 
-  const runHelp = useCallback(() => {
-    const out: TerminalLine[] = [
-      makeColored([{ text: "Available commands:", color: "#ffd787", bold: true }]),
-    ];
-    for (const [cmd, desc] of Object.entries(COMMANDS)) {
-      out.push(makeColored([
-        { text: `  ${cmd.padEnd(12)}`, color: "#5fd7ff" },
-        { text: desc, color: "#ccc" },
-      ]));
-    }
-    append(...out);
-  }, [append, makeColored]);
+    const { cols, rows } = term;
 
-  const runEcho = useCallback((args: string[]) => {
-    append(makePlain(args.join(" ")));
-  }, [append, makePlain]);
-
-  const runDate = useCallback(() => {
-    const now = new Date();
-    append(makeColored([
-      { text: now.toDateString() + " ", color: "#ffd787" },
-      { text: now.toLocaleTimeString(), color: "#fff" },
-    ]));
-  }, [append, makeColored]);
-
-  const runWhoami = useCallback(() => {
-    append(
-      makeColored([
-        { text: "user", color: "#5fff87" },
-        { text: " @ ", color: "#888" },
-        { text: "gamma-runtime", color: "#5fd7ff" },
-      ]),
-      makeColored([{ text: "  Role: AI App Manager", color: "#ccc" }]),
-      makeColored([{ text: "  Shell: Gamma Terminal v2.0", color: "#ccc" }]),
-    );
-  }, [append, makeColored]);
-
-  const runVersion = useCallback(() => {
-    append(makeColored([
-      { text: "Gamma Agent Runtime", color: "#5fffff", bold: true },
-      { text: " — UI Engine v2.0 / Core API v1.0", color: "#888" },
-    ]));
-  }, [append, makeColored]);
-
-  const runEnv = useCallback(() => {
-    append(
-      makeColored([{ text: "Environment:", color: "#ffd787", bold: true }]),
-      makeColored([
-        { text: "  NODE_ENV   ", color: "#5fd7ff" },
-        { text: (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE ?? "development", color: "#fff" },
-      ]),
-      makeColored([
-        { text: "  API_BASE   ", color: "#5fd7ff" },
-        { text: API_BASE || "(proxy)", color: "#fff" },
-      ]),
-      makeColored([
-        { text: "  UA         ", color: "#5fd7ff" },
-        { text: navigator.userAgent.slice(0, 60) + "…", color: "#888" },
-      ]),
-    );
-  }, [append, makeColored]);
-
-  const runUptime = useCallback(() => {
-    const perf = Math.floor(performance.now() / 1000);
-    const h = Math.floor(perf / 3600);
-    const m = Math.floor((perf % 3600) / 60);
-    const s = perf % 60;
-    append(makeColored([
-      { text: "Page uptime: ", color: "#888" },
-      { text: `${h}h ${m}m ${s}s`, color: "#fff" },
-    ]));
-  }, [append, makeColored]);
-
-  const runHistory = useCallback((hist: string[]) => {
-    if (!hist.length) { append(makeDim("(no history)")); return; }
-    append(...hist.map((cmd, i) =>
-      makeColored([
-        { text: `  ${String(i + 1).padStart(3)}  `, color: "#555" },
-        { text: cmd, color: "#ccc" },
-      ])
-    ));
-  }, [append, makeDim, makeColored]);
-
-  // FIX #1: AbortController wired into runHealth
-  const runHealth = useCallback(async () => {
-    append(makeDim("Fetching system health…"));
+    // 2. Request a one-time PTY auth token from the backend
     const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const res = await fetch(`${API_BASE}/api/system/health`, { signal: controller.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const h = await res.json();
 
-      const statusColor = h.status === "ok" ? "#5fff87" : h.status === "degraded" ? "#ffd787" : "#ff5f5f";
-      const redisColor  = h.redis?.connected  ? "#5fff87" : "#ff5f5f";
-      const gwColor     = h.gateway?.connected ? "#5fff87" : "#ff5f5f";
-
-      append(
-        makeColored([{ text: "System Health Report", color: "#ffd787", bold: true }]),
-        makeColored([
-          { text: "  Status   ", color: "#5fd7ff" },
-          { text: h.status?.toUpperCase() ?? "?", color: statusColor, bold: true },
-        ]),
-        makeColored([
-          { text: "  CPU      ", color: "#5fd7ff" },
-          { text: `${h.cpu?.usagePct ?? "?"}%`, color: "#fff" },
-        ]),
-        makeColored([
-          { text: "  RAM      ", color: "#5fd7ff" },
-          { text: `${h.ram?.usedMb ?? "?"}MB / ${h.ram?.totalMb ?? "?"}MB (${h.ram?.usedPct ?? "?"}%)`, color: "#fff" },
-        ]),
-        makeColored([
-          { text: "  Redis    ", color: "#5fd7ff" },
-          { text: h.redis?.connected ? `OK (${h.redis.latencyMs}ms)` : "DOWN", color: redisColor },
-        ]),
-        makeColored([
-          { text: "  Gateway  ", color: "#5fd7ff" },
-          { text: h.gateway?.connected ? `OK (${h.gateway.latencyMs}ms)` : "DOWN", color: gwColor },
-        ]),
-      );
-
-      if (h.eventLag) {
-        append(makeColored([
-          { text: "  EventLag ", color: "#5fd7ff" },
-          { text: `avg ${h.eventLag.avgMs}ms / max ${h.eventLag.maxMs}ms (${h.eventLag.samples} samples)`, color: "#ccc" },
-        ]));
+    (async () => {
+      let token: string;
+      try {
+        const res = await fetch(`${API_BASE}/api/pty/token`, {
+          method: "POST",
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`Token request failed: HTTP ${res.status}`);
+        const data = await res.json() as { token: string };
+        token = data.token;
+      } catch (err) {
+        if ((err as { name?: string }).name === "AbortError") return;
+        const msg = err instanceof Error ? err.message : String(err);
+        setStatus("error");
+        setErrorMsg(msg);
+        term.write(`\r\n\x1b[31mFailed to obtain PTY token: ${msg}\x1b[0m\r\n`);
+        return;
       }
-    } catch (err) {
-      if ((err as { name?: string }).name === "AbortError") return;
-      append(makeError(`health: ${err instanceof Error ? err.message : String(err)}`));
-    } finally {
-      if (abortRef.current === controller) abortRef.current = null;
-    }
-  }, [append, makeDim, makeColored, makeError]);
 
-  // FIX #1: AbortController wired into runSessions
-  const runSessions = useCallback(async () => {
-    append(makeDim("Fetching sessions…"));
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const res = await fetch(`${API_BASE}/api/sessions`, { signal: controller.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const sessions: Array<{ id: string; appId?: string; status?: string }> =
-        Array.isArray(data) ? data : (data.sessions ?? data.data ?? []);
+      // 3. Open WebSocket
+      const ws = new WebSocket(getPtyWsUrl(token, cols, rows));
+      ws.binaryType = "arraybuffer";
+      wsRef.current = ws;
 
-      if (!sessions.length) { append(makeDim("No active sessions.")); return; }
+      ws.onopen = () => {
+        setStatus("connected");
+        term.focus();
+      };
 
-      append(makeColored([{ text: `Sessions (${sessions.length}):`, color: "#ffd787", bold: true }]));
-      for (const s of sessions) {
-        append(makeColored([
-          { text: "  " + (s.id ?? "?").slice(0, 12) + "  ", color: "#555" },
-          { text: s.appId ?? "unknown", color: "#5fd7ff" },
-          { text: s.status ? `  [${s.status}]` : "", color: "#888" },
-        ]));
-      }
-    } catch (err) {
-      if ((err as { name?: string }).name === "AbortError") return;
-      append(makeError(`sessions: ${err instanceof Error ? err.message : String(err)}`));
-    } finally {
-      if (abortRef.current === controller) abortRef.current = null;
-    }
-  }, [append, makeDim, makeColored, makeError]);
-
-  // ── Dispatch ──────────────────────────────────────────────────────────────
-
-  const execute = useCallback(async (raw: string, hist: string[]) => {
-    const trimmed = raw.trim();
-    if (!trimmed) return;
-
-    append(makeColored([
-      { text: "▸ ", color: "#5fff87" },
-      { text: trimmed, color: "#fff" },
-    ]));
-
-    const [cmd, ...args] = trimmed.split(/\s+/);
-
-    switch (cmd.toLowerCase()) {
-      case "help":     runHelp(); break;
-      case "clear":    setLines([]); break;
-      case "echo":     runEcho(args); break;
-      case "date":     runDate(); break;
-      case "whoami":   runWhoami(); break;
-      case "version":  runVersion(); break;
-      case "env":      runEnv(); break;
-      case "uptime":   runUptime(); break;
-      case "history":  runHistory(hist); break;
-      case "health":   await runHealth(); break;
-      case "sessions": await runSessions(); break;
-      default:
-        append(makeColored([
-          { text: `command not found: `, color: "#ff5f5f" },
-          { text: cmd, color: "#ff8787" },
-          { text: "  (type 'help' for commands)", color: "#555" },
-        ]));
-    }
-    append(makePlain(""));
-  }, [append, makeColored, makePlain, runHelp, runEcho, runDate, runWhoami, runVersion, runEnv, runUptime, runHistory, runHealth, runSessions]);
-
-  // ── Input handlers ────────────────────────────────────────────────────────
-
-  const handleKeyDown = useCallback(
-    // FIX #3: wrapped in try/catch — async errors are now properly caught
-    async (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
-        // FIX #2: block parallel execution
-        if (isExecuting.current) return;
-
-        const cmd = input.trim();
-        const newHist = cmd ? [...commandHistory, cmd] : commandHistory;
-        if (cmd) setCommandHistory(newHist);
-        setInput("");
-        setHistoryIndex(-1);
-        setSuggestion("");
-
-        isExecuting.current = true;
+      ws.onmessage = (ev) => {
         try {
-          await execute(cmd, newHist);
-        } catch (err) {
-          // FIX #3: catch errors that escape execute() itself
-          setLines((prev) => [
-            ...prev,
-            { id: lineIdRef.current + 1, segments: [{ text: `Unexpected error: ${err instanceof Error ? err.message : String(err)}`, color: "#ff5f5f" }] },
-          ]);
-          lineIdRef.current++;
-        } finally {
-          isExecuting.current = false;
+          const msg = JSON.parse(
+            typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data)
+          ) as { type: string; data?: string; code?: number };
+
+          if (msg.type === "data" && typeof msg.data === "string") {
+            term.write(msg.data);
+          } else if (msg.type === "exit") {
+            setStatus("disconnected");
+            term.write(`\r\n\x1b[33m[Process exited with code ${msg.code ?? 0}]\x1b[0m\r\n`);
+          }
+        } catch { /* malformed frame — ignore */ }
+      };
+
+      ws.onerror = () => {
+        setStatus("error");
+        setErrorMsg("WebSocket connection error");
+        term.write("\r\n\x1b[31m[WebSocket error — connection lost]\x1b[0m\r\n");
+      };
+
+      ws.onclose = (ev) => {
+        if (ev.code !== 1000 && ev.code !== 1001) {
+          setStatus("disconnected");
+          term.write(`\r\n\x1b[33m[Disconnected (${ev.code})]\x1b[0m\r\n`);
         }
+      };
 
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        const newIdx = Math.min(historyIndex + 1, commandHistory.length - 1);
-        setHistoryIndex(newIdx);
-        setInput(commandHistory[commandHistory.length - 1 - newIdx] ?? "");
-
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        const newIdx = Math.max(historyIndex - 1, -1);
-        setHistoryIndex(newIdx);
-        setInput(newIdx === -1 ? "" : commandHistory[commandHistory.length - 1 - newIdx] ?? "");
-
-      } else if (e.key === "Tab") {
-        e.preventDefault();
-        if (suggestion) {
-          setInput((prev) => prev + suggestion);
-          setSuggestion("");
+      // 4. Forward user input → ws
+      term.onData((data) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "data", data }));
         }
-      } else if (e.key === "l" && e.ctrlKey) {
-        e.preventDefault();
-        setLines([]);
+      });
+    })();
 
-      } else if (e.key === "c" && e.ctrlKey) {
-        e.preventDefault();
-        // Also abort any in-flight fetch
-        abortRef.current?.abort();
-        isExecuting.current = false;
-        append(
-          makeColored([{ text: "▸ " + input, color: "#888" }]),
-          makeColored([{ text: "^C", color: "#ff5f5f" }]),
-          makePlain(""),
-        );
-        setInput("");
-        setHistoryIndex(-1);
-      }
-    },
-    [input, commandHistory, historyIndex, suggestion, execute, append, makeColored, makePlain]
-  );
+    // 5. Resize observer — tell pty about terminal dimension changes
+    const ro = new ResizeObserver(() => {
+      if (!containerRef.current || !fitAddonRef.current || !termRef.current) return;
+      try {
+        fitAddonRef.current.fit();
+        const { cols: c, rows: r } = termRef.current;
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "resize", cols: c, rows: r }));
+        }
+      } catch { /* ignore mid-unmount errors */ }
+    });
+    ro.observe(containerRef.current);
+
+    return () => {
+      controller.abort();
+      ro.disconnect();
+      cleanup();
+      term.dispose();
+      termRef.current     = null;
+      fitAddonRef.current = null;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Reconnect ───────────────────────────────────────────────────────────
+  const reconnect = useCallback(() => {
+    cleanup();
+    termRef.current?.clear();
+    setStatus("connecting");
+    setErrorMsg("");
+    // Re-run the effect by remounting; simplest approach is to bump a key from parent,
+    // but here we reload the page or trigger via state. For now, page reload:
+    window.location.reload();
+  }, [cleanup]);
 
   return (
     <div
-      onClick={() => inputRef.current?.focus()}
       style={{
         flex: 1,
         display: "flex",
         flexDirection: "column",
         background: "#0d1117",
-        fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', 'Consolas', monospace",
-        fontSize: 13,
-        color: "#e6edf3",
         overflow: "hidden",
-        cursor: "text",
       }}
     >
-      {/* ── Output ────────────────────────────────────────────────────────── */}
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: "14px 16px 6px",
-          scrollbarWidth: "thin",
-          scrollbarColor: "#333 transparent",
-        }}
-      >
-        {lines.map((line) => (
-          <div
-            key={line.id}
-            style={{ lineHeight: 1.75, whiteSpace: "pre-wrap", wordBreak: "break-all" }}
-          >
-            {line.segments.map((seg, si) => (
-              <span
-                key={si}
-                style={{ color: seg.color ?? "inherit", fontWeight: seg.bold ? 700 : 400 }}
-              >
-                {seg.text}
-              </span>
-            ))}
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* ── Input row ─────────────────────────────────────────────────────── */}
+      {/* ── Status bar ──────────────────────────────────────────────────── */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          padding: "8px 16px",
-          borderTop: "1px solid #21262d",
-          gap: 8,
+          justifyContent: "space-between",
+          padding: "4px 12px",
+          borderBottom: "1px solid #21262d",
+          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+          fontSize: 11,
+          color: "#888",
+          flexShrink: 0,
         }}
       >
-        <span style={{ color: "#3fb950", flexShrink: 0, fontSize: 14 }}>▸</span>
-
-        {/* FIX #5: ghost overlay now uses a relative wrapper — no hardcoded left offset */}
-        <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center" }}>
-          {/* Ghost autocomplete: invisible mirror of input + colored suggestion */}
-          <div
-            aria-hidden
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
             style={{
-              position: "absolute",
-              inset: 0,
-              pointerEvents: "none",
-              fontSize: 13,
-              fontFamily: "inherit",
-              whiteSpace: "pre",
-              display: "flex",
-              alignItems: "center",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: STATUS_COLOR[status],
+              display: "inline-block",
+              boxShadow: status === "connected" ? `0 0 6px ${STATUS_COLOR[status]}` : "none",
             }}
-          >
-            <span style={{ visibility: "hidden" }}>{input}</span>
-            <span style={{ color: "#444" }}>{suggestion}</span>
-          </div>
-
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            style={{
-              width: "100%",
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: "#e6edf3",
-              fontFamily: "inherit",
-              fontSize: 13,
-              caretColor: "#3fb950",
-              position: "relative",
-              zIndex: 1,
-            }}
-            placeholder=""
-            autoFocus
-            spellCheck={false}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
           />
+          <span style={{ color: STATUS_COLOR[status] }}>{STATUS_LABEL[status]}</span>
+          {errorMsg && <span style={{ color: "#ff5f5f", marginLeft: 8 }}>— {errorMsg}</span>}
+        </div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <span style={{ color: "#444" }}>zsh · macOS</span>
+          {(status === "disconnected" || status === "error") && (
+            <button
+              onClick={reconnect}
+              style={{
+                background: "#21262d",
+                border: "1px solid #30363d",
+                borderRadius: 4,
+                color: "#e6edf3",
+                fontSize: 11,
+                padding: "2px 8px",
+                cursor: "pointer",
+              }}
+            >
+              Reconnect
+            </button>
+          )}
         </div>
       </div>
+
+      {/* ── xterm.js container ──────────────────────────────────────────── */}
+      <div
+        ref={containerRef}
+        style={{
+          flex: 1,
+          overflow: "hidden",
+          padding: "6px 4px 4px 6px",
+        }}
+      />
     </div>
   );
 }

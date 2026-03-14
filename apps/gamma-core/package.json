@@ -24,6 +24,7 @@
     "@noble/hashes": "^2.0.1",
     "fastify": "^4.28.1",
     "ioredis": "^5.10.0",
+    "node-pty": "^1.1.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "simple-git": "^3.32.3",

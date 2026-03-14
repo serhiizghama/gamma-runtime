@@ -20,6 +20,11 @@ export default defineConfig({
         target: "http://localhost:3001",
         changeOrigin: true,
       },
+      "/pty": {
+        target: "ws://localhost:3001",
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 });
