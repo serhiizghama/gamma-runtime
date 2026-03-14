@@ -210,22 +210,31 @@ export class SessionsService {
   }
 
   /**
-   * Abort the run and mark the registry as aborted, looked up by sessionKey.
+   * Fully remove a session by its sessionKey — aborts the run, deletes the
+   * Gateway session, and cleans up all Redis state and registry entries.
    * Used by the Agent Control Plane kill endpoint.
    */
   async killBySessionKey(sessionKey: string): Promise<boolean> {
     const session = await this.findBySessionKey(sessionKey);
     if (!session) return false;
-    await this.abort(session.windowId);
-    const resolvedAppId = session.appId || parseAppIdFromKey(session.sessionKey) || undefined;
-    await this.registry.upsert({
-      sessionKey,
-      windowId: session.windowId,
-      appId: resolvedAppId,
-      status: 'aborted',
-      lastActiveAt: Date.now(),
-    });
-    return true;
+    return this.remove(session.windowId);
+  }
+
+  /**
+   * Kill and fully remove ALL active sessions.
+   * Calls remove() on each — which handles Gateway deletion, Redis cleanup,
+   * registry removal, and watchdog teardown.
+   * Returns the number of sessions that were removed.
+   */
+  async killAll(): Promise<number> {
+    const sessions = await this.findAll();
+    await Promise.all(
+      sessions.map((s) => this.remove(s.windowId).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`killAll: failed to remove session ${s.windowId}: ${msg}`);
+      })),
+    );
+    return sessions.length;
   }
 
   /** Abort a running agent session (spec §4.2) */

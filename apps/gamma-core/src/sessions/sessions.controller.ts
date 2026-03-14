@@ -61,13 +61,19 @@ export class SessionsController {
     return { context };
   }
 
-  /** Delete all session-registry and session-context keys — use to clear stale records after a Gateway wipe. */
+  /**
+   * Kill all active sessions (Gateway-side deletion + full Redis cleanup),
+   * then flush any remaining orphaned registry/context keys.
+   * This is a hard reset — all sessions will be gone from OpenClaw Gateway.
+   */
   @Delete('registry/flush')
   @HttpCode(HttpStatus.OK)
   @UseGuards(SystemAppGuard)
   async flushRegistry(): Promise<{ ok: boolean; deleted: number }> {
-    const deleted = await this.registry.flushAll();
-    return { ok: true, deleted };
+    const killed = await this.sessions.killAll();
+    // Flush any orphaned registry/context keys not covered by killAll
+    await this.registry.flushAll();
+    return { ok: true, deleted: killed };
   }
 
   /** Force-kill a session by its sessionKey — aborts the run and marks registry as aborted. */
