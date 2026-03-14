@@ -971,7 +971,8 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     this.send({
       type: 'req',
       id: frameId,
-      method: 'sessions.abort',
+      // OpenClaw WS protocol uses 'chat.abort', not the non-existent 'sessions.abort'
+      method: 'chat.abort',
       params: { sessionKey: this.toOpenClawKey(sessionKey) },
     });
     try {
@@ -1176,7 +1177,12 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       type: 'req',
       id: frameId,
       method: 'sessions.delete',
-      params: { sessionKey: this.toOpenClawKey(sessionKey) },
+      // OpenClaw WS protocol expects 'key', NOT 'sessionKey'
+      params: {
+        key: this.toOpenClawKey(sessionKey),
+        deleteTranscript: false,
+        emitLifecycleHooks: false,
+      },
     });
     try {
       await this.waitForResponse(frameId, 2000);
