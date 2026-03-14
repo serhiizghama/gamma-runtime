@@ -24,6 +24,7 @@ export interface ToolCallEntry {
 
 interface MessageListProps {
   messages: ChatMessage[];
+  streamingMessage?: ChatMessage | null;
   pendingToolLines: string[];
   accentColor: string;
   status: AgentStatus;
@@ -174,7 +175,7 @@ function ToolCallLine({ entry }: { entry: ToolCallEntry }): React.ReactElement {
 
 function MessageBubble({ msg, status, isStreaming }: { msg: ChatMessage; accentColor: string; status: AgentStatus; isStreaming: boolean }): React.ReactElement {
   const isUser = msg.role === "user";
-  const throttledText = useThrottledValue(msg.text, 500, status);
+  const throttledText = useThrottledValue(msg.text, 100, status);
   const displayText = isStreaming ? throttledText : msg.text;
   const [hovered, setHovered] = useState(false);
 
@@ -315,35 +316,38 @@ function TypingIndicator({ toolLines }: { toolLines?: string[] }): React.ReactEl
 
 // ── MessageList ──────────────────────────────────────────────────────────
 
-export function MessageList({ messages, pendingToolLines, accentColor, status }: MessageListProps): React.ReactElement {
+export function MessageList({ messages, streamingMessage, pendingToolLines, accentColor, status }: MessageListProps): React.ReactElement {
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  const lastAssistantIndex = messages.reduce<number>(
-    (idx, msg, index) => (msg.role === "assistant" ? index : idx), -1
-  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, pendingToolLines]);
+  }, [messages, streamingMessage, pendingToolLines]);
+
+  // Show typing indicator only while running and before any streaming content arrives
+  const showTypingIndicator = status === "running" && !streamingMessage;
 
   return (
     <div
       className="agent-chat-message-list"
       style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "16px 14px 8px", display: "flex", flexDirection: "column" }}
     >
-      {messages.map((msg, index) => {
-        const isStreaming = status === "running" && msg.role === "assistant" && index === lastAssistantIndex && index === messages.length - 1;
-        return <MessageBubble key={msg.id} msg={msg} accentColor={accentColor} status={status} isStreaming={isStreaming} />;
-      })}
+      {messages.map((msg) => (
+        <MessageBubble key={msg.id} msg={msg} accentColor={accentColor} status={status} isStreaming={false} />
+      ))}
 
-      {/* Typing indicator:
-            - Show when running + last msg is user (waiting for first token)
-            - OR when running + pending tool lines (agent is calling tools mid-stream)
-            - Absorbs tool lines so they live inside the indicator bubble      */}
-      {status === "running" && (
-        messages[messages.length - 1]?.role === "user" ||
-        pendingToolLines.length > 0
-      ) && (
+      {/* Live streaming message — visible in real-time as the agent types */}
+      {streamingMessage && (
+        <MessageBubble
+          key={streamingMessage.id}
+          msg={streamingMessage}
+          accentColor={accentColor}
+          status={status}
+          isStreaming={true}
+        />
+      )}
+
+      {/* Typing indicator: shown while running before streaming content arrives */}
+      {showTypingIndicator && (
         <TypingIndicator
           toolLines={pendingToolLines.length > 0 ? pendingToolLines : undefined}
         />

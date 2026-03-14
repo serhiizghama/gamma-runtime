@@ -19,6 +19,7 @@ interface AgentChatBaseProps {
 interface AgentChatLiveProps extends AgentChatBaseProps {
   mode: "live";
   messages: ChatMessage[];
+  streamingMessage: ChatMessage | null;
   status: AgentStatus;
   pendingToolLines: string[];
   onSend: (text: string) => void;
@@ -81,6 +82,7 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
   const [mockStatus, setMockStatus] = useState<AgentStatus>("idle");
 
   const messages = isLive ? (props as AgentChatLiveProps).messages : mockMessages;
+  const streamingMessage = isLive ? (props as AgentChatLiveProps).streamingMessage : null;
   const status = isLive ? (props as AgentChatLiveProps).status : mockStatus;
   const pendingToolLines = isLive ? (props as AgentChatLiveProps).pendingToolLines : [];
 
@@ -143,6 +145,7 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
       >
         <MessageList
           messages={messages}
+          streamingMessage={streamingMessage}
           pendingToolLines={pendingToolLines}
           status={status}
           accentColor={accentColor}

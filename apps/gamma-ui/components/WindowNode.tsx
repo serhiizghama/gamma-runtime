@@ -29,7 +29,7 @@ function EmbeddedAgentChat({
   // initialization requires a refactor to properly ingest the custom
   // system_prompt. The embedded chat currently falls back to the default
   // Gamma Agent Runtime Assistant persona, even when using app-owner session keys.
-  const { messages, status, pendingToolLines, sendMessage } =
+  const { messages, streamingMessage, status, pendingToolLines, sendMessage } =
     useAgentStream(sessionKey);
   return (
     <AgentChat
@@ -38,6 +38,7 @@ function EmbeddedAgentChat({
       variant="embedded"
       placeholder={`Ask about ${title}…`}
       messages={messages}
+      streamingMessage={streamingMessage}
       status={status}
       pendingToolLines={pendingToolLines}
       onSend={sendMessage}
