@@ -16,7 +16,7 @@ const DEFAULT_WIDTH = 420;
 export function ArchitectWindow(): React.ReactElement | null {
   const architectOpen = useOSStore((s) => s.architectOpen);
   const toggleArchitect = useOSStore((s) => s.toggleArchitect);
-  const { messages, streamingMessage, status, pendingToolLines, sendMessage } =
+  const { messages, status, pendingToolLines, sendMessage } =
     useAgentStream(ARCHITECT_WINDOW_ID);
 
   const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -98,7 +98,6 @@ export function ArchitectWindow(): React.ReactElement | null {
         accentColor="var(--color-accent-primary)"
         placeholder="Ask the Architect…"
         messages={messages}
-        streamingMessage={streamingMessage}
         status={status}
         pendingToolLines={pendingToolLines}
         onSend={sendMessage}

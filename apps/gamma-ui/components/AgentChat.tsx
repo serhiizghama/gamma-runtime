@@ -19,7 +19,6 @@ interface AgentChatBaseProps {
 interface AgentChatLiveProps extends AgentChatBaseProps {
   mode: "live";
   messages: ChatMessage[];
-  streamingMessage: ChatMessage | null;
   status: AgentStatus;
   pendingToolLines: string[];
   onSend: (text: string) => void;
@@ -44,21 +43,28 @@ const MOCK_MESSAGES: ChatMessage[] = [
     ts: Date.now() - 60000,
   },
   {
+    id: "m2-think",
+    role: "assistant",
+    kind: "thinking",
+    text: "User wants a weather app for two cities. I need to use the scaffold API to generate a React component with city cards showing temperature, humidity, and conditions.",
+    ts: Date.now() - 50000,
+  },
+  {
+    id: "m2-tool",
+    role: "assistant",
+    kind: "tool",
+    text: "",
+    toolCalls: [
+      { name: "scaffold", args: '{"appId":"weather","displayName":"Weather Dashboard"}' },
+      { name: "scaffold", result: '{"ok":true,"modulePath":"./apps/gamma-ui/apps/private/weather/We' },
+    ],
+    ts: Date.now() - 47000,
+  },
+  {
     id: "m2",
     role: "assistant",
+    kind: "answer",
     text: "I'll build a **weather dashboard** with real-time data for both cities.\n\nLet me scaffold the component now.",
-    thinking:
-      "User wants a weather app for two cities. I need to use the scaffold API to generate a React component with city cards showing temperature, humidity, and conditions.",
-    toolCalls: [
-      {
-        name: "scaffold",
-        args: '{"appId":"weather","displayName":"Weather Dashboard"}',
-      },
-      {
-        name: "scaffold",
-        result: '{"ok":true,"modulePath":"./apps/gamma-ui/apps/private/weather/We',
-      },
-    ],
     ts: Date.now() - 45000,
   },
   {
@@ -82,7 +88,6 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
   const [mockStatus, setMockStatus] = useState<AgentStatus>("idle");
 
   const messages = isLive ? (props as AgentChatLiveProps).messages : mockMessages;
-  const streamingMessage = isLive ? (props as AgentChatLiveProps).streamingMessage : null;
   const status = isLive ? (props as AgentChatLiveProps).status : mockStatus;
   const pendingToolLines = isLive ? (props as AgentChatLiveProps).pendingToolLines : [];
 
@@ -145,7 +150,6 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
       >
         <MessageList
           messages={messages}
-          streamingMessage={streamingMessage}
           pendingToolLines={pendingToolLines}
           status={status}
           accentColor={accentColor}

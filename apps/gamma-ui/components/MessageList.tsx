@@ -2,20 +2,27 @@ import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AgentStatus } from "@gamma/types";
-import { useThrottledValue } from "../hooks/useThrottledValue";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
+  /**
+   * thinking  — agent's internal reasoning phase
+   * tool      — tool calls + results
+   * answer    — final response text (default / undefined = answer)
+   */
+  kind?: "thinking" | "tool" | "answer";
   text: string;
-  thinking?: string;
   toolCalls?: ToolCallEntry[];
   ts: number;
+  /** True while this specific message is still receiving data from the stream */
+  isStreaming?: boolean;
 }
 
 export interface ToolCallEntry {
+  toolCallId?: string;
   name: string;
   args?: string;
   result?: string;
@@ -24,7 +31,6 @@ export interface ToolCallEntry {
 
 interface MessageListProps {
   messages: ChatMessage[];
-  streamingMessage?: ChatMessage | null;
   pendingToolLines: string[];
   accentColor: string;
   status: AgentStatus;
@@ -32,7 +38,7 @@ interface MessageListProps {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-const MAX_TOOL_LEN = 64;
+const MAX_TOOL_LEN = 80;
 
 function isAllowedImageSrc(src: string | undefined): boolean {
   if (!src || typeof src !== "string") return false;
@@ -41,69 +47,60 @@ function isAllowedImageSrc(src: string | undefined): boolean {
 }
 
 function truncate(str: string, max = MAX_TOOL_LEN): string {
-  return str.length <= max ? str : str.slice(0, max) + "… (truncated)";
+  return str.length <= max ? str : str.slice(0, max) + "…";
 }
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// ── Assistant Avatar ─────────────────────────────────────────────────────
+// ── Avatars ──────────────────────────────────────────────────────────────
 
-function GammaAvatar(): React.ReactElement {
+function AnswerAvatar(): React.ReactElement {
   return (
-    <div
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: "50%",
-        background: "rgba(59, 130, 246, 0.12)",
-        border: "1px solid rgba(59, 130, 246, 0.25)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        marginTop: 2,
-      }}
-    >
+    <div style={{
+      width: 28, height: 28, borderRadius: "50%",
+      background: "rgba(59, 130, 246, 0.12)",
+      border: "1px solid rgba(59, 130, 246, 0.25)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      flexShrink: 0, marginTop: 2,
+    }}>
       <svg viewBox="0 0 20 24" width="11" height="13">
-        <path
-          d="M2 3 L10 13 L10 22 M18 3 L10 13"
-          stroke="rgba(96,165,250,0.85)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-        />
+        <path d="M2 3 L10 13 L10 22 M18 3 L10 13"
+          stroke="rgba(96,165,250,0.85)" strokeWidth="2.5"
+          strokeLinecap="round" strokeLinejoin="round" fill="none" />
       </svg>
     </div>
   );
 }
 
-// ── Thinking Block ───────────────────────────────────────────────────────
-
-function ThinkingBlock({ text }: { text: string }): React.ReactElement {
-  const [open, setOpen] = useState(false);
+function ThinkingAvatar(): React.ReactElement {
   return (
-    <details
-      open={open}
-      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
-      style={{
-        marginBottom: 8,
-        padding: "6px 10px",
-        background: "rgba(255,255,255,0.03)",
-        borderRadius: 6,
-        border: "1px solid rgba(255,255,255,0.06)",
-        fontSize: 12,
-      }}
-    >
-      <summary style={{ cursor: "pointer", userSelect: "none", fontSize: 11, color: "rgba(150,170,220,0.6)", fontFamily: "'SF Mono', monospace" }}>
-        💭 Thinking
-      </summary>
-      <pre style={{ marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "'SF Mono', monospace", fontSize: 11, lineHeight: 1.5, color: "rgba(150,170,220,0.7)", userSelect: "text" }}>
-        {text}
-      </pre>
-    </details>
+    <div style={{
+      width: 28, height: 28, borderRadius: "50%",
+      background: "rgba(139, 92, 246, 0.1)",
+      border: "1px solid rgba(139, 92, 246, 0.22)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      flexShrink: 0, marginTop: 2,
+      fontSize: 13,
+    }}>
+      💭
+    </div>
+  );
+}
+
+function ToolAvatar(): React.ReactElement {
+  return (
+    <div style={{
+      width: 28, height: 28, borderRadius: "50%",
+      background: "rgba(34, 197, 94, 0.08)",
+      border: "1px solid rgba(34, 197, 94, 0.2)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      flexShrink: 0, marginTop: 2,
+      fontSize: 13,
+    }}>
+      ⚙️
+    </div>
   );
 }
 
@@ -123,16 +120,11 @@ function CodeBlockWithCopy({ children, ...preProps }: React.ComponentPropsWithou
   const handleCopy = async () => {
     const code = containerRef.current?.querySelector("code")?.textContent?.trim() ?? "";
     if (!code) return;
-    try {
-      await navigator.clipboard.writeText(code);
-    } catch {
+    try { await navigator.clipboard.writeText(code); }
+    catch {
       const ta = document.createElement("textarea");
-      ta.value = code;
-      ta.style.cssText = "position:fixed;opacity:0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
+      ta.value = code; ta.style.cssText = "position:fixed;opacity:0";
+      document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -154,74 +146,148 @@ function CodeBlockWithCopy({ children, ...preProps }: React.ComponentPropsWithou
   );
 }
 
-// ── Tool Call ────────────────────────────────────────────────────────────
+// ── User Bubble ──────────────────────────────────────────────────────────
 
-function ToolCallLine({ entry }: { entry: ToolCallEntry }): React.ReactElement {
-  if (entry.result !== undefined) {
-    return (
-      <div style={{ fontFamily: "'SF Mono', monospace", fontSize: 11, color: entry.isError ? "#f87171" : "rgba(100,200,150,0.8)", padding: "2px 0" }}>
-        {entry.isError ? "❌" : "✅"} {entry.name} → {truncate(entry.result)}
-      </div>
-    );
-  }
+function UserBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
+  const [hovered, setHovered] = useState(false);
   return (
-    <div style={{ fontFamily: "'SF Mono', monospace", fontSize: 11, color: "rgba(96,165,250,0.8)", padding: "2px 0" }}>
-      🔧 {entry.name}({entry.args ? truncate(entry.args) : ""})
+    <div
+      style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, paddingLeft: "20%" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+        <div
+          className="agent-chat-bubble"
+          style={{
+            padding: "9px 14px",
+            borderRadius: "18px 18px 4px 18px",
+            background: "linear-gradient(135deg, rgba(59,130,246,0.92), rgba(37,99,235,0.96))",
+            color: "#fff", fontSize: 13, lineHeight: 1.55, wordBreak: "break-word",
+            boxShadow: "0 2px 12px rgba(59,130,246,0.3)",
+            fontFamily: "var(--font-system)",
+          }}
+        >
+          {msg.text}
+        </div>
+        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.22)", transition: "opacity 0.15s", opacity: hovered ? 1 : 0, paddingRight: 4 }}>
+          {formatTime(msg.ts)}
+        </span>
+      </div>
     </div>
   );
 }
 
-// ── Message Bubble ───────────────────────────────────────────────────────
+// ── Thinking Bubble ──────────────────────────────────────────────────────
 
-function MessageBubble({ msg, status, isStreaming }: { msg: ChatMessage; accentColor: string; status: AgentStatus; isStreaming: boolean }): React.ReactElement {
-  const isUser = msg.role === "user";
-  const throttledText = useThrottledValue(msg.text, 100, status);
-  const displayText = isStreaming ? throttledText : msg.text;
+function ThinkingBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
   const [hovered, setHovered] = useState(false);
+  const streamingClass = msg.isStreaming ? "agent-chat-bubble--streaming-thinking" : "";
 
-  if (isUser) {
-    return (
-      <div
-        style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, paddingLeft: "20%" }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-          <div
-            className="agent-chat-bubble"
-            style={{
-              padding: "9px 14px",
-              borderRadius: "18px 18px 4px 18px",
-              background: "linear-gradient(135deg, rgba(59,130,246,0.92), rgba(37,99,235,0.96))",
-              color: "#fff",
-              fontSize: 13,
-              lineHeight: 1.55,
-              wordBreak: "break-word",
-              boxShadow: "0 2px 12px rgba(59,130,246,0.3)",
-              fontFamily: "var(--font-system)",
-            }}
-          >
-            {msg.text}
-          </div>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.22)", transition: "opacity 0.15s", opacity: hovered ? 1 : 0, paddingRight: 4 }}>
-            {formatTime(msg.ts)}
-          </span>
+  return (
+    <div
+      style={{ display: "flex", gap: 10, marginBottom: 10, paddingRight: "18%" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <ThinkingAvatar />
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+        <div
+          className={`agent-chat-bubble ${streamingClass}`}
+          style={{
+            padding: "8px 12px",
+            borderRadius: "4px 14px 14px 14px",
+            background: "rgba(99, 67, 168, 0.07)",
+            border: "1px solid rgba(139, 92, 246, 0.12)",
+            borderLeft: "3px solid rgba(139, 92, 246, 0.38)",
+            color: "rgba(180, 155, 255, 0.72)",
+            fontSize: 11.5,
+            lineHeight: 1.55,
+            fontFamily: "'SF Mono', 'Fira Code', monospace",
+            wordBreak: "break-word",
+            whiteSpace: "pre-wrap",
+            maxHeight: msg.isStreaming ? "none" : 120,
+            overflow: "hidden",
+          }}
+        >
+          {msg.text || "…"}
         </div>
+        <span style={{ fontSize: 10, color: "rgba(139,92,246,0.3)", paddingLeft: 4, transition: "opacity 0.15s", opacity: hovered ? 1 : 0 }}>
+          thinking · {formatTime(msg.ts)}
+        </span>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  // Assistant
+// ── Tool Bubble ──────────────────────────────────────────────────────────
+
+function ToolBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
+  const [hovered, setHovered] = useState(false);
+  const streamingClass = msg.isStreaming ? "agent-chat-bubble--streaming-tool" : "";
+
+  return (
+    <div
+      style={{ display: "flex", gap: 10, marginBottom: 10, paddingRight: "12%" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <ToolAvatar />
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+        <div
+          className={`agent-chat-bubble ${streamingClass}`}
+          style={{
+            padding: "8px 12px",
+            borderRadius: "4px 14px 14px 14px",
+            background: "rgba(0, 0, 0, 0.32)",
+            border: "1px solid rgba(34, 197, 94, 0.1)",
+            borderLeft: "3px solid rgba(34, 197, 94, 0.35)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+          }}
+        >
+          {(msg.toolCalls ?? []).map((tc, i) => (
+            <div key={i} style={{ fontFamily: "'SF Mono', monospace", fontSize: 11, padding: "1px 0" }}>
+              {tc.result !== undefined ? (
+                <span style={{ color: tc.isError ? "#f87171" : "rgba(100,200,130,0.85)" }}>
+                  {tc.isError ? "❌" : "✅"} {tc.name} → {truncate(tc.result)}
+                </span>
+              ) : (
+                <span style={{ color: "rgba(96,165,250,0.8)" }}>
+                  🔧 {tc.name}({tc.args ? truncate(tc.args) : ""})
+                </span>
+              )}
+            </div>
+          ))}
+          {msg.isStreaming && (msg.toolCalls ?? []).length === 0 && (
+            <span style={{ fontFamily: "'SF Mono', monospace", fontSize: 11, color: "rgba(34,197,94,0.5)" }}>…</span>
+          )}
+        </div>
+        <span style={{ fontSize: 10, color: "rgba(34,197,94,0.3)", paddingLeft: 4, transition: "opacity 0.15s", opacity: hovered ? 1 : 0 }}>
+          tools · {formatTime(msg.ts)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Answer Bubble ────────────────────────────────────────────────────────
+
+function AnswerBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
+  const [hovered, setHovered] = useState(false);
+  const streamingClass = msg.isStreaming ? "agent-chat-bubble--streaming-answer" : "";
+
   return (
     <div
       style={{ display: "flex", gap: 10, marginBottom: 14, paddingRight: "12%" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <GammaAvatar />
+      <AnswerAvatar />
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
         <div
-          className="agent-chat-bubble"
+          className={`agent-chat-bubble ${streamingClass}`}
           style={{
             padding: "10px 14px",
             borderRadius: "4px 18px 18px 18px",
@@ -235,11 +301,9 @@ function MessageBubble({ msg, status, isStreaming }: { msg: ChatMessage; accentC
             fontFamily: "var(--font-system)",
           }}
         >
-          {msg.thinking && <ThinkingBlock text={msg.thinking} />}
-          {msg.toolCalls?.map((tc, i) => <ToolCallLine key={i} entry={tc} />)}
           <div className="agent-chat-markdown">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: CodeBlockWithCopy, img: SafeMarkdownImage }}>
-              {displayText}
+              {msg.text || ""}
             </ReactMarkdown>
           </div>
         </div>
@@ -249,6 +313,15 @@ function MessageBubble({ msg, status, isStreaming }: { msg: ChatMessage; accentC
       </div>
     </div>
   );
+}
+
+// ── Message Router ───────────────────────────────────────────────────────
+
+function MessageBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
+  if (msg.role === "user") return <UserBubble msg={msg} />;
+  if (msg.kind === "thinking") return <ThinkingBubble msg={msg} />;
+  if (msg.kind === "tool") return <ToolBubble msg={msg} />;
+  return <AnswerBubble msg={msg} />;
 }
 
 // ── Typing Indicator ─────────────────────────────────────────────────────
@@ -261,45 +334,29 @@ function TypingIndicator({ toolLines }: { toolLines?: string[] }): React.ReactEl
 
   return (
     <div style={{ display: "flex", gap: 10, marginBottom: 14, paddingRight: "12%" }}>
-      <GammaAvatar />
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          padding: "10px 14px",
-          borderRadius: "4px 18px 18px 18px",
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.07)",
-          borderLeft: "3px solid rgba(59,130,246,0.45)",
-          minWidth: 120,
-        }}
-      >
-        {/* Animated status row */}
+      <AnswerAvatar />
+      <div style={{
+        display: "flex", flexDirection: "column", gap: 6,
+        padding: "10px 14px", borderRadius: "4px 18px 18px 18px",
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.07)",
+        borderLeft: "3px solid rgba(59,130,246,0.45)",
+        minWidth: 120,
+      }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* Label */}
           <span style={{ fontSize: 12, color: "rgba(150,180,255,0.6)", fontFamily: "var(--font-system)", letterSpacing: 0.2 }}>
             {label}
           </span>
-          {/* Wave dots after the word */}
           <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
             {[0, 1, 2].map((i) => (
-              <span
-                key={i}
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: "50%",
-                  background: "rgba(96,165,250,0.75)",
-                  display: "inline-block",
-                  animation: `waveDot 1.1s ease-in-out ${i * 0.18}s infinite`,
-                }}
-              />
+              <span key={i} style={{
+                width: 5, height: 5, borderRadius: "50%",
+                background: "rgba(96,165,250,0.75)", display: "inline-block",
+                animation: `waveDot 1.1s ease-in-out ${i * 0.18}s infinite`,
+              }} />
             ))}
           </div>
         </div>
-
-        {/* Live tool lines if any */}
         {toolLines && toolLines.length > 0 && (
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
             {toolLines.slice(-3).map((line, i) => (
@@ -316,15 +373,16 @@ function TypingIndicator({ toolLines }: { toolLines?: string[] }): React.ReactEl
 
 // ── MessageList ──────────────────────────────────────────────────────────
 
-export function MessageList({ messages, streamingMessage, pendingToolLines, accentColor, status }: MessageListProps): React.ReactElement {
+export function MessageList({ messages, pendingToolLines, status }: MessageListProps): React.ReactElement {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingMessage, pendingToolLines]);
+  }, [messages, pendingToolLines]);
 
-  // Show typing indicator only while running and before any streaming content arrives
-  const showTypingIndicator = status === "running" && !streamingMessage;
+  // Typing indicator: visible only while running and no streaming message exists yet
+  const isAnyStreaming = messages.some((m) => m.isStreaming);
+  const showTypingIndicator = status === "running" && !isAnyStreaming;
 
   return (
     <div
@@ -332,33 +390,107 @@ export function MessageList({ messages, streamingMessage, pendingToolLines, acce
       style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "16px 14px 8px", display: "flex", flexDirection: "column" }}
     >
       {messages.map((msg) => (
-        <MessageBubble key={msg.id} msg={msg} accentColor={accentColor} status={status} isStreaming={false} />
+        <MessageBubble key={msg.id} msg={msg} />
       ))}
 
-      {/* Live streaming message — visible in real-time as the agent types */}
-      {streamingMessage && (
-        <MessageBubble
-          key={streamingMessage.id}
-          msg={streamingMessage}
-          accentColor={accentColor}
-          status={status}
-          isStreaming={true}
-        />
-      )}
-
-      {/* Typing indicator: shown while running before streaming content arrives */}
       {showTypingIndicator && (
-        <TypingIndicator
-          toolLines={pendingToolLines.length > 0 ? pendingToolLines : undefined}
-        />
+        <TypingIndicator toolLines={pendingToolLines.length > 0 ? pendingToolLines : undefined} />
       )}
 
       <div ref={bottomRef} />
 
       <style>{`
-        @keyframes typingDot {
-          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-          30% { transform: translateY(-4px); opacity: 1; }
+        @keyframes waveDot {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+          30%            { transform: translateY(-5px); opacity: 1; }
+        }
+
+        /* Answer bubble — blue neon */
+        @keyframes neonAnswer {
+          0%, 100% {
+            box-shadow: 0 0 0px rgba(59,130,246,0), 0 0 0px rgba(96,165,250,0);
+            border-color: rgba(255,255,255,0.07);
+          }
+          50% {
+            box-shadow: 0 0 10px rgba(59,130,246,0.5), 0 0 22px rgba(59,130,246,0.22), 0 0 36px rgba(96,165,250,0.1);
+            border-color: rgba(59,130,246,0.5);
+          }
+        }
+
+        /* Thinking bubble — violet neon */
+        @keyframes neonThinkingPulse {
+          0%, 100% {
+            box-shadow: 0 0 0px rgba(139,92,246,0), 0 0 0px rgba(167,139,250,0);
+            border-color: rgba(139, 92, 246, 0.12);
+          }
+          50% {
+            box-shadow: 0 0 8px rgba(139,92,246,0.45), 0 0 18px rgba(139,92,246,0.2), 0 0 30px rgba(167,139,250,0.1);
+            border-color: rgba(139, 92, 246, 0.45);
+          }
+        }
+
+        /* Tool bubble — green neon */
+        @keyframes neonTool {
+          0%, 100% {
+            box-shadow: 0 0 0px rgba(34,197,94,0), 0 0 0px rgba(34,197,94,0);
+            border-color: rgba(34, 197, 94, 0.1);
+          }
+          50% {
+            box-shadow: 0 0 8px rgba(34,197,94,0.4), 0 0 18px rgba(34,197,94,0.18), 0 0 28px rgba(34,197,94,0.08);
+            border-color: rgba(34, 197, 94, 0.4);
+          }
+        }
+
+        .agent-chat-bubble--streaming-answer   { animation: neonAnswer          2.2s ease-in-out infinite; }
+        .agent-chat-bubble--streaming-thinking { animation: neonThinkingPulse   2s   ease-in-out infinite; }
+        .agent-chat-bubble--streaming-tool     { animation: neonTool            1.8s ease-in-out infinite; }
+
+        .agent-chat-message-list::-webkit-scrollbar { width: 4px; }
+        .agent-chat-message-list::-webkit-scrollbar-track { background: transparent; }
+        .agent-chat-message-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+        .agent-chat-message-list::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+        .agent-chat-message-list, .agent-chat-bubble, .agent-chat-markdown { user-select: text; -webkit-user-select: text; }
+
+        .agent-chat-code-block { position: relative; margin: 6px 0; }
+        .agent-chat-code-block pre { margin: 0; }
+        .agent-chat-code-copy {
+          position: absolute; top: 8px; right: 8px;
+          padding: 3px 8px; font-size: 11px;
+          color: rgba(180,200,255,0.5); background: rgba(255,255,255,0.07);
+          border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;
+          cursor: pointer; transition: background 0.15s, color 0.15s; z-index: 1;
+        }
+        .agent-chat-code-copy:hover { background: rgba(255,255,255,0.12); color: rgba(220,235,255,0.9); }
+
+        .agent-chat-markdown p { margin: 4px 0; color: inherit; }
+        .agent-chat-markdown ul, .agent-chat-markdown ol { margin: 6px 0; padding-left: 20px; color: inherit; }
+        .agent-chat-markdown strong { font-weight: 600; color: inherit; }
+        .agent-chat-markdown em { font-style: italic; }
+        .agent-chat-markdown code {
+          background: rgba(255,255,255,0.07); color: rgba(150,210,255,0.9);
+          padding: 1px 5px; border-radius: 4px; font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.08);
+          font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        .agent-chat-markdown pre {
+          background: rgba(0,0,0,0.35); padding: 12px 14px; border-radius: 8px;
+          overflow-x: auto; font-size: 12px; border: 1px solid rgba(255,255,255,0.07); margin: 6px 0;
+        }
+        .agent-chat-markdown pre code { background: none; border: none; padding: 0; color: rgba(180,220,255,0.85); }
+        .agent-chat-markdown-img { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 8px 0; }
+        .agent-chat-markdown a { color: rgba(96,165,250,0.9); text-decoration: underline; word-break: break-word; }
+        .agent-chat-markdown table { border-collapse: collapse; width: 100%; font-size: 12px; }
+        .agent-chat-markdown th, .agent-chat-markdown td { border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; text-align: left; }
+        .agent-chat-markdown th { background: rgba(255,255,255,0.04); }
+        .agent-chat-input::placeholder { color: rgba(255,255,255,0.25); }
+        .agent-chat-markdown h1, .agent-chat-markdown h2, .agent-chat-markdown h3 { color: rgba(220,235,255,0.95); font-weight: 600; margin: 10px 0 4px; }
+        .agent-chat-markdown h1 { font-size: 16px; }
+        .agent-chat-markdown h2 { font-size: 14px; }
+        .agent-chat-markdown h3 { font-size: 13px; }
+        .agent-chat-markdown blockquote {
+          border-left: 3px solid rgba(59,130,246,0.4); margin: 6px 0; padding: 4px 12px;
+          color: rgba(180,200,255,0.6); font-style: italic;
         }
       `}</style>
     </div>
