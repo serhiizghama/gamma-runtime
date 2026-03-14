@@ -39,7 +39,7 @@ export function DynamicAppRenderer({
     try {
       const mod = await import(
         /* @vite-ignore */
-        `../apps/generated/${appId}/${PascalId}App.tsx?t=${entry.updatedAt}`
+        `../apps/private/${appId}/${PascalId}App.tsx?t=${entry.updatedAt}`
       );
       const Exported = mod.default ?? mod[Object.keys(mod)[0]];
       setComponent(() => Exported);

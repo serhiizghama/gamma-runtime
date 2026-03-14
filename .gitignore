@@ -8,7 +8,7 @@ dist/
 .env
 
 # AI-generated apps — isolated in nested Git repo (v1.5 Smart Commit)
-web/apps/generated/
+apps/gamma-ui/apps/private/
 
 # Shared types build artifacts
 packages/gamma-types/*.js

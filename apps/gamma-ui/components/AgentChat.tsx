@@ -55,7 +55,7 @@ const MOCK_MESSAGES: ChatMessage[] = [
       },
       {
         name: "scaffold",
-        result: '{"ok":true,"modulePath":"./apps/gamma-ui/apps/generated/weather/We',
+        result: '{"ok":true,"modulePath":"./apps/gamma-ui/apps/private/weather/We',
       },
     ],
     ts: Date.now() - 45000,

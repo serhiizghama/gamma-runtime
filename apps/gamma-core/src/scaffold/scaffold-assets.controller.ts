@@ -39,7 +39,7 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /**
- * Static Asset Controller — serves files from apps/gamma-ui/apps/generated/assets/:appId/
+ * Static Asset Controller — serves files from apps/gamma-ui/apps/private/assets/:appId/
  * with strict path-jail security (spec §9.4).
  */
 @Controller('api/assets')
@@ -52,7 +52,7 @@ export class ScaffoldAssetsController {
       'GAMMA_OS_REPO',
       path.resolve(__dirname, '../../..'),
     );
-    this.assetsRoot = path.resolve(repoRoot, 'apps/gamma-ui/apps/generated/assets');
+    this.assetsRoot = path.resolve(repoRoot, 'apps/gamma-ui/apps/private/assets');
   }
 
   @Get(':appId/*')

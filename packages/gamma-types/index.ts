@@ -162,7 +162,7 @@ export interface AppRegistryEntry {
   displayName: string;
   modulePath: string;
   createdAt: number;
-  /** Path to the bundle directory, e.g. "./web/apps/generated/weather/" */
+  /** Path to the bundle directory, e.g. "./apps/gamma-ui/apps/private/weather/" */
   bundlePath: string;
   /** true if an agent-prompt.md exists in the bundle */
   hasAgent: boolean;

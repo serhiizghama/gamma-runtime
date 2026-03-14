@@ -22,7 +22,7 @@ export class AppStorageService {
       'GAMMA_OS_REPO',
       path.resolve(__dirname, '../../..'),
     );
-    this.JAIL_ROOT = path.resolve(repoRoot, 'apps/gamma-ui/apps/generated');
+    this.JAIL_ROOT = path.resolve(repoRoot, 'apps/gamma-ui/apps/private');
   }
 
   // ── Path Jail Guard ───────────────────────────────────────────────────
@@ -31,7 +31,7 @@ export class AppStorageService {
    * Resolves a relative path and verifies it stays within JAIL_ROOT.
    * Throws ForbiddenException on absolute paths, hidden files, or traversal.
    *
-   * @param relativePath — path relative to apps/gamma-ui/apps/generated/
+   * @param relativePath — path relative to apps/gamma-ui/apps/private/
    * @returns absolute resolved path within the jail
    */
   jailPath(relativePath: string): string {
