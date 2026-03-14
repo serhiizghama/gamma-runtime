@@ -1,5 +1,6 @@
-import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, ForbiddenException, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { mkdirSync } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -14,16 +15,22 @@ import * as path from 'path';
  * obtained via jailPath(), ensuring callers cannot bypass the jail.
  */
 @Injectable()
-export class AppStorageService {
+export class AppStorageService implements OnModuleInit {
   private readonly logger = new Logger(AppStorageService.name);
   readonly JAIL_ROOT: string;
+  private readonly repoRoot: string;
 
   constructor(private readonly config: ConfigService) {
-    const repoRoot = this.config.get<string>(
+    this.repoRoot = this.config.get<string>(
       'GAMMA_OS_REPO',
       path.resolve(__dirname, '../../..'),
     );
-    this.JAIL_ROOT = path.resolve(repoRoot, 'apps/gamma-ui/apps/private');
+    this.JAIL_ROOT = path.resolve(this.repoRoot, 'apps/gamma-ui/apps/private');
+  }
+
+  onModuleInit(): void {
+    mkdirSync(this.JAIL_ROOT, { recursive: true });
+    this.logger.log(`Jail root ensured: ${this.JAIL_ROOT}`);
   }
 
   // ── Path Jail Guard ───────────────────────────────────────────────────
@@ -98,20 +105,49 @@ export class AppStorageService {
 
   /**
    * Creates a directory-level snapshot of the app bundle before an agent run.
+   * Resolves the app from system/ (PascalCase) or private/ (kebab-case).
    * Stored as `{appDir}.bak_session` — self-cleaning on next invocation.
    */
   async snapshotApp(appId: string): Promise<string> {
-    const appDir = this.jailPath(appId);
+    const appDir = await this.resolveAppRoot(appId);
+    if (!appDir) {
+      throw new Error(`[SNAPSHOT] App directory not found for '${appId}' in system/ or private/`);
+    }
+
     const bakDir = `${appDir}.bak_session`;
 
     // Remove stale snapshot from previous run (Strategy B cleanup)
     await fs.rm(bakDir, { recursive: true, force: true });
 
-    // Atomic recursive copy of the entire app directory
+    // Recursive copy of the entire app directory
     await fs.cp(appDir, bakDir, { recursive: true });
 
     this.logger.log(`[SNAPSHOT] ${appId} → ${bakDir}`);
     return bakDir;
+  }
+
+  /**
+   * Resolves the actual app directory, checking system/ first (PascalCase),
+   * then private/ (kebab-case). Returns null if neither exists.
+   */
+  private async resolveAppRoot(appId: string): Promise<string | null> {
+    const pascalName = appId
+      .split('-')
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join('');
+
+    const candidates = [
+      path.resolve(this.repoRoot, 'apps/gamma-ui/apps/system', pascalName),
+      path.resolve(this.JAIL_ROOT, appId),
+    ];
+
+    for (const dir of candidates) {
+      if (await this.fileExists(dir)) {
+        return dir;
+      }
+    }
+
+    return null;
   }
 
   async fileExists(absolutePath: string): Promise<boolean> {

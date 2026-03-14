@@ -147,18 +147,26 @@ export class HealingLoop {
 
   /**
    * Derives the app root directory from any file path within it.
-   * E.g. `.../apps/private/weather/WeatherApp.tsx` → `.../apps/private/weather`
+   * Handles both layouts:
+   *   .../apps/system/Terminal/TerminalApp.tsx  → .../apps/system/Terminal
+   *   .../apps/private/weather/WeatherApp.tsx   → .../apps/private/weather
    */
   private resolveAppDir(affectedFile: string): string {
-    // Walk up to find the `apps/private` boundary
-    const marker = `apps${path.sep}private${path.sep}`;
-    const idx = affectedFile.indexOf(marker);
-    if (idx === -1) {
-      // Cannot determine app directory — return parent as best effort
-      return path.dirname(affectedFile);
+    const markers = [
+      `apps${path.sep}system${path.sep}`,
+      `apps${path.sep}private${path.sep}`,
+    ];
+
+    for (const marker of markers) {
+      const idx = affectedFile.indexOf(marker);
+      if (idx !== -1) {
+        const afterMarker = affectedFile.slice(idx + marker.length);
+        const appName = afterMarker.split(path.sep)[0];
+        return affectedFile.slice(0, idx) + marker + appName;
+      }
     }
-    const afterMarker = affectedFile.slice(idx + marker.length);
-    const appId = afterMarker.split(path.sep)[0];
-    return path.join(affectedFile.slice(0, idx), 'apps', 'private', appId);
+
+    // Cannot determine app directory — return parent as best effort
+    return path.dirname(affectedFile);
   }
 }
