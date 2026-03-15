@@ -61,6 +61,9 @@ export class ActivityStreamService {
     };
 
     this.buffer.push(full);
+    this.logger.debug(
+      `[DIRECTOR-DEBUG] BUFFERED | kind=${full.kind} | agent=${full.agentId} | tool=${full.toolName ?? '-'} | bufferSize=${this.buffer.length}`,
+    );
 
     if (!this.flushTimer) {
       this.flushTimer = setTimeout(() => this.flush(), FLUSH_INTERVAL_MS);
@@ -103,9 +106,13 @@ export class ActivityStreamService {
       );
     }
 
+    this.logger.log(
+      `[DIRECTOR-DEBUG] FLUSH ${batch.length} event(s) → ${REDIS_KEYS.SYSTEM_ACTIVITY} | kinds=[${batch.map(e => e.kind).join(',')}]`,
+    );
+
     pipeline.exec().catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to flush activity events: ${msg}`);
+      this.logger.error(`[DIRECTOR-DEBUG] FLUSH FAILED: ${msg}`);
     });
   }
 }

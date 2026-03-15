@@ -427,10 +427,11 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       const kind = classifyGatewayEventKind(frame.event);
 
       if (kind === 'runtime-agent') {
-        this.logger.log(`raw agent payload keys: ${Object.keys(frame.payload ?? {}).join(', ')}`);
+        this.logger.log(`[DIRECTOR-DEBUG] FRAME runtime-agent | event=${frame.event} | payloadKeys=[${Object.keys(frame.payload ?? {}).join(',')}]`);
         this.enqueueAgentEvent(frame.payload as unknown as GWAgentEventPayload);
+      } else {
+        this.logger.debug(`[DIRECTOR-DEBUG] FRAME ${kind} | event=${frame.event} (not routed to activity stream)`);
       }
-      // runtime-chat, summary-refresh, ignore — no-op for now
     }
   }
 
@@ -456,7 +457,13 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
   private async handleAgentEvent(payload: GWAgentEventPayload): Promise<void> {
     // sessionKey already normalized by enqueueAgentEvent
     const sessionKey = payload.sessionKey;
-    this.logger.log(`handleAgentEvent: key=${sessionKey}, stream=${payload.stream}, data=${JSON.stringify(payload.data).slice(0, 200)}`);
+
+    // ── [DIRECTOR-DEBUG] Raw inbound event — BEFORE any filtering ──────
+    this.logger.log(
+      `[DIRECTOR-DEBUG] INBOUND | stream=${payload.stream} | session=${sessionKey} | runId=${payload.runId} | ` +
+      `phase=${payload.data?.phase ?? '-'} | tool=${payload.data?.name ?? '-'} | ` +
+      `data=${JSON.stringify(payload.data).slice(0, 300)}`,
+    );
 
     // Update Agent Registry heartbeat on EVERY incoming event
     this.agentRegistry.heartbeat(sessionKey, `${payload.stream}`).catch(() => {});
@@ -468,7 +475,10 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       if (isExternal) {
         this.logger.debug(`agentEvent: ignoring external session ${sessionKey}`);
       } else {
-        this.logger.warn(`agentEvent: no window mapping for sessionKey=${sessionKey}, known=[${[...this.sessionToWindow.keys()]}]`);
+        this.logger.warn(
+          `[DIRECTOR-DEBUG] DROPPED — no windowId | session=${sessionKey} | stream=${payload.stream} | ` +
+          `knownSessions=[${[...this.sessionToWindow.keys()].join(',')}]`,
+        );
       }
       return;
     }
@@ -538,6 +548,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           runId,
           severity: 'info',
         });
+        this.logger.log(`[DIRECTOR-DEBUG] EMIT lifecycle_start | session=${sessionKey} | runId=${runId}`);
         return;
       }
 
@@ -597,6 +608,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           runId,
           severity: 'info',
         });
+        this.logger.log(`[DIRECTOR-DEBUG] EMIT lifecycle_end | session=${sessionKey} | runId=${runId}`);
         return;
       }
 
@@ -753,6 +765,11 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       const name = data?.name ?? 'tool';
       const toolCallId = data?.toolCallId ?? '';
 
+      this.logger.log(
+        `[DIRECTOR-DEBUG] TOOL | phase=${phase ?? 'call'} | name=${name} | session=${sessionKey} | ` +
+        `toolCallId=${toolCallId} | window=${windowId} | activityStream=${this.activityStream ? 'OK' : 'MISSING'}`,
+      );
+
       if (phase !== 'result') {
         // ── Jail Guard: validate tool arguments before execution ──────
         const violation = this.toolJailGuard.validate(
@@ -810,6 +827,10 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         // ── IPC: intercept send_message and handle locally ──────────
         if (name === 'send_message' && toolCallId) {
+          this.logger.log(
+            `[DIRECTOR-DEBUG] IPC INTERCEPT send_message | session=${sessionKey} | toolCallId=${toolCallId} | ` +
+            `args=${JSON.stringify(data?.arguments ?? {}).slice(0, 200)}`,
+          );
           await this.handleSendMessageTool(
             sessionKey, windowId, runId, toolCallId,
             (data?.arguments as Record<string, unknown>) ?? {},
@@ -849,6 +870,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         // Activity Stream (Phase 5) — include truncated args for context
         {
           const argsStr = JSON.stringify(data?.arguments ?? {});
+          const emitPayload = argsStr.length > 200 ? argsStr.slice(0, 200) + '…' : argsStr;
           this.activityStream?.emit({
             kind: 'tool_call_start',
             agentId: sessionKey,
@@ -856,9 +878,12 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
             runId,
             toolName: name,
             toolCallId,
-            payload: argsStr.length > 200 ? argsStr.slice(0, 200) + '…' : argsStr,
+            payload: emitPayload,
             severity: 'info',
           });
+          this.logger.log(
+            `[DIRECTOR-DEBUG] EMIT tool_call_start | session=${sessionKey} | tool=${name} | payload=${emitPayload.slice(0, 120)}`,
+          );
         }
 
         // Update pending tool lines in live state
@@ -943,6 +968,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         // Activity Stream (Phase 5) — include truncated result for context
         {
           const resultStr = JSON.stringify(data?.result ?? null);
+          const emitPayload = resultStr.length > 200 ? resultStr.slice(0, 200) + '…' : resultStr;
           this.activityStream?.emit({
             kind: 'tool_call_end',
             agentId: sessionKey,
@@ -950,9 +976,12 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
             runId,
             toolName: name,
             toolCallId,
-            payload: resultStr.length > 200 ? resultStr.slice(0, 200) + '…' : resultStr,
+            payload: emitPayload,
             severity: data?.isError ? 'error' : 'info',
           });
+          this.logger.log(
+            `[DIRECTOR-DEBUG] EMIT tool_call_end | session=${sessionKey} | tool=${name} | isError=${!!data?.isError} | payload=${emitPayload.slice(0, 120)}`,
+          );
         }
 
         // Update pending tool lines
