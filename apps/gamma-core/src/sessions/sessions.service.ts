@@ -659,8 +659,20 @@ export class SessionsService {
 
     this.logger.log(`[TRACE:SESSION] Session record created — now initializing Gateway session...`);
 
-    // Block until the OpenClaw Gateway session is ready.
-    await this.initializeAppInspectorSession('app-owner-inspector', inspectorWindowId);
+    // Block until the OpenClaw Gateway session is ready, with a 15s timeout
+    // to prevent hanging if the Gateway is unreachable.
+    const INIT_TIMEOUT_MS = 15_000;
+    try {
+      await Promise.race([
+        this.initializeAppInspectorSession('app-owner-inspector', inspectorWindowId),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Inspector Gateway init timed out after 15s')), INIT_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[TRACE:SESSION] Inspector init failed/timed out: ${msg} — session exists but Gateway may not be ready`);
+    }
 
     this.logger.log(`[TRACE:SESSION] Inspector fully initialized — ready to receive messages`);
     return inspectorWindowId;

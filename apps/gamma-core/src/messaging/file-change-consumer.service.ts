@@ -110,6 +110,10 @@ export class FileChangeConsumerService implements OnModuleInit, OnModuleDestroy 
       try {
         if (!this.blockingRedis) break;
 
+        console.log(
+          `[FileChangeConsumer] XREAD poll | stream=${REDIS_KEYS.FILE_CHANGED_STREAM} | lastId=${this.lastStreamId} | dispatcherReady=${!!this.dispatcher}`,
+        );
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const results = await (this.blockingRedis as any).xread(
           'BLOCK', 5000,

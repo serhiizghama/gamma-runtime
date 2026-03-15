@@ -27,6 +27,7 @@ import { SessionRegistryService } from '../sessions/session-registry.service';
 import { AppStorageService } from '../scaffold/app-storage.service';
 import { ContextInjectorService } from '../scaffold/context-injector.service';
 import { MessageBusService } from '../messaging/message-bus.service';
+import { AgentRegistryService } from '../messaging/agent-registry.service';
 import type { GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
 // ── Tool Scoping ──────────────────────────────────────────────────────────
@@ -214,6 +215,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     private readonly sessionRegistry: SessionRegistryService,
     private readonly appStorage: AppStorageService,
     private readonly messageBus: MessageBusService,
+    private readonly agentRegistry: AgentRegistryService,
     @Optional() private readonly contextInjector?: ContextInjectorService,
     @Optional() private readonly eventLog?: SystemEventLog,
   ) {
@@ -444,6 +446,10 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     // sessionKey already normalized by enqueueAgentEvent
     const sessionKey = payload.sessionKey;
     this.logger.log(`handleAgentEvent: key=${sessionKey}, stream=${payload.stream}, data=${JSON.stringify(payload.data).slice(0, 200)}`);
+
+    // Update Agent Registry heartbeat on EVERY incoming event
+    this.agentRegistry.heartbeat(sessionKey, `${payload.stream}`).catch(() => {});
+
     const windowId = this.sessionToWindow.get(sessionKey);
     if (!windowId) {
       // External sessions (e.g. Discord agents) have no UI window — silently skip
@@ -509,6 +515,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         // Atomically increment runCount + mark running in session registry
         await this.sessionRegistry.onRunStart(sessionKey);
+
+        // Mirror status to Agent Registry so UI sees 'running'
+        await this.agentRegistry.update(sessionKey, { status: 'running' });
         return;
       }
 
@@ -539,6 +548,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           status: 'idle',
           lastActiveAt: nowMs,
         });
+
+        // Mirror status to Agent Registry
+        await this.agentRegistry.update(sessionKey, { status: 'idle' });
 
         // NOTE: session-usage RPC was removed from the Gateway contract.
         // Token metrics are now derived from streamed lifecycle events.
@@ -576,6 +588,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           status: 'error',
           lastActiveAt: nowMs,
         });
+
+        // Mirror status to Agent Registry
+        await this.agentRegistry.update(sessionKey, { status: 'error' });
 
         this.runStepCounters.delete(runId);
         this.toolWatchdog.clearWindow(windowId);
