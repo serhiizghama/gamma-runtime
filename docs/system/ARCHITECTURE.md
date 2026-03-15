@@ -144,7 +144,17 @@ The **Sentinel UI** (`apps/gamma-ui/apps/system/sentinel/SentinelApp.tsx`) provi
 
 `SystemEventLogService` (`apps/gamma-core/src/system/system-event-log.service.ts`) maintains an in-memory ring buffer (max 100 events) of system-level events (tool timeouts, watchdog actions, backup scans). Events are included in the backup inventory response and displayed in the Sentinel UI activity feed.
 
-### 4.6 SystemMonitorService
+### 4.6 Live Situational Awareness (Dynamic Context Injection)
+
+`ContextInjectorService` (`apps/gamma-core/src/scaffold/context-injector.service.ts`) aggregates real-time system state into a compact text block injected into every agent message. This gives both System Architect and App Owner agents awareness of:
+
+- **Active sessions**: All running/idle sessions with status, run count, and token usage.
+- **System health**: CPU, RAM, Redis connectivity, Gateway status.
+- **Recent events**: Last 10 system events (tool timeouts, rollbacks, snapshot failures) from the SystemEventLog ring buffer.
+
+The live context is appended by `GatewayWsService.sendMessage()` after static context injection. It is best-effort — failures never block message delivery. The block is wrapped in `[LIVE SYSTEM STATE]...[/LIVE SYSTEM STATE]` tags for clear delineation.
+
+### 4.7 SystemMonitorService
 
 `SystemMonitorService` (`apps/gamma-core/src/system/system-monitor.service.ts`) scans both system and private app directories for `.bak_session` snapshots and per-file `.bak` backups. Returns a `BackupInventory` with metadata (size, file count, timestamps) via `GET /api/system/backups` (guarded by `SystemAppGuard`).
 
@@ -262,6 +272,7 @@ This rule applies to all agents (System Architect, App Owners) and human contrib
 | `apps/gamma-core/src/sessions/session-registry.service.ts` | Session telemetry (tokens, status, run count) |
 | `apps/gamma-core/src/system/system-monitor.service.ts` | Backup inventory scanner |
 | `apps/gamma-core/src/system/system-event-log.service.ts` | In-memory event ring buffer |
+| `apps/gamma-core/src/scaffold/context-injector.service.ts` | Live system state aggregator for agent prompts |
 | `apps/gamma-watchdog/src/healing-loop.ts` | FREEZE → ROLLBACK crash healer |
 | `apps/gamma-ui/hooks/useAgentStream.ts` | SSE consumer, 100ms throttled streaming state |
 | `apps/gamma-ui/hooks/useThrottledValue.ts` | Generic render throttle hook |

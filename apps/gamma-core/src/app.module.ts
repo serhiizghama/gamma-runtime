@@ -11,6 +11,7 @@ import { ScaffoldModule } from './scaffold/scaffold.module';
 import { AppDataModule } from './app-data/app-data.module';
 import { PtyModule } from './pty/pty.module';
 import { SystemEventLogModule } from './system/system-event-log.module';
+import { ContextInjectorModule } from './scaffold/context-injector.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { SystemEventLogModule } from './system/system-event-log.module';
     SystemEventLogModule,
     RedisModule,
     GatewayModule,
+    ContextInjectorModule,
     SessionsModule,
     SseModule,
     SystemModule,

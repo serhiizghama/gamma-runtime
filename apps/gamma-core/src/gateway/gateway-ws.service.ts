@@ -24,6 +24,7 @@ import {
 import { ToolWatchdogService } from './tool-watchdog.service';
 import { SessionRegistryService } from '../sessions/session-registry.service';
 import { AppStorageService } from '../scaffold/app-storage.service';
+import { ContextInjectorService } from '../scaffold/context-injector.service';
 import type { GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
 // ── Local types ───────────────────────────────────────────────────────────
@@ -158,6 +159,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     private readonly toolWatchdog: ToolWatchdogService,
     private readonly sessionRegistry: SessionRegistryService,
     private readonly appStorage: AppStorageService,
+    @Optional() private readonly contextInjector?: ContextInjectorService,
     @Optional() private readonly eventLog?: SystemEventLog,
   ) {
     this.gatewayUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
@@ -1087,6 +1089,20 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         }
       } catch {
         // Best-effort — if registry lookup fails, send the original message unchanged
+      }
+    }
+
+    // ── Dynamic live context injection ─────────────────────────────────────
+    // Append real-time system state (sessions, health, events) to every agent
+    // message so agents have situational awareness of the runtime environment.
+    if (this.contextInjector) {
+      try {
+        const liveContext = await this.contextInjector.getLiveContext();
+        if (liveContext) {
+          outgoingMessage = outgoingMessage + '\n\n' + liveContext;
+        }
+      } catch {
+        // Best-effort — live context failure must never block message delivery
       }
     }
 
