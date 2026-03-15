@@ -21,6 +21,19 @@ interface ActivityEvent {
   severity: "info" | "warn" | "error";
 }
 
+// ─── Auth helper for SSE ──────────────────────────────────────────────────────
+// EventSource doesn't support custom headers — token must be passed as query param.
+
+function buildSSEUrl(path: string): string {
+  const headers = systemAuthHeaders() as Record<string, string>;
+  const token = headers["X-Gamma-System-Token"];
+  const url = `${API_BASE}${path}`;
+  if (token) {
+    return `${url}?token=${encodeURIComponent(token)}`;
+  }
+  return url;
+}
+
 // ─── Event color coding ───────────────────────────────────────────────────────
 
 const KIND_COLORS: Record<string, string> = {
@@ -450,6 +463,52 @@ function EventRow({
   );
 }
 
+// ─── Agent Monitor SSE hook ───────────────────────────────────────────────────
+// FIX: Extracted to a hook with proper reconnect logic (was silently dying on disconnect).
+
+function useAgentMonitor(onUpdate: (agents: AgentRegistryEntry[]) => void) {
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+
+  useEffect(() => {
+    let destroyed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      if (destroyed) return;
+
+      // FIX: Pass auth token as query param (EventSource doesn't support custom headers).
+      const es = new EventSource(buildSSEUrl("/api/stream/agent-monitor"));
+
+      es.onmessage = (ev) => {
+        try {
+          const event = JSON.parse(ev.data as string) as GammaSSEEvent;
+          if (event.type === "agent_registry_update") {
+            onUpdateRef.current(event.agents);
+          }
+        } catch { /* ignore */ }
+      };
+
+      es.onerror = () => {
+        es.close();
+        if (!destroyed) {
+          reconnectTimer = setTimeout(connect, 4000);
+        }
+      };
+
+      return es;
+    };
+
+    const es = connect();
+
+    return () => {
+      destroyed = true;
+      es?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, []);
+}
+
 // ─── Agent Hierarchy Panel ────────────────────────────────────────────────────
 
 function AgentHierarchy() {
@@ -474,18 +533,8 @@ function AgentHierarchy() {
     return () => clearInterval(t);
   }, [fetchAgents]);
 
-  useEffect(() => {
-    const es = new EventSource(`${API_BASE}/api/stream/agent-monitor`);
-    es.onmessage = (ev) => {
-      try {
-        const event = JSON.parse(ev.data as string) as GammaSSEEvent;
-        if (event.type === "agent_registry_update") {
-          setAgents(event.agents);
-        }
-      } catch { /* ignore */ }
-    };
-    return () => es.close();
-  }, []);
+  // FIX: Replaced inline EventSource (no reconnect, no auth) with dedicated hook.
+  useAgentMonitor(setAgents);
 
   // Build tree: find agents waiting for IPC responses
   // Events are stored newest-first, so iterate in reverse for chronological order
@@ -513,15 +562,34 @@ function AgentHierarchy() {
     [agents],
   );
 
+  // FIX: Deselect agent if it disappears from the registry (e.g. after kill).
+  useEffect(() => {
+    if (selected && !agentMap.has(selected)) {
+      setSelected(null);
+    }
+  }, [agentMap, selected]);
+
   const selectedAgent = agents.find((a) => a.agentId === selected) ?? null;
 
+  // FIX: Added error handling + user feedback for failed reassignment.
+  const [reassignError, setReassignError] = useState<string | null>(null);
   const handleReassign = async (agentId: string, supervisorId: string | null) => {
-    await fetch(`${API_BASE}/api/system/agents/${encodeURIComponent(agentId)}/hierarchy`, {
-      method: "PATCH",
-      headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ supervisorId }),
-    });
-    fetchAgents();
+    setReassignError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/system/agents/${encodeURIComponent(agentId)}/hierarchy`, {
+        method: "PATCH",
+        headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ supervisorId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setReassignError(body.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      fetchAgents();
+    } catch (err: unknown) {
+      setReassignError(err instanceof Error ? err.message : "Network error");
+    }
   };
 
   return (
@@ -554,8 +622,16 @@ function AgentHierarchy() {
             onSelect={setSelected}
             childrenOf={childrenOf}
             waitingAgents={waitingAgents}
+            visitedIds={new Set([root.agentId])}
           />
         ))}
+
+        {/* Reassign error toast */}
+        {reassignError && (
+          <div style={{ padding: "6px 12px", color: "#ff5f5f", fontSize: 10 }}>
+            Reassign failed: {reassignError}
+          </div>
+        )}
 
         {/* Selected agent detail */}
         {selectedAgent && (
@@ -564,6 +640,7 @@ function AgentHierarchy() {
             agents={agents}
             onReassign={handleReassign}
             onRefresh={fetchAgents}
+            onKilled={() => setSelected(null)}
           />
         )}
       </div>
@@ -588,6 +665,7 @@ function AgentTreeNode({
   onSelect,
   childrenOf,
   waitingAgents,
+  visitedIds,
 }: {
   agent: AgentRegistryEntry;
   depth: number;
@@ -595,6 +673,8 @@ function AgentTreeNode({
   onSelect: (id: string | null) => void;
   childrenOf: (id: string) => AgentRegistryEntry[];
   waitingAgents: Set<string>;
+  // FIX: visitedIds prevents infinite recursion on circular supervisor references.
+  visitedIds: Set<string>;
 }) {
   const children = childrenOf(agent.agentId);
   const dotColor = STATUS_COLORS[agent.status] ?? "#666";
@@ -669,17 +749,24 @@ function AgentTreeNode({
           {children.length > 0 && <span style={{ opacity: 0.4 }}>({children.length})</span>}
         </div>
       </div>
-      {children.map((child) => (
-        <AgentTreeNode
-          key={child.agentId}
-          agent={child}
-          depth={depth + 1}
-          selected={selected}
-          onSelect={onSelect}
-          childrenOf={childrenOf}
-          waitingAgents={waitingAgents}
-        />
-      ))}
+      {children.map((child) => {
+        // FIX: Skip nodes already rendered in this branch to prevent infinite recursion.
+        if (visitedIds.has(child.agentId)) return null;
+        const nextVisited = new Set(visitedIds);
+        nextVisited.add(child.agentId);
+        return (
+          <AgentTreeNode
+            key={child.agentId}
+            agent={child}
+            depth={depth + 1}
+            selected={selected}
+            onSelect={onSelect}
+            childrenOf={childrenOf}
+            waitingAgents={waitingAgents}
+            visitedIds={nextVisited}
+          />
+        );
+      })}
     </>
   );
 }
@@ -691,14 +778,22 @@ function AgentDetail({
   agents,
   onReassign,
   onRefresh,
+  onKilled,
 }: {
   agent: AgentRegistryEntry;
   agents: AgentRegistryEntry[];
   onReassign: (agentId: string, supervisorId: string | null) => Promise<void>;
   onRefresh: () => void;
+  onKilled: () => void;
 }) {
   const [reassigning, setReassigning] = useState(false);
   const [killing, setKilling] = useState(false);
+
+  // FIX: Controlled supervisor select — syncs when a different agent is selected.
+  const [supervisorValue, setSupervisorValue] = useState(agent.supervisorId ?? "");
+  useEffect(() => {
+    setSupervisorValue(agent.supervisorId ?? "");
+  }, [agent.agentId, agent.supervisorId]);
 
   const handleKill = async () => {
     if (!confirm(`Terminate agent "${agent.agentId}"?`)) return;
@@ -708,6 +803,8 @@ function AgentDetail({
         method: "POST",
         headers: systemAuthHeaders(),
       });
+      // FIX: Notify parent to deselect before refreshing, avoiding stale detail panel.
+      onKilled();
       onRefresh();
     } catch { /* best-effort */ }
     setKilling(false);
@@ -736,6 +833,7 @@ function AgentDetail({
 
       {/* Reassign supervisor */}
       <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}>
+        {/* FIX: Use controlled value instead of defaultValue so it resets when agent changes. */}
         <select
           style={{
             background: "var(--color-surface-muted)",
@@ -747,10 +845,12 @@ function AgentDetail({
             fontFamily: "inherit",
             flex: 1,
           }}
-          defaultValue={agent.supervisorId ?? ""}
+          value={supervisorValue}
           onChange={(e) => {
+            const newVal = e.target.value;
+            setSupervisorValue(newVal);
             setReassigning(true);
-            onReassign(agent.agentId, e.target.value || null).finally(() => setReassigning(false));
+            onReassign(agent.agentId, newVal || null).finally(() => setReassigning(false));
           }}
           disabled={reassigning}
         >
@@ -811,6 +911,14 @@ function SpawnModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  // FIX: Store auto-close timeout ref for proper cleanup on unmount.
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   const handleSpawn = async () => {
     if (!appId.trim()) { setError("App ID is required"); return; }
@@ -834,7 +942,7 @@ function SpawnModal({
       } else {
         setSuccess(true);
         onSpawned();
-        setTimeout(onClose, 1200);
+        closeTimerRef.current = setTimeout(onClose, 1200);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Network error");
@@ -970,7 +1078,8 @@ function useActivityStream(): { connected: boolean; eventCount: number } {
     const connect = (): void => {
       if (destroyed) return;
 
-      const url = `${API_BASE}/api/system/activity/stream`;
+      // FIX: Pass auth token as query param (EventSource doesn't support custom headers).
+      const url = buildSSEUrl("/api/system/activity/stream");
       console.log("[Director] SSE connecting:", url);
 
       const es = new EventSource(url);
@@ -1034,11 +1143,20 @@ function useActivityStream(): { connected: boolean; eventCount: number } {
 function PanicButton() {
   const [loading, setLoading] = useState(false);
   const [last, setLast] = useState<{ ok: boolean; killed?: number } | null>(null);
+  // FIX: Store dismiss timer ref to clean up on unmount (prevents setState on unmounted component).
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  }, []);
 
   const handlePanic = async () => {
     if (!confirm("⚠ EMERGENCY STOP\n\nThis will immediately abort ALL active agent sessions.\n\nContinue?")) return;
     setLoading(true);
     setLast(null);
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     try {
       const res = await fetch(`${API_BASE}/api/system/panic`, {
         method: "POST",
@@ -1046,11 +1164,10 @@ function PanicButton() {
       });
       const body = (await res.json()) as { ok: boolean; killedCount: number };
       setLast({ ok: body.ok, killed: body.killedCount });
-      // Auto-dismiss result after 5s
-      setTimeout(() => setLast(null), 5000);
+      dismissTimerRef.current = setTimeout(() => setLast(null), 5000);
     } catch {
       setLast({ ok: false });
-      setTimeout(() => setLast(null), 5000);
+      dismissTimerRef.current = setTimeout(() => setLast(null), 5000);
     } finally {
       setLoading(false);
     }
