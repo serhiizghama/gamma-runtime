@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import type { BackupInventory, BackupSessionEntry, BackupFileEntry, SystemEvent } from "@gamma/types";
+import type {
+  BackupInventory,
+  BackupSessionEntry,
+  BackupFileEntry,
+  SystemEvent,
+  AgentRegistryEntry,
+  GammaSSEEvent,
+} from "@gamma/types";
 import { systemAuthHeaders } from "../../../hooks/useSessionRegistry";
 import { API_BASE } from "../../../constants/api";
 
@@ -24,6 +31,14 @@ const HEADER: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   flexShrink: 0,
+};
+
+const TAB_BAR: React.CSSProperties = {
+  display: "flex",
+  gap: 0,
+  borderBottom: "1px solid var(--color-border-subtle)",
+  flexShrink: 0,
+  padding: "0 16px",
 };
 
 const BODY: React.CSSProperties = {
@@ -180,6 +195,17 @@ function fmtDate(ts: number): string {
   });
 }
 
+function fmtRelative(ts: number): string {
+  if (!ts || ts <= 0) return "never";
+  const delta = Math.floor((Date.now() - ts) / 1000);
+  if (delta < 0) return "just now";
+  if (delta < 5) return "just now";
+  if (delta < 60) return `${delta}s ago`;
+  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
+  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
+  return `${Math.floor(delta / 86400)}d ago`;
+}
+
 function tierStyle(tier: "system" | "private"): React.CSSProperties {
   return {
     ...TIER_BADGE,
@@ -195,6 +221,59 @@ function eventColor(type: SystemEvent["type"]): string {
     case "error":    return "#ef4444";
     case "critical": return "#ef4444";
   }
+}
+
+const ROLE_COLORS: Record<string, { bg: string; fg: string }> = {
+  architect:  { bg: "rgba(168,85,247,0.15)", fg: "#a855f7" },
+  "app-owner": { bg: "rgba(59,130,246,0.15)", fg: "#60a5fa" },
+  daemon:     { bg: "rgba(107,114,128,0.15)", fg: "#9ca3af" },
+};
+
+function roleBadgeStyle(role: string): React.CSSProperties {
+  const c = ROLE_COLORS[role] ?? ROLE_COLORS.daemon;
+  return { ...TIER_BADGE, background: c.bg, color: c.fg };
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  idle: "#22c55e",
+  running: "#3b82f6",
+  error: "#ef4444",
+  aborted: "#eab308",
+  offline: "#6b7280",
+};
+
+function statusDot(status: string): React.CSSProperties {
+  return {
+    display: "inline-block",
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    backgroundColor: STATUS_COLORS[status] ?? "#6b7280",
+    marginRight: 5,
+    position: "relative",
+    top: -1,
+  };
+}
+
+// ── Tab types ─────────────────────────────────────────────────────────────
+
+type SentinelTab = "dashboard" | "agents";
+
+function tabStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "8px 16px",
+    fontSize: 11,
+    fontWeight: active ? 700 : 500,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    cursor: "pointer",
+    border: "none",
+    borderBottom: active ? "2px solid var(--color-text-primary)" : "2px solid transparent",
+    background: "transparent",
+    color: active ? "var(--color-text-primary)" : "var(--color-text-muted)",
+    fontFamily: "inherit",
+    transition: "color 0.15s, border-color 0.15s",
+  };
 }
 
 // ── Throttled fetch hook ──────────────────────────────────────────────────
@@ -260,6 +339,82 @@ function useBackupInventory() {
   const refresh = useCallback(() => setRefreshTick((t) => t + 1), []);
 
   return { data, loading, error, refresh };
+}
+
+// ── Agent Registry hook (REST + SSE live updates) ─────────────────────────
+
+function useAgentRegistry() {
+  const [agents, setAgents] = useState<AgentRegistryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const mountedRef = useRef(true);
+
+  // Initial REST fetch
+  useEffect(() => {
+    mountedRef.current = true;
+
+    fetch(`${API_BASE}/api/system/agents`, {
+      headers: systemAuthHeaders(),
+    })
+      .then((res) => {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error("Unauthorized — check VITE_GAMMA_SYSTEM_TOKEN");
+        }
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return res.json() as Promise<AgentRegistryEntry[]>;
+      })
+      .then((data) => {
+        if (mountedRef.current) {
+          setAgents(data);
+          setError(null);
+          setLoading(false);
+        }
+      })
+      .catch((err: unknown) => {
+        if (mountedRef.current) {
+          setError(err instanceof Error ? err.message : "Failed to load agents");
+          setLoading(false);
+        }
+      });
+
+    return () => { mountedRef.current = false; };
+  }, [refreshTick]);
+
+  // Live updates via SSE broadcast
+  useEffect(() => {
+    const es = new EventSource(`${API_BASE}/api/stream/agent-monitor`);
+
+    es.onmessage = (ev) => {
+      let event: GammaSSEEvent;
+      try {
+        event = JSON.parse(ev.data as string) as GammaSSEEvent;
+      } catch {
+        return;
+      }
+
+      if (event.type === "agent_registry_update") {
+        setAgents(event.agents);
+        setLoading(false);
+      }
+    };
+
+    es.onerror = () => {
+      // EventSource auto-reconnects
+    };
+
+    return () => { es.close(); };
+  }, []);
+
+  // Auto-refresh every 10s as fallback
+  useEffect(() => {
+    const id = setInterval(() => setRefreshTick((t) => t + 1), 10_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const refresh = useCallback(() => setRefreshTick((t) => t + 1), []);
+
+  return { agents, loading, error, refresh };
 }
 
 // ── Sorted tables (memoized) ─────────────────────────────────────────────
@@ -391,13 +546,254 @@ function ActivityFeed({ events }: { events: SystemEvent[] }): React.ReactElement
   );
 }
 
+// ── Agents view ───────────────────────────────────────────────────────────
+
+function AgentsView({
+  agents,
+  loading,
+  error,
+  refresh,
+}: {
+  agents: AgentRegistryEntry[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => void;
+}): React.ReactElement {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [, setTick] = useState(0);
+
+  // Re-render every 5s to keep relative timestamps fresh
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 5_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const selectedAgent = useMemo(
+    () => agents.find((a) => a.agentId === selected) ?? null,
+    [agents, selected],
+  );
+
+  if (error) {
+    return (
+      <div style={ERROR_BANNER}>
+        <span>{error}</span>
+        <button type="button" style={BTN} onClick={refresh}>Retry</button>
+      </div>
+    );
+  }
+
+  if (loading && agents.length === 0) {
+    return <div style={EMPTY}>Loading agents...</div>;
+  }
+
+  if (agents.length === 0) {
+    return <div style={EMPTY}>No agents registered.</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      {/* Agent table */}
+      <div style={{ flex: 1, overflow: "auto" }}>
+        <table style={TABLE}>
+          <thead>
+            <tr>
+              <th style={TH}>Agent</th>
+              <th style={TH}>Role</th>
+              <th style={TH}>Status</th>
+              <th style={TH}>Heartbeat</th>
+              <th style={TH}>Last Activity</th>
+              <th style={{ ...TH, textAlign: "center" }}>IPC</th>
+            </tr>
+          </thead>
+          <tbody>
+            {agents.map((a) => {
+              const heartbeatAge = a.lastHeartbeat > 0 ? (Date.now() - a.lastHeartbeat) / 1000 : Infinity;
+              const heartbeatStale = heartbeatAge > 30;
+              const isSelected = selected === a.agentId;
+
+              return (
+                <tr
+                  key={a.agentId}
+                  onClick={() => setSelected(isSelected ? null : a.agentId)}
+                  style={{
+                    cursor: "pointer",
+                    background: isSelected ? "rgba(255,255,255,0.04)" : undefined,
+                  }}
+                >
+                  <td style={{ ...TD, fontWeight: 600 }}>{a.agentId}</td>
+                  <td style={TD}>
+                    <span style={roleBadgeStyle(a.role)}>{a.role}</span>
+                  </td>
+                  <td style={TD}>
+                    <span style={statusDot(a.status)} />
+                    {a.status}
+                  </td>
+                  <td style={{ ...TD, color: heartbeatStale ? "#ef4444" : "var(--color-text-secondary)" }}>
+                    {fmtRelative(a.lastHeartbeat)}
+                  </td>
+                  <td style={{ ...TD, maxWidth: 220 }} title={a.lastActivity}>
+                    {a.lastActivity || "\u2014"}
+                  </td>
+                  <td style={{ ...TD, textAlign: "center" }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        backgroundColor: a.acceptsMessages ? "#22c55e" : "#6b7280",
+                      }}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Detail panel */}
+      {selectedAgent && (
+        <div
+          style={{
+            flex: "0 0 260px",
+            borderLeft: "1px solid var(--color-border-subtle)",
+            overflow: "auto",
+            padding: "12px 14px",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+            {selectedAgent.agentId}
+          </div>
+
+          <DetailRow label="Role" value={selectedAgent.role} />
+          <DetailRow label="Status" value={selectedAgent.status} />
+          <DetailRow label="Session Key" value={selectedAgent.sessionKey} />
+          <DetailRow label="Window ID" value={selectedAgent.windowId || "\u2014"} />
+          <DetailRow label="App ID" value={selectedAgent.appId || "\u2014"} />
+          <DetailRow label="IPC Ready" value={selectedAgent.acceptsMessages ? "Yes" : "No"} />
+          <DetailRow label="Heartbeat" value={fmtRelative(selectedAgent.lastHeartbeat)} />
+          <DetailRow label="Created" value={selectedAgent.createdAt ? fmtDate(selectedAgent.createdAt) : "\u2014"} />
+          <DetailRow label="Last Activity" value={selectedAgent.lastActivity || "\u2014"} />
+
+          {selectedAgent.capabilities.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ ...PANE_HEADER, padding: "4px 0", border: "none" }}>
+                Capabilities
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                {selectedAgent.capabilities.map((cap) => (
+                  <span
+                    key={cap}
+                    style={{
+                      ...TIER_BADGE,
+                      background: "rgba(107,114,128,0.15)",
+                      color: "#9ca3af",
+                    }}
+                  >
+                    {cap}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }): React.ReactElement {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 11 }}>
+      <span style={{ color: "var(--color-text-muted)", flexShrink: 0 }}>{label}</span>
+      <span
+        style={{
+          color: "var(--color-text-secondary)",
+          textAlign: "right",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          maxWidth: 160,
+          marginLeft: 8,
+        }}
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// ── Dashboard view (original layout) ──────────────────────────────────────
+
+function DashboardView({
+  sessions,
+  files,
+  events,
+}: {
+  sessions: BackupSessionEntry[];
+  files: BackupFileEntry[];
+  events: SystemEvent[];
+}): React.ReactElement {
+  return (
+    <>
+      {/* Top row: tables */}
+      <div style={TABLES_ROW}>
+        {/* Session snapshots */}
+        <div style={PANE_LEFT}>
+          <div style={PANE_HEADER}>
+            Session Snapshots
+            <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
+              {sessions.length}
+            </span>
+          </div>
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <SessionsTable sessions={sessions} />
+          </div>
+        </div>
+
+        {/* File backups */}
+        <div style={PANE}>
+          <div style={PANE_HEADER}>
+            File Backups
+            <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
+              {files.length}
+            </span>
+          </div>
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <FilesTable files={files} />
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom row: activity feed */}
+      <div style={FEED_PANE}>
+        <div style={PANE_HEADER}>
+          System Activity Feed
+          <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
+            {events.length}
+          </span>
+        </div>
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <ActivityFeed events={events} />
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 
 export function SentinelApp(): React.ReactElement {
+  const [tab, setTab] = useState<SentinelTab>("dashboard");
+
   const { data, loading, error, refresh } = useBackupInventory();
   const sessions = useSortedSessions(data?.sessions);
   const files = useSortedFiles(data?.files);
   const events = data?.events ?? [];
+
+  const agentState = useAgentRegistry();
 
   return (
     <div style={ROOT}>
@@ -406,11 +802,11 @@ export function SentinelApp(): React.ReactElement {
         <div>
           <div style={{ fontSize: 13, fontWeight: 600 }}>Sentinel</div>
           <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
-            Pre-flight Snapshots &middot; File Backups &middot; Activity Feed
+            Stability &middot; Backups &middot; Agents
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          {data && (
+          {tab === "dashboard" && data && (
             <>
               <div style={{ textAlign: "right" }}>
                 <div style={STAT_VALUE}>{fmtBytes(data.totalSizeBytes)}</div>
@@ -424,19 +820,40 @@ export function SentinelApp(): React.ReactElement {
               </div>
             </>
           )}
+          {tab === "agents" && (
+            <div style={{ textAlign: "right" }}>
+              <div style={STAT_VALUE}>{agentState.agents.length}</div>
+              <div style={STAT_LABEL}>Active agents</div>
+            </div>
+          )}
           <button
             type="button"
             style={{ ...BTN, opacity: loading ? 0.5 : 1 }}
-            disabled={loading}
-            onClick={refresh}
+            disabled={tab === "dashboard" ? loading : agentState.loading}
+            onClick={tab === "dashboard" ? refresh : agentState.refresh}
           >
-            {loading ? "Scanning\u2026" : "Refresh"}
+            {(tab === "dashboard" ? loading : agentState.loading) ? "Loading\u2026" : "Refresh"}
           </button>
         </div>
       </header>
 
+      {/* Tab bar */}
+      <div style={TAB_BAR}>
+        <button type="button" style={tabStyle(tab === "dashboard")} onClick={() => setTab("dashboard")}>
+          Dashboard
+        </button>
+        <button type="button" style={tabStyle(tab === "agents")} onClick={() => setTab("agents")}>
+          Agents
+          {agentState.agents.length > 0 && (
+            <span style={{ marginLeft: 6, opacity: 0.6, fontWeight: 400 }}>
+              {agentState.agents.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Error banner */}
-      {error && (
+      {tab === "dashboard" && error && (
         <div style={ERROR_BANNER}>
           <span>{error}</span>
           <button type="button" style={BTN} onClick={refresh}>Retry</button>
@@ -445,47 +862,17 @@ export function SentinelApp(): React.ReactElement {
 
       {/* Body */}
       <div style={BODY}>
-        {/* Top row: tables */}
-        <div style={TABLES_ROW}>
-          {/* Session snapshots */}
-          <div style={PANE_LEFT}>
-            <div style={PANE_HEADER}>
-              Session Snapshots
-              <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
-                {sessions.length}
-              </span>
-            </div>
-            <div style={{ flex: 1, overflow: "auto" }}>
-              <SessionsTable sessions={sessions} />
-            </div>
-          </div>
-
-          {/* File backups */}
-          <div style={PANE}>
-            <div style={PANE_HEADER}>
-              File Backups
-              <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
-                {files.length}
-              </span>
-            </div>
-            <div style={{ flex: 1, overflow: "auto" }}>
-              <FilesTable files={files} />
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom row: activity feed */}
-        <div style={FEED_PANE}>
-          <div style={PANE_HEADER}>
-            System Activity Feed
-            <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
-              {events.length}
-            </span>
-          </div>
-          <div style={{ flex: 1, overflow: "auto" }}>
-            <ActivityFeed events={events} />
-          </div>
-        </div>
+        {tab === "dashboard" && (
+          <DashboardView sessions={sessions} files={files} events={events} />
+        )}
+        {tab === "agents" && (
+          <AgentsView
+            agents={agentState.agents}
+            loading={agentState.loading}
+            error={agentState.error}
+            refresh={agentState.refresh}
+          />
+        )}
       </div>
     </div>
   );

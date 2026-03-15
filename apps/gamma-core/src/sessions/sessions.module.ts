@@ -1,6 +1,7 @@
 import { Module, OnModuleInit, Logger, forwardRef } from '@nestjs/common';
 import { GatewayModule } from '../gateway/gateway.module';
 import { ScaffoldModule } from '../scaffold/scaffold.module';
+import { MessagingModule } from '../messaging/messaging.module';
 import { SessionRegistryModule } from './session-registry.module';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
@@ -14,6 +15,7 @@ import { WatchdogCommandListenerService } from '../gateway/watchdog-command-list
     GatewayModule,
     forwardRef(() => ScaffoldModule),
     SessionRegistryModule,
+    MessagingModule,
   ],
   controllers: [SessionsController],
   providers: [SessionsService, SessionGcService, SystemAppGuard, WatchdogCommandListenerService],

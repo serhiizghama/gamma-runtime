@@ -65,6 +65,8 @@ export type GammaSSEEvent =
   | { type: 'keep_alive' }
   // Agent Control Plane (Stage 4)
   | { type: 'session_registry_update'; records: SessionRecord[] }
+  // Agent Registry
+  | { type: 'agent_registry_update'; agents: AgentRegistryEntry[] }
   // Error
   | { type: 'error'; windowId: string; message: string };
 
@@ -290,6 +292,24 @@ export interface SessionRecord {
   runCount: number;
 }
 
+// ── §17 Agent Registry ──────────────────────────────────────────────────
+
+export type AgentRole = 'architect' | 'app-owner' | 'daemon';
+
+export interface AgentRegistryEntry {
+  agentId: string;
+  role: AgentRole;
+  sessionKey: string;
+  windowId: string;
+  appId: string;
+  status: AgentStatus | 'offline';
+  capabilities: string[];
+  lastHeartbeat: number;
+  lastActivity: string;
+  acceptsMessages: boolean;
+  createdAt: number;
+}
+
 // ── Redis Key Constants ──────────────────────────────────────────────────
 
 export const REDIS_KEYS = {
@@ -303,6 +323,10 @@ export const REDIS_KEYS = {
   EVENT_LAG: 'gamma:metrics:event_lag',
   SESSION_REGISTRY_PREFIX: 'gamma:session-registry:',
   SESSION_CONTEXT_PREFIX: 'gamma:session-context:',
+  AGENT_REGISTRY_PREFIX: 'gamma:agent-registry:',
+  AGENT_REGISTRY_INDEX: 'gamma:agent-registry:index',
+  AGENT_BROADCAST: 'gamma:agent:broadcast',
+  AGENT_INBOX: (agentId: string) => `gamma:agent:${agentId}:inbox` as const,
 } as const;
 
 /** Stream ID is always a string — never parse as number (precision loss) */

@@ -1,0 +1,201 @@
+import { Injectable, Inject, Logger } from '@nestjs/common';
+import Redis from 'ioredis';
+import { REDIS_CLIENT } from '../redis/redis.constants';
+import type { AgentRegistryEntry, AgentRole, AgentStatus } from '@gamma/types';
+import { REDIS_KEYS } from '@gamma/types';
+
+const TTL_24H = 86_400; // seconds
+
+/**
+ * Manages the Agent Registry — a Redis-backed directory of all active agents
+ * in the system. Used for agent discovery, capability advertisement, and
+ * IPC readiness tracking (Phase 4).
+ *
+ * Each agent is stored as a Redis Hash at gamma:agent-registry:<agentId>,
+ * with a membership Set at gamma:agent-registry:index.
+ */
+@Injectable()
+export class AgentRegistryService {
+  private readonly logger = new Logger(AgentRegistryService.name);
+
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+
+  // ── Public API ────────────────────────────────────────────────────────
+
+  /**
+   * Register a new agent or update an existing entry.
+   * Adds the agentId to the index Set and resets the 24h TTL.
+   */
+  async register(entry: AgentRegistryEntry): Promise<void> {
+    const key = `${REDIS_KEYS.AGENT_REGISTRY_PREFIX}${entry.agentId}`;
+
+    const flat: Record<string, string> = {
+      agentId: entry.agentId,
+      role: entry.role,
+      sessionKey: entry.sessionKey,
+      windowId: entry.windowId,
+      appId: entry.appId,
+      status: entry.status,
+      capabilities: JSON.stringify(entry.capabilities),
+      lastHeartbeat: String(entry.lastHeartbeat),
+      lastActivity: entry.lastActivity,
+      acceptsMessages: entry.acceptsMessages ? '1' : '0',
+      createdAt: String(entry.createdAt),
+    };
+
+    await this.redis
+      .pipeline()
+      .hset(key, flat)
+      .expire(key, TTL_24H)
+      .sadd(REDIS_KEYS.AGENT_REGISTRY_INDEX, entry.agentId)
+      .exec();
+
+    this.broadcastUpdate();
+  }
+
+  /**
+   * Update specific fields on an existing agent entry.
+   * Resets the 24h TTL. No-op if the agent doesn't exist.
+   */
+  async update(agentId: string, fields: Partial<Omit<AgentRegistryEntry, 'agentId'>>): Promise<void> {
+    const key = `${REDIS_KEYS.AGENT_REGISTRY_PREFIX}${agentId}`;
+    const exists = await this.redis.exists(key);
+    if (!exists) return;
+
+    const flat: Record<string, string> = {};
+    if (fields.role != null) flat.role = fields.role;
+    if (fields.sessionKey != null) flat.sessionKey = fields.sessionKey;
+    if (fields.windowId != null) flat.windowId = fields.windowId;
+    if (fields.appId != null) flat.appId = fields.appId;
+    if (fields.status != null) flat.status = fields.status;
+    if (fields.capabilities != null) flat.capabilities = JSON.stringify(fields.capabilities);
+    if (fields.lastHeartbeat != null) flat.lastHeartbeat = String(fields.lastHeartbeat);
+    if (fields.lastActivity != null) flat.lastActivity = fields.lastActivity;
+    if (fields.acceptsMessages != null) flat.acceptsMessages = fields.acceptsMessages ? '1' : '0';
+    if (fields.createdAt != null) flat.createdAt = String(fields.createdAt);
+
+    if (Object.keys(flat).length === 0) return;
+
+    await this.redis
+      .pipeline()
+      .hset(key, flat)
+      .expire(key, TTL_24H)
+      .exec();
+
+    this.broadcastUpdate();
+  }
+
+  /**
+   * Record a heartbeat: update lastHeartbeat + optional lastActivity,
+   * and refresh the TTL. Lightweight — only touches two or three fields.
+   */
+  async heartbeat(agentId: string, activity?: string): Promise<void> {
+    const key = `${REDIS_KEYS.AGENT_REGISTRY_PREFIX}${agentId}`;
+    const exists = await this.redis.exists(key);
+    if (!exists) return;
+
+    const flat: Record<string, string> = {
+      lastHeartbeat: String(Date.now()),
+    };
+    if (activity) flat.lastActivity = activity;
+
+    await this.redis
+      .pipeline()
+      .hset(key, flat)
+      .expire(key, TTL_24H)
+      .exec();
+  }
+
+  /**
+   * Unregister an agent — removes the hash and the index entry.
+   */
+  async unregister(agentId: string): Promise<void> {
+    const key = `${REDIS_KEYS.AGENT_REGISTRY_PREFIX}${agentId}`;
+    await this.redis
+      .pipeline()
+      .del(key)
+      .srem(REDIS_KEYS.AGENT_REGISTRY_INDEX, agentId)
+      .exec();
+
+    this.broadcastUpdate();
+  }
+
+  /**
+   * Return all registered agents. Cleans up stale index entries whose
+   * hashes have expired (TTL lapse).
+   */
+  async getAll(): Promise<AgentRegistryEntry[]> {
+    const agentIds = await this.redis.smembers(REDIS_KEYS.AGENT_REGISTRY_INDEX);
+    if (agentIds.length === 0) return [];
+
+    const entries: AgentRegistryEntry[] = [];
+    const stale: string[] = [];
+
+    for (const id of agentIds) {
+      const raw = await this.redis.hgetall(`${REDIS_KEYS.AGENT_REGISTRY_PREFIX}${id}`);
+      if (!raw || !raw.agentId) {
+        stale.push(id);
+        continue;
+      }
+      entries.push(this.parseEntry(raw));
+    }
+
+    // Clean up stale index entries
+    if (stale.length > 0) {
+      await this.redis.srem(REDIS_KEYS.AGENT_REGISTRY_INDEX, ...stale);
+      this.logger.debug(`Cleaned ${stale.length} stale agent registry index entries`);
+    }
+
+    return entries;
+  }
+
+  /**
+   * Get a single agent entry by ID, or null if not found.
+   */
+  async getOne(agentId: string): Promise<AgentRegistryEntry | null> {
+    const raw = await this.redis.hgetall(`${REDIS_KEYS.AGENT_REGISTRY_PREFIX}${agentId}`);
+    if (!raw || !raw.agentId) return null;
+    return this.parseEntry(raw);
+  }
+
+  // ── Broadcast ─────────────────────────────────────────────────────────
+
+  private broadcastUpdate(): void {
+    this.getAll()
+      .then((entries) =>
+        this.redis.xadd(
+          REDIS_KEYS.SSE_BROADCAST, '*',
+          'type', 'agent_registry_update',
+          'agents', JSON.stringify(entries),
+        ),
+      )
+      .catch(() => {
+        // best-effort; SSE broadcast failure must never block normal operations
+      });
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+
+  private parseEntry(raw: Record<string, string>): AgentRegistryEntry {
+    let capabilities: string[] = [];
+    try {
+      capabilities = JSON.parse(raw.capabilities || '[]');
+    } catch {
+      capabilities = [];
+    }
+
+    return {
+      agentId: raw.agentId,
+      role: (raw.role || 'app-owner') as AgentRole,
+      sessionKey: raw.sessionKey || '',
+      windowId: raw.windowId || '',
+      appId: raw.appId || '',
+      status: (raw.status || 'offline') as AgentStatus | 'offline',
+      capabilities,
+      lastHeartbeat: Number(raw.lastHeartbeat || 0),
+      lastActivity: raw.lastActivity || '',
+      acceptsMessages: raw.acceptsMessages === '1',
+      createdAt: Number(raw.createdAt || 0),
+    };
+  }
+}

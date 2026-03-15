@@ -15,6 +15,7 @@ import type {
 } from '@gamma/types';
 import { REDIS_KEYS } from '@gamma/types';
 import { SessionRegistryService } from './session-registry.service';
+import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { ScaffoldService } from '../scaffold/scaffold.service';
 const APP_OWNER_PREFIX = 'app-owner-';
 const APP_OWNER_INIT_FIELD = 'appOwnerInitialized';
@@ -76,6 +77,7 @@ export class SessionsService {
     @Inject(forwardRef(() => ScaffoldService))
     private readonly scaffoldService: ScaffoldService,
     private readonly registry: SessionRegistryService,
+    private readonly agentRegistry: AgentRegistryService,
   ) {}
 
   /** Create a new window↔session mapping */
@@ -119,6 +121,23 @@ export class SessionsService {
 
     // Keep Gateway's in-memory mapping in sync so events can be routed
     this.gatewayWs.registerWindowSession(dto.sessionKey, windowId);
+
+    // Register in the Agent Registry for discovery and IPC
+    const agentId = dto.agentId || dto.sessionKey;
+    const role = this.resolveAgentRole(dto.sessionKey);
+    await this.agentRegistry.register({
+      agentId,
+      role,
+      sessionKey: dto.sessionKey,
+      windowId,
+      appId,
+      status: 'idle',
+      capabilities: [],
+      lastHeartbeat: Date.now(),
+      lastActivity: 'session created',
+      acceptsMessages: true,
+      createdAt: session.createdAt,
+    });
 
     // Initialize App Owner sessions with a dedicated system prompt + source context.
     if (dto.sessionKey?.startsWith(APP_OWNER_PREFIX)) {
@@ -716,7 +735,19 @@ export class SessionsService {
     // 4. Unregister from in-memory routing
     this.gatewayWs.unregisterWindowSession(existing.sessionKey);
 
+    // 5. Remove from Agent Registry
+    const agentId = existing.agentId || existing.sessionKey;
+    await this.agentRegistry.unregister(agentId);
+
     this.logger.log(`Removed session ${windowId} (sessionKey=${existing.sessionKey})`);
     return true;
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────
+
+  private resolveAgentRole(sessionKey: string): 'architect' | 'app-owner' | 'daemon' {
+    if (sessionKey === 'system-architect') return 'architect';
+    if (sessionKey.startsWith(APP_OWNER_PREFIX)) return 'app-owner';
+    return 'daemon';
   }
 }
