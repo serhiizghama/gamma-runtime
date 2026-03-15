@@ -14,6 +14,7 @@
 
 import http2 from 'http2';
 import http from 'http';
+import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -29,8 +30,11 @@ if (!fs.existsSync(KEY_PATH) || !fs.existsSync(CERT_PATH)) {
   process.exit(1);
 }
 
-const PROXY_PORT = parseInt(process.env.H2_PORT ?? '5173', 10);
-const VITE_PORT  = parseInt(process.env.VITE_PORT ?? '5174', 10);
+const PROXY_PORT  = parseInt(process.env.H2_PORT ?? '5173', 10);
+const VITE_PORT   = parseInt(process.env.VITE_PORT ?? '5174', 10);
+// Vite runs as plain HTTP when started with H2_PROXY=1
+const VITE_HTTPS  = false;
+const viteAgent   = undefined;
 
 const server = http2.createSecureServer({
   key:          fs.readFileSync(KEY_PATH),
@@ -42,22 +46,32 @@ server.on('stream', (stream, headers) => {
   const method  = headers[':method'] ?? 'GET';
   const path_   = headers[':path']   ?? '/';
 
+  const transport = http;
   const options = {
     hostname: '127.0.0.1',
     port:     VITE_PORT,
     path:     path_,
     method,
-    headers: buildForwardHeaders(headers),
+    headers:  buildForwardHeaders(headers),
   };
 
-  const proxy = http.request(options, (res) => {
+  // HTTP/1.1 connection-specific headers must be stripped before forwarding
+  // to an HTTP/2 stream (Node.js http2 will throw ERR_HTTP2_INVALID_CONNECTION_HEADERS).
+  const H1_ONLY_HEADERS = new Set([
+    'connection', 'keep-alive', 'proxy-connection',
+    'transfer-encoding', 'upgrade',
+  ]);
+
+  const proxy = transport.request(options, (res) => {
     const replyHeaders = { ':status': res.statusCode ?? 200 };
     for (const [k, v] of Object.entries(res.headers)) {
-      if (k.toLowerCase() === 'transfer-encoding') continue; // strip TE for h2
+      if (H1_ONLY_HEADERS.has(k.toLowerCase())) continue;
       replyHeaders[k] = v;
     }
-    stream.respond(replyHeaders);
-    res.pipe(stream);
+    if (!stream.destroyed) {
+      stream.respond(replyHeaders);
+      res.pipe(stream);
+    }
   });
 
   proxy.on('error', (err) => {

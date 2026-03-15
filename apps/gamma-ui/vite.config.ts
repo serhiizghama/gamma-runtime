@@ -10,7 +10,11 @@ const keyPath = path.join(repoRoot, "certs", "localhost.key");
 const certPath = path.join(repoRoot, "certs", "localhost.cert");
 const hasCerts = fs.existsSync(keyPath) && fs.existsSync(certPath);
 
-const httpsConfig = hasCerts
+// When running behind the h2-proxy (H2_PROXY=1), Vite serves plain HTTP
+// so the proxy doesn't have to negotiate TLS twice.
+const behindProxy = process.env.H2_PROXY === '1';
+
+const httpsConfig = (hasCerts && !behindProxy)
   ? { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }
   : undefined;
 
