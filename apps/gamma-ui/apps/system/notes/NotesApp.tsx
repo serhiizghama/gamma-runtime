@@ -17,6 +17,10 @@ function createNote(): Note {
   };
 }
 
+function formatDate(ts: number): string {
+  return new Date(ts).toLocaleString();
+}
+
 export function NotesApp(): React.ReactElement {
   const [notes, setNotes] = useState<Note[]>([createNote()]);
   const [activeId, setActiveId] = useState<string>(notes[0].id);
@@ -24,28 +28,22 @@ export function NotesApp(): React.ReactElement {
   const activeNote = notes.find((n) => n.id === activeId) ?? notes[0];
 
   const updateActive = (patch: Partial<Pick<Note, "title" | "body">>) => {
-    if (!activeNote) return;
     setNotes((prev) =>
-      prev.map((n) =>
-        n.id === activeNote.id
-          ? {
-              ...n,
-              ...patch,
-            }
-          : n,
-      ),
+      prev.map((n) => (n.id === activeId ? { ...n, ...patch } : n)),
     );
   };
 
   const addNote = () => {
     const next = createNote();
+    console.log("[NotesApp] New note created:", next.id);
     setNotes((prev) => [next, ...prev]);
     setActiveId(next.id);
   };
 
   const deleteNote = (id: string) => {
+    console.log("[NotesApp] Note deleted:", id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
-    if (activeId === id && notes.length > 1) {
+    if (activeId === id) {
       const remaining = notes.filter((n) => n.id !== id);
       setActiveId(remaining[0]?.id ?? "");
     }
@@ -166,7 +164,7 @@ export function NotesApp(): React.ReactElement {
                   width: "100%",
                 }}
               >
-                {new Date(n.createdAt).toLocaleString()}
+                {formatDate(n.createdAt)}
               </span>
             </button>
           ))}
@@ -235,8 +233,7 @@ export function NotesApp(): React.ReactElement {
                 borderRadius: 12,
                 border: "1px solid var(--color-border-subtle-strong)",
                 padding: "10px 12px",
-                fontFamily:
-                  "system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+                fontFamily: "var(--font-system)",
                 fontSize: 14,
                 lineHeight: 1.6,
                 background: "var(--color-surface-elevated)",
