@@ -122,8 +122,10 @@ export class SessionsService {
     // Keep Gateway's in-memory mapping in sync so events can be routed
     this.gatewayWs.registerWindowSession(dto.sessionKey, windowId);
 
-    // Register in the Agent Registry for discovery and IPC
-    const agentId = dto.agentId || dto.sessionKey;
+    // Register in the Agent Registry for discovery and IPC.
+    // Use sessionKey as the canonical agentId — dto.agentId is a generic role
+    // hint ("app-owner", "architect") and is NOT unique across agents.
+    const agentId = dto.sessionKey;
     const role = this.resolveAgentRole(dto.sessionKey);
     await this.agentRegistry.register({
       agentId,
@@ -735,9 +737,8 @@ export class SessionsService {
     // 4. Unregister from in-memory routing
     this.gatewayWs.unregisterWindowSession(existing.sessionKey);
 
-    // 5. Remove from Agent Registry
-    const agentId = existing.agentId || existing.sessionKey;
-    await this.agentRegistry.unregister(agentId);
+    // 5. Remove from Agent Registry (keyed by sessionKey, not dto.agentId)
+    await this.agentRegistry.unregister(existing.sessionKey);
 
     this.logger.log(`Removed session ${windowId} (sessionKey=${existing.sessionKey})`);
     return true;
