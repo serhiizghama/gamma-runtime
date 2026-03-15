@@ -310,6 +310,20 @@ export interface AgentRegistryEntry {
   createdAt: number;
 }
 
+// ── §18 Agent Message Bus ────────────────────────────────────────────────
+
+export interface AgentMessage {
+  id: string;
+  from: string;
+  to: string;
+  type: 'task_request' | 'task_response' | 'notification' | 'query';
+  subject: string;
+  payload: string;
+  ts: number;
+  replyTo?: string;
+  ttl?: number;
+}
+
 // ── Redis Key Constants ──────────────────────────────────────────────────
 
 export const REDIS_KEYS = {

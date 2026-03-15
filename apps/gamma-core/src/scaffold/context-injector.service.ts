@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SessionRegistryService } from '../sessions/session-registry.service';
+import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { SystemEventLog } from '../system/system-event-log.service';
 import { SystemHealthService } from '../system/system-health.service';
-import type { SessionRecord, SystemHealthReport } from '@gamma/types';
+import type { AgentRegistryEntry, SessionRecord, SystemHealthReport } from '@gamma/types';
 
 /**
  * Dynamic Context Injector — aggregates real-time system state into a compact
@@ -18,6 +19,7 @@ export class ContextInjectorService {
 
   constructor(
     private readonly sessionRegistry: SessionRegistryService,
+    private readonly agentRegistry: AgentRegistryService,
     private readonly eventLog: SystemEventLog,
     private readonly healthService: SystemHealthService,
   ) {}
@@ -26,11 +28,12 @@ export class ContextInjectorService {
    * Build a compact live-context block suitable for injection into agent prompts.
    * Best-effort: returns an empty string if aggregation fails entirely.
    */
-  async getLiveContext(): Promise<string> {
+  async getLiveContext(callerSessionKey?: string): Promise<string> {
     try {
-      const [sessions, health] = await Promise.all([
+      const [sessions, health, agents] = await Promise.all([
         this.sessionRegistry.getAll().catch(() => [] as SessionRecord[]),
         this.healthService.getHealth().catch(() => null as SystemHealthReport | null),
+        this.agentRegistry.getAll().catch(() => [] as AgentRegistryEntry[]),
       ]);
 
       const recentEvents = this.eventLog.getAll().slice(0, 10);
@@ -81,6 +84,20 @@ export class ContextInjectorService {
           const ts = new Date(evt.ts).toISOString().slice(11, 19); // HH:MM:SS
           lines.push(`  [${ts}] [${evt.type}] ${evt.message}`);
         }
+      }
+
+      // ── Available Agents (IPC targets) ──
+      const others = agents.filter(
+        (a) => a.sessionKey !== callerSessionKey && a.status !== 'offline',
+      );
+      if (others.length > 0) {
+        lines.push('');
+        lines.push('Available Agents:');
+        for (const a of others) {
+          const ipc = a.acceptsMessages ? 'ipc=yes' : 'ipc=no';
+          lines.push(`  - ${a.agentId} | ${a.role} | ${a.status} | ${ipc}`);
+        }
+        lines.push('Use send_message tool with target agentId to communicate.');
       }
 
       lines.push('[/LIVE SYSTEM STATE]');

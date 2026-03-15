@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { ContextInjectorService } from './context-injector.service';
 import { SessionRegistryModule } from '../sessions/session-registry.module';
+import { MessagingModule } from '../messaging/messaging.module';
 import { SystemHealthService } from '../system/system-health.service';
 import { RedisModule } from '../redis/redis.module';
 
@@ -14,7 +15,7 @@ import { RedisModule } from '../redis/redis.module';
  */
 @Global()
 @Module({
-  imports: [SessionRegistryModule, RedisModule],
+  imports: [SessionRegistryModule, MessagingModule, RedisModule],
   providers: [ContextInjectorService, SystemHealthService],
   exports: [ContextInjectorService],
 })

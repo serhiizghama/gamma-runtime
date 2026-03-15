@@ -26,6 +26,7 @@ import { ToolJailGuardService } from './tool-jail-guard.service';
 import { SessionRegistryService } from '../sessions/session-registry.service';
 import { AppStorageService } from '../scaffold/app-storage.service';
 import { ContextInjectorService } from '../scaffold/context-injector.service';
+import { MessageBusService } from '../messaging/message-bus.service';
 import type { GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
 // ── Tool Scoping ──────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ const SYSTEM_ARCHITECT_TOOLS = [
   'system_health',
   'list_apps',
   'read_file',
+  'send_message',
 ] as const;
 
 /**
@@ -200,6 +202,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     private readonly toolJailGuard: ToolJailGuardService,
     private readonly sessionRegistry: SessionRegistryService,
     private readonly appStorage: AppStorageService,
+    private readonly messageBus: MessageBusService,
     @Optional() private readonly contextInjector?: ContextInjectorService,
     @Optional() private readonly eventLog?: SystemEventLog,
   ) {
@@ -722,6 +725,16 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
+        // ── IPC: intercept send_message and handle locally ──────────
+        if (name === 'send_message' && toolCallId) {
+          await this.handleSendMessageTool(
+            sessionKey, windowId, runId, toolCallId,
+            (data?.arguments as Record<string, unknown>) ?? {},
+            sseKey, nowMs,
+          );
+          return;
+        }
+
         // Tool call initiated
         const eventId = await this.pushSSE(sseKey, {
           type: 'tool_call',
@@ -1191,7 +1204,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     // message so agents have situational awareness of the runtime environment.
     if (this.contextInjector) {
       try {
-        const liveContext = await this.contextInjector.getLiveContext();
+        const liveContext = await this.contextInjector.getLiveContext(sessionKey);
         if (liveContext) {
           outgoingMessage = outgoingMessage + '\n\n' + liveContext;
         }
@@ -1296,6 +1309,98 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     );
     // accumulateTokens() calls broadcastUpdate() internally — frontend will see the delta immediately
     await this.sessionRegistry.accumulateTokens(sessionKey, tokenUsage);
+  }
+
+  // ── IPC: send_message tool handler ─────────────────────────────────
+
+  /**
+   * Handle the `send_message` tool call locally: deliver the message via
+   * MessageBusService and return a synthetic tool_result to the agent.
+   */
+  private async handleSendMessageTool(
+    sessionKey: string,
+    windowId: string,
+    runId: string,
+    toolCallId: string,
+    args: Record<string, unknown>,
+    sseKey: string,
+    nowMs: number,
+  ): Promise<void> {
+    const to = String(args.to ?? '');
+    const type = String(args.type ?? 'notification') as 'task_request' | 'task_response' | 'notification' | 'query';
+    const subject = String(args.subject ?? '');
+    const payload = args.payload ?? {};
+    const replyTo = args.replyTo ? String(args.replyTo) : undefined;
+
+    // Derive the sender agentId from the sessionKey
+    const fromAgent = sessionKey;
+
+    // Push tool_call event to SSE (so the UI sees it)
+    await this.pushSSE(sseKey, {
+      type: 'tool_call',
+      windowId,
+      runId,
+      name: 'send_message',
+      toolCallId,
+      arguments: args,
+    });
+
+    let resultPayload: string;
+    let isError = false;
+
+    try {
+      if (!to) {
+        isError = true;
+        resultPayload = JSON.stringify({ error: 'Missing required field: to' });
+      } else if (to === '*') {
+        const messageId = await this.messageBus.broadcast(fromAgent, type, subject, payload);
+        resultPayload = JSON.stringify({ delivered: true, messageId, broadcast: true });
+      } else {
+        const { messageId, delivered } = await this.messageBus.send(
+          fromAgent, to, type, subject, payload, replyTo,
+        );
+        resultPayload = JSON.stringify({ delivered, messageId, target: to });
+      }
+    } catch (err: unknown) {
+      isError = true;
+      const msg = err instanceof Error ? err.message : String(err);
+      resultPayload = JSON.stringify({ error: msg });
+      this.logger.error(`send_message tool failed: ${msg}`);
+    }
+
+    // Push synthetic tool_result to SSE
+    await this.pushSSE(sseKey, {
+      type: 'tool_result',
+      windowId,
+      runId,
+      name: 'send_message',
+      toolCallId,
+      result: resultPayload,
+      isError,
+    });
+
+    // Send the result back to the Gateway so the agent receives it
+    this.send({
+      type: 'req',
+      id: ulid(),
+      method: 'tools.reject',
+      params: {
+        sessionKey: this.toOpenClawKey(sessionKey),
+        toolCallId,
+        error: resultPayload,
+      },
+    });
+
+    // Update live state
+    const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
+    const lines: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+    const status = isError ? '❌' : '✅';
+    lines.push(`${status} \`send_message\` → ${to}: "${subject}"`);
+    await this.redis.hset(
+      `${REDIS_KEYS.STATE_PREFIX}${windowId}`,
+      'pendingToolLines', JSON.stringify(lines),
+      'lastEventAt', String(nowMs),
+    );
   }
 
   // ── v1.6: Explicit session kill — free Gateway resources ────────────
