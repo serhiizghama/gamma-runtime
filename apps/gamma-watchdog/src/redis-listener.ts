@@ -90,6 +90,20 @@ export class RedisListener {
         }
       } catch (err) {
         if (!this.running) break;
+        // NOGROUP = stream or consumer group was deleted (e.g. after FLUSHALL).
+        // Recreate the group immediately instead of looping on the same error.
+        if (err instanceof Error && err.message.includes('NOGROUP')) {
+          this.logger.warn('Consumer group missing — recreating (stream may have been flushed)');
+          try {
+            await this.redis.xgroup('CREATE', STREAM_KEY, CONSUMER_GROUP, '0', 'MKSTREAM');
+            this.logger.info('Consumer group recreated successfully');
+          } catch (createErr) {
+            if (!(createErr instanceof Error && createErr.message.includes('BUSYGROUP'))) {
+              this.logger.error({ err: createErr }, 'Failed to recreate consumer group');
+            }
+          }
+          continue; // retry immediately, no sleep needed
+        }
         this.logger.error({ err }, 'Redis read error, retrying in 1s...');
         await sleep(1_000);
       }
