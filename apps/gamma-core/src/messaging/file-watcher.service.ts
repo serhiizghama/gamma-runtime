@@ -94,7 +94,9 @@ export class FileWatcherService implements OnModuleInit, OnModuleDestroy {
         dir,
         { recursive: true, persistent: false },
         (eventType, filename) => {
-          if (eventType === 'change' && filename) {
+          // 'change' = content modified; 'rename' = file created/deleted/moved.
+          // Both must be handled — macOS emits 'rename' for new file creation.
+          if ((eventType === 'change' || eventType === 'rename') && filename) {
             this.handleFsEvent(filename, dir);
           }
         },

@@ -780,6 +780,18 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
             isError: true,
           });
 
+          // Activity Stream — blocked tool attempt
+          this.activityStream?.emit({
+            kind: 'tool_call_end',
+            agentId: sessionKey,
+            windowId,
+            runId,
+            toolName: name,
+            toolCallId,
+            payload: `BLOCKED: ${violation.reason}`,
+            severity: 'error',
+          });
+
           // Send rejection to the Gateway so the agent gets an error result
           if (toolCallId) {
             this.send({
@@ -834,16 +846,20 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           arguments: data?.arguments ?? null,
         });
 
-        // Activity Stream (Phase 5)
-        this.activityStream?.emit({
-          kind: 'tool_call_start',
-          agentId: sessionKey,
-          windowId,
-          runId,
-          toolName: name,
-          toolCallId,
-          severity: 'info',
-        });
+        // Activity Stream (Phase 5) — include truncated args for context
+        {
+          const argsStr = JSON.stringify(data?.arguments ?? {});
+          this.activityStream?.emit({
+            kind: 'tool_call_start',
+            agentId: sessionKey,
+            windowId,
+            runId,
+            toolName: name,
+            toolCallId,
+            payload: argsStr.length > 200 ? argsStr.slice(0, 200) + '…' : argsStr,
+            severity: 'info',
+          });
+        }
 
         // Update pending tool lines in live state
         const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
@@ -924,16 +940,20 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           isError: data?.isError ?? false,
         });
 
-        // Activity Stream (Phase 5)
-        this.activityStream?.emit({
-          kind: 'tool_call_end',
-          agentId: sessionKey,
-          windowId,
-          runId,
-          toolName: name,
-          toolCallId,
-          severity: data?.isError ? 'error' : 'info',
-        });
+        // Activity Stream (Phase 5) — include truncated result for context
+        {
+          const resultStr = JSON.stringify(data?.result ?? null);
+          this.activityStream?.emit({
+            kind: 'tool_call_end',
+            agentId: sessionKey,
+            windowId,
+            runId,
+            toolName: name,
+            toolCallId,
+            payload: resultStr.length > 200 ? resultStr.slice(0, 200) + '…' : resultStr,
+            severity: data?.isError ? 'error' : 'info',
+          });
+        }
 
         // Update pending tool lines
         const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
@@ -1510,6 +1530,18 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       arguments: args,
     });
 
+    // Activity Stream — tool_call_start for send_message
+    this.activityStream?.emit({
+      kind: 'tool_call_start',
+      agentId: sessionKey,
+      windowId,
+      runId,
+      toolName: 'send_message',
+      toolCallId,
+      payload: to ? `→ ${to}: ${subject}` : subject,
+      severity: 'info',
+    });
+
     let resultPayload: string;
     let isError = false;
 
@@ -1544,7 +1576,18 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       isError,
     });
 
-    // Activity Stream (Phase 5) — IPC message
+    // Activity Stream — tool_call_end for send_message
+    this.activityStream?.emit({
+      kind: 'tool_call_end',
+      agentId: sessionKey,
+      windowId,
+      runId,
+      toolName: 'send_message',
+      toolCallId,
+      severity: isError ? 'error' : 'info',
+    });
+
+    // Activity Stream — IPC message (semantic event on top of tool pair)
     this.activityStream?.emit({
       kind: 'message_sent',
       agentId: sessionKey,
@@ -1553,7 +1596,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       runId,
       toolName: 'send_message',
       toolCallId,
-      payload: subject,
+      payload: to ? `→ ${to}: ${subject}` : subject,
       severity: isError ? 'error' : 'info',
     });
 
