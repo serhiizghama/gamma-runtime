@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -22,7 +22,7 @@ export class SystemHealthService {
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly config: ConfigService,
-    private readonly gatewayWs: GatewayWsService,
+    @Optional() private readonly gatewayWs?: GatewayWsService,
   ) {
     const wsUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
     this.gatewayHttpUrl = wsUrl
@@ -84,7 +84,8 @@ export class SystemHealthService {
   private async pingGateway(): Promise<[boolean, number]> {
     // If no token configured, use WS connection status as fallback
     if (!this.gatewayToken) {
-      return [this.gatewayWs.isConnected(), this.gatewayWs.isConnected() ? 0 : -1];
+      const connected = this.gatewayWs?.isConnected() ?? false;
+      return [connected, connected ? 0 : -1];
     }
 
     const t0 = Date.now();

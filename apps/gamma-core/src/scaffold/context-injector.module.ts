@@ -2,18 +2,19 @@ import { Global, Module } from '@nestjs/common';
 import { ContextInjectorService } from './context-injector.service';
 import { SessionRegistryModule } from '../sessions/session-registry.module';
 import { SystemHealthService } from '../system/system-health.service';
-import { GatewayModule } from '../gateway/gateway.module';
+import { RedisModule } from '../redis/redis.module';
 
 /**
  * Global module providing the ContextInjectorService.
  *
- * Imports SessionRegistryModule (for session data) and GatewayModule
- * (required by SystemHealthService for gateway ping).
- * SystemEventLog is already global, so no explicit import needed.
+ * Does NOT import GatewayModule to avoid the circular dependency:
+ * ContextInjectorModule → GatewayModule → GatewayWsService → ContextInjectorService
+ * SystemHealthService uses @Optional() for GatewayWsService — it will be undefined
+ * in this context (gateway status available via SystemModule's instance in SystemController).
  */
 @Global()
 @Module({
-  imports: [SessionRegistryModule, GatewayModule],
+  imports: [SessionRegistryModule, RedisModule],
   providers: [ContextInjectorService, SystemHealthService],
   exports: [ContextInjectorService],
 })
