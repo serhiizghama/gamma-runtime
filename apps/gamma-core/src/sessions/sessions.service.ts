@@ -26,7 +26,7 @@ const APP_OWNER_INIT_FIELD = 'appOwnerInitialized';
  */
 const GLOBAL_SESSION_IDENTITY: Record<string, { appId: string; windowId: string }> = {
   'system-architect': { appId: 'system-architect', windowId: 'system-architect-window' },
-  'app-owner-inspector': { appId: 'app-owner-inspector', windowId: 'app-owner-inspector-window' },
+  'inspector': { appId: 'inspector', windowId: 'inspector-window' },
 };
 
 /**
@@ -143,8 +143,8 @@ export class SessionsService {
     });
 
     // Initialize App Owner sessions with a dedicated system prompt + source context.
-    // Exclude the inspector daemon — it has its own init path via ensureAppInspectorSession().
-    if (dto.sessionKey?.startsWith(APP_OWNER_PREFIX) && dto.sessionKey !== 'app-owner-inspector') {
+    // The inspector daemon has its own init path via ensureAppInspectorSession().
+    if (dto.sessionKey?.startsWith(APP_OWNER_PREFIX)) {
       this.initializeAppOwnerSession(dto.sessionKey, windowId, appId).catch(
         (err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
@@ -601,7 +601,7 @@ export class SessionsService {
     const created = await this.gatewayWs.createSession(
       sessionKey,
       systemPrompt,
-      'app-owner-inspector',
+      'inspector',
     );
     this.logger.log(
       `[TRACE:SESSION] Gateway sessions.create result: ${created ? 'OK' : 'FAILED (will use dual-path injection)'}`,
@@ -626,7 +626,7 @@ export class SessionsService {
       this.registry.upsert({
         sessionKey,
         windowId,
-        appId: 'app-owner-inspector',
+        appId: 'inspector',
         systemPromptSnippet: systemPrompt.slice(0, 2000),
         lastActiveAt: Date.now(),
       }),
@@ -640,8 +640,8 @@ export class SessionsService {
    * Returns the windowId for the inspector session.
    */
   async ensureAppInspectorSession(): Promise<string> {
-    const inspectorWindowId = 'app-owner-inspector-window';
-    const existing = await this.findBySessionKey('app-owner-inspector');
+    const inspectorWindowId = 'inspector-window';
+    const existing = await this.findBySessionKey('inspector');
     if (existing) {
       this.logger.log(`[TRACE:SESSION] Inspector already exists — windowId=${existing.windowId}`);
       return existing.windowId;
@@ -652,9 +652,9 @@ export class SessionsService {
     // Create the session record in Redis + Agent Registry
     await this.create({
       windowId: inspectorWindowId,
-      appId: 'app-owner-inspector',
-      sessionKey: 'app-owner-inspector',
-      agentId: 'app-owner-inspector',
+      appId: 'inspector',
+      sessionKey: 'inspector',
+      agentId: 'inspector',
     });
 
     this.logger.log(`[TRACE:SESSION] Session record created — now initializing Gateway session...`);
@@ -664,7 +664,7 @@ export class SessionsService {
     const INIT_TIMEOUT_MS = 15_000;
     try {
       await Promise.race([
-        this.initializeAppInspectorSession('app-owner-inspector', inspectorWindowId),
+        this.initializeAppInspectorSession('inspector', inspectorWindowId),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Inspector Gateway init timed out after 15s')), INIT_TIMEOUT_MS),
         ),
@@ -866,7 +866,7 @@ export class SessionsService {
 
   private resolveAgentRole(sessionKey: string): 'architect' | 'app-owner' | 'daemon' {
     if (sessionKey === 'system-architect') return 'architect';
-    if (sessionKey === 'app-owner-inspector') return 'daemon';
+    if (sessionKey === 'inspector') return 'daemon';
     if (sessionKey.startsWith(APP_OWNER_PREFIX)) return 'app-owner';
     return 'daemon';
   }

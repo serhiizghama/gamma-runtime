@@ -72,7 +72,7 @@ const APP_INSPECTOR_TOOLS = [
  * Returns undefined for sessions without explicit scoping (fallback to gateway defaults).
  */
 function resolveAllowedTools(sessionKey: string): readonly string[] | undefined {
-  if (sessionKey === 'app-owner-inspector') return APP_INSPECTOR_TOOLS;
+  if (sessionKey === 'inspector') return APP_INSPECTOR_TOOLS;
   if (sessionKey.startsWith('app-owner-')) return APP_OWNER_TOOLS;
   if (sessionKey === 'system-architect') return SYSTEM_ARCHITECT_TOOLS;
   return undefined;
@@ -156,6 +156,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
    */
   private toOpenClawKey(internalKey: string): string {
     if (internalKey === 'system-architect') return 'agent:system-architect:main';
+    if (internalKey === 'inspector') return 'agent:inspector:main';
     if (internalKey.startsWith('app-owner-')) {
       const appId = internalKey.replace('app-owner-', '');
       return `agent:app-owner:${appId}`;
@@ -764,7 +765,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         // Stash fs_write path for file_changed emission on successful result
         if (name === 'fs_write' && toolCallId) {
-          const isRegularAppOwner = sessionKey.startsWith('app-owner-') && sessionKey !== 'app-owner-inspector';
+          const isRegularAppOwner = sessionKey.startsWith('app-owner-');
           this.logger.log(
             `[TRACE:EMITTER] fs_write CALL intercepted | session=${sessionKey} | toolCallId=${toolCallId} | isRegularAppOwner=${isRegularAppOwner}`,
           );
@@ -904,7 +905,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           const filePath = this.pendingFsWritePaths.get(toolCallId);
           this.pendingFsWritePaths.delete(toolCallId);
 
-          const isRegularAppOwner = sessionKey.startsWith('app-owner-') && sessionKey !== 'app-owner-inspector';
+          const isRegularAppOwner = sessionKey.startsWith('app-owner-');
           this.logger.log(
             `[TRACE:EMITTER] fs_write RESULT | session=${sessionKey} | toolCallId=${toolCallId} | ` +
             `stashedPath="${filePath ?? '<none>'}" | isError=${!!data?.isError} | isRegularAppOwner=${isRegularAppOwner}`,

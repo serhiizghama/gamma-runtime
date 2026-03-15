@@ -58,7 +58,7 @@ export class ToolJailGuardService {
 
     // ── App Inspector: read-only cross-app access (Phase 4.2) ─────────
     // Must be checked before the generic app-owner- prefix match below.
-    if (sessionKey === 'app-owner-inspector') {
+    if (sessionKey === 'inspector') {
       return this.validateInspectorAccess(toolName, args);
     }
 
@@ -153,7 +153,7 @@ export class ToolJailGuardService {
     if (toolName === 'fs_write' || toolName === 'shell_exec') {
       return this.violation(
         toolName,
-        'app-owner-inspector',
+        'inspector',
         JSON.stringify(args ?? {}),
         `App Inspector is read-only — ${toolName} is forbidden`,
       );
@@ -172,7 +172,7 @@ export class ToolJailGuardService {
       if (path.isAbsolute(targetPath)) {
         return this.violation(
           toolName,
-          'app-owner-inspector',
+          'inspector',
           targetPath,
           'Absolute path forbidden for App Inspector',
         );
@@ -182,7 +182,7 @@ export class ToolJailGuardService {
       if (normalized.startsWith('..') || normalized.includes(`${path.sep}..`)) {
         return this.violation(
           toolName,
-          'app-owner-inspector',
+          'inspector',
           targetPath,
           'Path traversal detected: resolves outside jail root',
         );
@@ -194,7 +194,7 @@ export class ToolJailGuardService {
       if (resolved !== jailRoot && !resolved.startsWith(jailRoot + path.sep)) {
         return this.violation(
           toolName,
-          'app-owner-inspector',
+          'inspector',
           targetPath,
           `Resolved path '${resolved}' escapes jail root '${jailRoot}'`,
         );
@@ -203,7 +203,7 @@ export class ToolJailGuardService {
       if (normalized.split(path.sep).some((seg) => seg.startsWith('.'))) {
         return this.violation(
           toolName,
-          'app-owner-inspector',
+          'inspector',
           targetPath,
           'Hidden files/directories are forbidden',
         );

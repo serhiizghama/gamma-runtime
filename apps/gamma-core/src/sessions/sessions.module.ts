@@ -17,7 +17,7 @@ const APP_OWNER_PREFIX = 'app-owner-';
 
 function resolveRole(sessionKey: string): AgentRole {
   if (sessionKey === 'system-architect') return 'architect';
-  if (sessionKey === 'app-owner-inspector') return 'daemon';
+  if (sessionKey === 'inspector') return 'daemon';
   if (sessionKey.startsWith(APP_OWNER_PREFIX)) return 'app-owner';
   return 'daemon';
 }
