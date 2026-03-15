@@ -17,9 +17,50 @@ export function systemAuthHeaders(): Record<string, string> {
   return { "X-Gamma-System-Token": SYSTEM_TOKEN };
 }
 
+// ── Singleton EventSource ────────────────────────────────────────────────────
+// Sentinel and AgentMonitor both use this hook — we share ONE SSE connection
+// instead of opening a new one per component, saving a precious HTTP/1.1 slot.
+type SseListener = (event: GammaSSEEvent) => void;
+let sharedEs: EventSource | null = null;
+let esRefCount = 0;
+const esListeners = new Set<SseListener>();
+
+function addSseListener(fn: SseListener): () => void {
+  if (esListeners.size === 0 || !sharedEs || sharedEs.readyState === EventSource.CLOSED) {
+    sharedEs?.close();
+    sharedEs = new EventSource(`${API_BASE}/api/stream/agent-monitor`);
+    sharedEs.onmessage = (ev) => {
+      let event: GammaSSEEvent;
+      try {
+        event = JSON.parse(ev.data as string) as GammaSSEEvent;
+      } catch {
+        return;
+      }
+      esListeners.forEach((l) => l(event));
+    };
+  }
+  esRefCount++;
+  esListeners.add(fn);
+
+  return () => {
+    esListeners.delete(fn);
+    esRefCount--;
+    if (esRefCount <= 0 && sharedEs) {
+      sharedEs.close();
+      sharedEs = null;
+      esRefCount = 0;
+    }
+  };
+}
+
+// ── Hook ──────────────────────────────────────────────────────────────────────
+
 /**
  * Fetches the active session registry from the kernel and keeps it live via
  * the SSE broadcast stream (session_registry_update events).
+ *
+ * Uses a module-level singleton EventSource so that multiple components
+ * (Sentinel, AgentMonitor) share ONE connection instead of opening N.
  */
 export function useSessionRegistry(): SessionRegistryState {
   const [records, setRecords] = useState<SessionRecord[]>([]);
@@ -57,32 +98,16 @@ export function useSessionRegistry(): SessionRegistryState {
     };
   }, [refreshTick]);
 
-  // Live updates via SSE broadcast — agent-monitor is a stable dummy window ID
-  // that receives broadcast events (session_registry_update) without any per-window traffic.
+  // Live updates via shared singleton SSE connection
   useEffect(() => {
-    const es = new EventSource(`${API_BASE}/api/stream/agent-monitor`);
-
-    es.onmessage = (ev) => {
-      let event: GammaSSEEvent;
-      try {
-        event = JSON.parse(ev.data as string) as GammaSSEEvent;
-      } catch {
-        return;
-      }
-
+    const unsubscribe = addSseListener((event) => {
+      if (!mountedRef.current) return;
       if (event.type === "session_registry_update") {
         setRecords(event.records);
         setLoading(false);
       }
-    };
-
-    es.onerror = () => {
-      // EventSource auto-reconnects; nothing to do here
-    };
-
-    return () => {
-      es.close();
-    };
+    });
+    return unsubscribe;
   }, []);
 
   return { records, loading, error, refresh: () => setRefreshTick((t) => t + 1) };
