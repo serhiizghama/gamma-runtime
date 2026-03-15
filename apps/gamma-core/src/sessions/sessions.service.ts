@@ -164,15 +164,9 @@ export class SessionsService {
       );
     }
 
-    // Route the app-inspector daemon session to its dedicated OpenClaw agent.
-    if (dto.sessionKey === 'app-inspector') {
-      this.initializeAppInspectorSession(dto.sessionKey, windowId).catch(
-        (err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.logger.error(`Failed to initialize app-inspector Gateway session: ${msg}`);
-        },
-      );
-    }
+    // NOTE: app-inspector initialization is handled by ensureAppInspectorSession()
+    // which awaits the Gateway session creation before returning. This avoids the
+    // race condition where sendMessage is called before the session is ready.
 
     return session;
   }
@@ -624,6 +618,8 @@ export class SessionsService {
 
   /**
    * Ensure the App Inspector daemon session exists, creating it if needed.
+   * Blocks until the OpenClaw Gateway session is fully initialized so that
+   * callers can immediately send messages to the inspector.
    * Returns the windowId for the inspector session.
    */
   async ensureAppInspectorSession(): Promise<string> {
@@ -631,12 +627,19 @@ export class SessionsService {
     const existing = await this.findBySessionKey('app-inspector');
     if (existing) return existing.windowId;
 
+    // Create the session record in Redis + Agent Registry
     await this.create({
       windowId: inspectorWindowId,
       appId: 'app-inspector',
       sessionKey: 'app-inspector',
       agentId: 'app-inspector',
     });
+
+    // Block until the OpenClaw Gateway session is ready.
+    // create() fires initializeAppInspectorSession as fire-and-forget,
+    // so we must wait for it to complete before the caller sends messages.
+    await this.initializeAppInspectorSession('app-inspector', inspectorWindowId);
+
     return inspectorWindowId;
   }
 

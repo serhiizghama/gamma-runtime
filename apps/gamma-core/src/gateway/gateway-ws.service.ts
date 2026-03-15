@@ -754,7 +754,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           sessionKey.startsWith('app-owner-')
         ) {
           const args = (data?.arguments as Record<string, unknown>) ?? {};
-          const filePath = (args.path ?? args.filePath ?? '') as string;
+          const filePath = (args.path ?? args.file ?? args.filePath ?? '') as string;
           if (filePath) {
             this.pendingFsWritePaths.set(toolCallId, filePath);
           }
