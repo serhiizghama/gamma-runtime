@@ -8,6 +8,7 @@ import { SessionsService } from './sessions.service';
 import { SessionGcService } from './session-gc.service';
 import { SessionRegistryService } from './session-registry.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
+import { FileChangeConsumerService } from '../messaging/file-change-consumer.service';
 import { SystemAppGuard } from './system-guard';
 import { WatchdogCommandListenerService } from '../gateway/watchdog-command-listener.service';
 import type { AgentRole } from '@gamma/types';
@@ -38,6 +39,7 @@ export class SessionsModule implements OnModuleInit {
     private readonly sessionsService: SessionsService,
     private readonly registry: SessionRegistryService,
     private readonly agentRegistry: AgentRegistryService,
+    private readonly fileChangeConsumer: FileChangeConsumerService,
   ) {}
 
   /**
@@ -93,5 +95,29 @@ export class SessionsModule implements OnModuleInit {
         `Agent registry sync: back-filled ${synced} missing agent entry/entries`,
       );
     }
+
+    // ── Wire up the file-change consumer dispatcher (Phase 4.2) ──
+    this.fileChangeConsumer.setDispatcher(
+      async (appId: string, ownerSessionKey: string, filePaths: string[]) => {
+        const windowId = await this.sessionsService.ensureAppInspectorSession();
+        const fileList = filePaths.map((p) => `- ${p}`).join('\n');
+        const reviewPrompt =
+          `The following files in app '${appId}' were modified by ${ownerSessionKey}:\n` +
+          `${fileList}\n\n` +
+          `Please read each file using fs_read, analyze the changes for bugs, security issues, ` +
+          `and architectural violations, then send your review feedback to '${ownerSessionKey}' ` +
+          `using the send_message tool.`;
+
+        const result = await this.sessionsService.sendMessage(windowId, reviewPrompt);
+        if (!result || !result.ok) {
+          this.logger.warn(
+            `App Inspector review dispatch failed for ${appId}: ${JSON.stringify(result?.error ?? 'null')}`,
+          );
+        } else {
+          this.logger.log(`App Inspector review triggered for ${appId}: ${filePaths.length} file(s)`);
+        }
+      },
+    );
+    this.logger.log('File change consumer dispatcher registered');
   }
 }

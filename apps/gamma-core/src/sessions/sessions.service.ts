@@ -26,6 +26,7 @@ const APP_OWNER_INIT_FIELD = 'appOwnerInitialized';
  */
 const GLOBAL_SESSION_IDENTITY: Record<string, { appId: string; windowId: string }> = {
   'system-architect': { appId: 'system-architect', windowId: 'system-architect-window' },
+  'app-inspector': { appId: 'app-inspector', windowId: 'app-inspector-window' },
 };
 
 /**
@@ -159,6 +160,16 @@ export class SessionsService {
         (err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
           this.logger.error(`Failed to initialize system-architect Gateway session: ${msg}`);
+        },
+      );
+    }
+
+    // Route the app-inspector daemon session to its dedicated OpenClaw agent.
+    if (dto.sessionKey === 'app-inspector') {
+      this.initializeAppInspectorSession(dto.sessionKey, windowId).catch(
+        (err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.error(`Failed to initialize app-inspector Gateway session: ${msg}`);
         },
       );
     }
@@ -558,6 +569,75 @@ export class SessionsService {
         }),
       ]);
     }
+  }
+
+  /**
+   * Initialize the App Inspector daemon session with its persona prompt.
+   * Mirrors the System Architect init pattern — loads persona from
+   * docs/agents/app-inspector.md and registers with daemon capabilities.
+   */
+  private async initializeAppInspectorSession(
+    sessionKey: string,
+    windowId: string,
+  ): Promise<void> {
+    const repoRoot = process.cwd();
+    let personaContent = '';
+    try {
+      const personaPath = path.join(repoRoot, 'docs/agents/app-inspector.md');
+      personaContent = await fs.readFile(personaPath, 'utf8');
+    } catch {
+      this.logger.debug('app-inspector.md not found — using default persona');
+    }
+
+    const systemPrompt = personaContent
+      ? `[SYSTEM INJECTION] You are the App Inspector daemon of Gamma Agent Runtime.\n\n${personaContent}`
+      : '[SYSTEM INJECTION] You are the App Inspector daemon. Review files for bugs, security issues, and React anti-patterns. Send feedback via send_message.';
+
+    const created = await this.gatewayWs.createSession(
+      sessionKey,
+      systemPrompt,
+      'app-inspector',
+    );
+    if (!created) {
+      this.logger.warn('initializeAppInspectorSession: Gateway sessions.create failed');
+      return;
+    }
+
+    // Update Agent Registry with daemon role and capabilities
+    await this.agentRegistry.update(sessionKey, {
+      role: 'daemon',
+      capabilities: ['code_review', 'ipc'],
+    });
+
+    // Persist for dual-path injection on chat.send
+    await Promise.all([
+      this.registry.setContext(sessionKey, systemPrompt),
+      this.registry.upsert({
+        sessionKey,
+        windowId,
+        appId: 'app-inspector',
+        systemPromptSnippet: systemPrompt.slice(0, 2000),
+        lastActiveAt: Date.now(),
+      }),
+    ]);
+  }
+
+  /**
+   * Ensure the App Inspector daemon session exists, creating it if needed.
+   * Returns the windowId for the inspector session.
+   */
+  async ensureAppInspectorSession(): Promise<string> {
+    const inspectorWindowId = 'app-inspector-window';
+    const existing = await this.findBySessionKey('app-inspector');
+    if (existing) return existing.windowId;
+
+    await this.create({
+      windowId: inspectorWindowId,
+      appId: 'app-inspector',
+      sessionKey: 'app-inspector',
+      agentId: 'app-inspector',
+    });
+    return inspectorWindowId;
   }
 
   /**
