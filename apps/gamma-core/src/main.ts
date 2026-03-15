@@ -10,8 +10,9 @@ import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
   // ── TLS + HTTP/2 ──────────────────────────────────────────────────────
-  // Resolve certs relative to the monorepo root (two levels up from src/).
-  const repoRoot = join(__dirname, '..', '..', '..');
+  // Resolve certs relative to the monorepo root.
+  // dist path: dist/apps/gamma-core/src — need 6 levels up to reach repo root.
+  const repoRoot = join(__dirname, '..', '..', '..', '..', '..', '..');
   const keyPath = join(repoRoot, 'certs', 'localhost.key');
   const certPath = join(repoRoot, 'certs', 'localhost.cert');
 
