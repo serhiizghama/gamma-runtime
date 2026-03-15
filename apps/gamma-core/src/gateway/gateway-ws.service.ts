@@ -71,9 +71,9 @@ const APP_INSPECTOR_TOOLS = [
  * Returns undefined for sessions without explicit scoping (fallback to gateway defaults).
  */
 function resolveAllowedTools(sessionKey: string): readonly string[] | undefined {
+  if (sessionKey === 'app-owner-inspector') return APP_INSPECTOR_TOOLS;
   if (sessionKey.startsWith('app-owner-')) return APP_OWNER_TOOLS;
   if (sessionKey === 'system-architect') return SYSTEM_ARCHITECT_TOOLS;
-  if (sessionKey === 'app-inspector') return APP_INSPECTOR_TOOLS;
   return undefined;
 }
 
@@ -155,7 +155,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
    */
   private toOpenClawKey(internalKey: string): string {
     if (internalKey === 'system-architect') return 'agent:system-architect:main';
-    if (internalKey === 'app-inspector')    return 'agent:app-inspector:main';
     if (internalKey.startsWith('app-owner-')) {
       const appId = internalKey.replace('app-owner-', '');
       return `agent:app-owner:${appId}`;
@@ -173,7 +172,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
    */
   private toInternalKey(openClawKey: string): string {
     if (openClawKey === 'agent:system-architect:main') return 'system-architect';
-    if (openClawKey === 'agent:app-inspector:main')    return 'app-inspector';
     if (openClawKey.startsWith('agent:app-owner:')) {
       const appId = openClawKey.replace('agent:app-owner:', '');
       return `app-owner-${appId}`;
@@ -751,10 +749,11 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         // Stash fs_write path for file_changed emission on successful result
         if (name === 'fs_write' && toolCallId) {
+          const isRegularAppOwner = sessionKey.startsWith('app-owner-') && sessionKey !== 'app-owner-inspector';
           this.logger.log(
-            `[TRACE:EMITTER] fs_write CALL intercepted | session=${sessionKey} | toolCallId=${toolCallId} | isAppOwner=${sessionKey.startsWith('app-owner-')}`,
+            `[TRACE:EMITTER] fs_write CALL intercepted | session=${sessionKey} | toolCallId=${toolCallId} | isRegularAppOwner=${isRegularAppOwner}`,
           );
-          if (sessionKey.startsWith('app-owner-')) {
+          if (isRegularAppOwner) {
             const args = (data?.arguments as Record<string, unknown>) ?? {};
             const filePath = (args.path ?? args.file ?? args.filePath ?? '') as string;
             this.logger.log(
@@ -890,12 +889,13 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           const filePath = this.pendingFsWritePaths.get(toolCallId);
           this.pendingFsWritePaths.delete(toolCallId);
 
+          const isRegularAppOwner = sessionKey.startsWith('app-owner-') && sessionKey !== 'app-owner-inspector';
           this.logger.log(
             `[TRACE:EMITTER] fs_write RESULT | session=${sessionKey} | toolCallId=${toolCallId} | ` +
-            `stashedPath="${filePath ?? '<none>'}" | isError=${!!data?.isError} | isAppOwner=${sessionKey.startsWith('app-owner-')}`,
+            `stashedPath="${filePath ?? '<none>'}" | isError=${!!data?.isError} | isRegularAppOwner=${isRegularAppOwner}`,
           );
 
-          if (filePath && !data?.isError && sessionKey.startsWith('app-owner-')) {
+          if (filePath && !data?.isError && isRegularAppOwner) {
             const appId = sessionKey.replace('app-owner-', '');
             this.logger.log(
               `[TRACE:EMITTER] Publishing file_changed to ${REDIS_KEYS.FILE_CHANGED_STREAM} | appId=${appId} | filePath=${filePath}`,
