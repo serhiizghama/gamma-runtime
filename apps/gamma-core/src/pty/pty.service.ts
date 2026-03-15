@@ -25,7 +25,8 @@ export class PtyService implements OnModuleInit, OnModuleDestroy {
   private sessions = new Map<string, PtySession>();
   // One-time tokens: token → expiry timestamp
   private pendingTokens = new Map<string, number>();
-  private readonly TOKEN_TTL_MS = 60_000;
+  private readonly TOKEN_TTL_MS  = 60_000;
+  private readonly AUTH_TIMEOUT_MS = 5_000; // max wait for auth message after WS open
 
   constructor(
     private readonly httpAdapterHost: HttpAdapterHost,
@@ -80,18 +81,62 @@ export class PtyService implements OnModuleInit, OnModuleDestroy {
 
   private handleConnection(ws: WebSocket, req: http.IncomingMessage): void {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const token = url.searchParams.get('token') ?? '';
 
-    if (!this.consumeToken(token)) {
-      this.logger.warn(`PTY: rejected unauthorized connection from ${req.socket.remoteAddress}`);
-      ws.close(4401, 'Unauthorized');
-      return;
-    }
-
-    // Read initial terminal size from query params (optional)
+    // DEF-1 fix: token is NO LONGER read from the URL query string.
+    // The client must send { type: "auth", token } as the first WS message.
+    // cols/rows are still in query params (not sensitive).
     const cols = Math.max(10, Math.min(500, parseInt(url.searchParams.get('cols') ?? '220', 10)));
     const rows = Math.max(5,  Math.min(200, parseInt(url.searchParams.get('rows') ?? '50',  10)));
 
+    // Auth timeout — close if no valid auth message arrives within AUTH_TIMEOUT_MS
+    const authTimeout = setTimeout(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        this.logger.warn(`PTY: auth timeout from ${req.socket.remoteAddress}`);
+        ws.close(4401, 'Auth timeout');
+      }
+    }, this.AUTH_TIMEOUT_MS);
+
+    // Single-use first-message listener for auth handshake
+    const onFirstMessage = (raw: Buffer | string): void => {
+      try {
+        const msg = JSON.parse(raw.toString()) as { type?: string; token?: unknown };
+        if (msg.type !== 'auth' || typeof msg.token !== 'string') {
+          clearTimeout(authTimeout);
+          this.logger.warn(`PTY: invalid auth message from ${req.socket.remoteAddress}`);
+          ws.close(4401, 'Unauthorized');
+          return;
+        }
+
+        if (!this.consumeToken(msg.token)) {
+          clearTimeout(authTimeout);
+          this.logger.warn(`PTY: rejected bad/expired token from ${req.socket.remoteAddress}`);
+          ws.close(4401, 'Unauthorized');
+          return;
+        }
+
+        clearTimeout(authTimeout);
+        // Auth OK — remove this one-shot listener and start PTY session
+        ws.off('message', onFirstMessage);
+        this.startPtySession(ws, req, cols, rows);
+      } catch {
+        clearTimeout(authTimeout);
+        ws.close(4401, 'Unauthorized');
+      }
+    };
+
+    ws.on('message', onFirstMessage);
+
+    ws.on('error', (err) => {
+      clearTimeout(authTimeout);
+      this.logger.error(`PTY WS pre-auth error: ${err.message}`);
+    });
+
+    ws.on('close', () => {
+      clearTimeout(authTimeout);
+    });
+  }
+
+  private startPtySession(ws: WebSocket, _req: http.IncomingMessage, cols: number, rows: number): void {
     const shell = process.env.SHELL ?? '/bin/zsh';
     const cwd   = homedir();
 

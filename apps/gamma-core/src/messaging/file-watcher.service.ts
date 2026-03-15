@@ -8,6 +8,7 @@ import {
 import * as fs from 'fs';
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { REDIS_KEYS } from '@gamma/types';
@@ -55,6 +56,9 @@ export class FileWatcherService implements OnModuleInit, OnModuleDestroy {
   /** Debounce: appId:filePath → timer */
   private readonly debounce = new Map<string, ReturnType<typeof setTimeout>>();
   private static readonly DEBOUNCE_MS = 800;
+
+  /** Content hash cache: absolutePath → SHA-256 hex. Suppresses false triggers. */
+  private readonly contentHashes = new Map<string, string>();
 
   /** Extensions that trigger the Inspector loop */
   private static readonly WATCHED_EXTS = new Set(['.tsx', '.ts', '.md', '.css', '.json']);
@@ -135,6 +139,23 @@ export class FileWatcherService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async publish(appId: string, filePath: string): Promise<void> {
+    // Hash-based dedup: suppress publish if file content hasn't actually changed
+    let currentHash: string;
+    try {
+      const content = await fs.promises.readFile(filePath);
+      currentHash = createHash('sha256').update(content).digest('hex');
+    } catch {
+      // File may have been deleted between event and publish — skip
+      return;
+    }
+
+    const prevHash = this.contentHashes.get(filePath);
+    if (prevHash === currentHash) {
+      this.logger.debug(`[WATCHER] content unchanged — skipping publish for ${path.basename(filePath)}`);
+      return;
+    }
+    this.contentHashes.set(filePath, currentHash);
+
     const sessionKey = `app-owner-${appId}`;
     const nowMs = Date.now();
 

@@ -28,10 +28,12 @@ const TOKEN_FETCH_TIMEOUT_MS = 8_000;   // max wait for /api/pty/token
 const WS_CONNECT_TIMEOUT_MS  = 10_000;  // max wait for WebSocket onopen
 
 // ─── WS URL helper ────────────────────────────────────────────────────────────
+// DEF-1 fix: token is NO LONGER passed in the URL query string (leaks to logs).
+// Authentication is performed via a first-message handshake after WS open.
 
-function getPtyWsUrl(token: string, cols: number, rows: number): string {
+function getPtyWsUrl(cols: number, rows: number): string {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${window.location.host}/pty?token=${encodeURIComponent(token)}&cols=${cols}&rows=${rows}`;
+  return `${proto}://${window.location.host}/pty?cols=${cols}&rows=${rows}`;
 }
 
 // ─── Inner session component (remounts on reconnect via key) ──────────────────
@@ -123,7 +125,7 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
 
       // ── 3. Open WS ──────────────────────────────────────────────────
       term.write("\x1b[90m  Opening PTY shell…\x1b[0m\r\n");
-      const ws = new WebSocket(getPtyWsUrl(token, cols, rows));
+      const ws = new WebSocket(getPtyWsUrl(cols, rows));
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
@@ -142,6 +144,8 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
       ws.onopen = () => {
         clearTimeout(wsTimeoutRef.current ?? undefined);
         wsTimeoutRef.current = null;
+        // DEF-1 fix: send auth token as first message (out-of-band, not in URL)
+        ws.send(JSON.stringify({ type: "auth", token }));
         console.log("[TerminalApp] WebSocket connected to PTY shell");
         onStatusChange("connected");
         term.write("\x1b[36m⬡ Gamma Agent Runtime\x1b[0m  \x1b[90mv2.0 · PTY Shell · macOS\x1b[0m\r\n");
