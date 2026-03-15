@@ -45,6 +45,7 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
   const termRef       = useRef<Terminal | null>(null);
   const fitAddonRef   = useRef<FitAddon | null>(null);
   const wsRef         = useRef<WebSocket | null>(null);
+  const wsTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -103,7 +104,11 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
           signal: fetchAbort,
         });
         if (!res.ok) throw new Error(`Token request failed: HTTP ${res.status}`);
-        token = ((await res.json()) as { token: string }).token;
+        const body = (await res.json()) as { token?: unknown };
+        if (typeof body.token !== "string" || !body.token) {
+          throw new Error("Server returned invalid or missing PTY token");
+        }
+        token = body.token;
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") return;
         const isTimeout = (err as { name?: string }).name === "TimeoutError";
@@ -122,8 +127,9 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
-      // Timeout if WS never opens
-      const wsTimeout = setTimeout(() => {
+      // Timeout if WS never opens — stored in ref so cleanup can cancel it
+      wsTimeoutRef.current = setTimeout(() => {
+        wsTimeoutRef.current = null;
         if (ws.readyState !== WebSocket.OPEN) {
           const msg = `WebSocket did not connect within ${WS_CONNECT_TIMEOUT_MS / 1000}s`;
           onStatusChange("error", msg);
@@ -134,7 +140,8 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
       }, WS_CONNECT_TIMEOUT_MS);
 
       ws.onopen = () => {
-        clearTimeout(wsTimeout);
+        clearTimeout(wsTimeoutRef.current ?? undefined);
+        wsTimeoutRef.current = null;
         console.log("[TerminalApp] WebSocket connected to PTY shell");
         onStatusChange("connected");
         term.write("\x1b[36m⬡ Gamma Agent Runtime\x1b[0m  \x1b[90mv2.0 · PTY Shell · macOS\x1b[0m\r\n");
@@ -158,7 +165,8 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
       };
 
       ws.onerror = () => {
-        clearTimeout(wsTimeout);
+        clearTimeout(wsTimeoutRef.current ?? undefined);
+        wsTimeoutRef.current = null;
         onStatusChange("error", "WebSocket error");
         term.write("\r\n\x1b[31m[Connection error]\x1b[0m\r\n");
       };
@@ -198,6 +206,11 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
     // ── Cleanup ────────────────────────────────────────────────────────
     return () => {
       abortCtrl.abort();
+      // DEF-2 fix: clear WS connect timeout to prevent use-after-free on unmount
+      if (wsTimeoutRef.current !== null) {
+        clearTimeout(wsTimeoutRef.current);
+        wsTimeoutRef.current = null;
+      }
       ro.disconnect();
       const w = wsRef.current;
       if (w) {
