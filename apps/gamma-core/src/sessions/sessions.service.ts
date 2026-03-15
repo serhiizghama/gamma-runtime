@@ -587,6 +587,10 @@ export class SessionsService {
       ? `[SYSTEM INJECTION] You are the App Inspector daemon of Gamma Agent Runtime.\n\n${personaContent}`
       : '[SYSTEM INJECTION] You are the App Inspector daemon. Review files for bugs, security issues, and React anti-patterns. Send feedback via send_message.';
 
+    this.logger.log(
+      `[TRACE:SESSION] initializeAppInspectorSession | sessionKey=${sessionKey} | promptLen=${systemPrompt.length}`,
+    );
+
     // sessions.create is best-effort — some Gateway versions don't support it.
     // Context and registry are always stored regardless of Gateway response so
     // that dual-path prompt injection works even if sessions.create is rejected.
@@ -594,6 +598,9 @@ export class SessionsService {
       sessionKey,
       systemPrompt,
       'app-inspector',
+    );
+    this.logger.log(
+      `[TRACE:SESSION] Gateway sessions.create result: ${created ? 'OK' : 'FAILED (will use dual-path injection)'}`,
     );
     if (!created) {
       this.logger.warn(
@@ -603,6 +610,7 @@ export class SessionsService {
     }
 
     // Update Agent Registry with daemon role and capabilities
+    this.logger.log(`[TRACE:SESSION] Updating Agent Registry: role=daemon, capabilities=[code_review, ipc]`);
     await this.agentRegistry.update(sessionKey, {
       role: 'daemon',
       capabilities: ['code_review', 'ipc'],
@@ -630,7 +638,12 @@ export class SessionsService {
   async ensureAppInspectorSession(): Promise<string> {
     const inspectorWindowId = 'app-inspector-window';
     const existing = await this.findBySessionKey('app-inspector');
-    if (existing) return existing.windowId;
+    if (existing) {
+      this.logger.log(`[TRACE:SESSION] Inspector already exists — windowId=${existing.windowId}`);
+      return existing.windowId;
+    }
+
+    this.logger.log(`[TRACE:SESSION] Inspector not found — creating session with windowId=${inspectorWindowId}`);
 
     // Create the session record in Redis + Agent Registry
     await this.create({
@@ -640,11 +653,12 @@ export class SessionsService {
       agentId: 'app-inspector',
     });
 
+    this.logger.log(`[TRACE:SESSION] Session record created — now initializing Gateway session...`);
+
     // Block until the OpenClaw Gateway session is ready.
-    // create() fires initializeAppInspectorSession as fire-and-forget,
-    // so we must wait for it to complete before the caller sends messages.
     await this.initializeAppInspectorSession('app-inspector', inspectorWindowId);
 
+    this.logger.log(`[TRACE:SESSION] Inspector fully initialized — ready to receive messages`);
     return inspectorWindowId;
   }
 

@@ -126,6 +126,9 @@ export class FileChangeConsumerService implements OnModuleInit, OnModuleDestroy 
             this.lastStreamId = id;
             const event = this.parseFields(fields);
             if (event) {
+              this.logger.log(
+                `[TRACE:CONSUMER] Received file_changed | streamId=${id} | appId=${event.appId} | filePath=${event.filePath} | session=${event.sessionKey}`,
+              );
               this.enqueue(event);
             }
           }
@@ -175,6 +178,10 @@ export class FileChangeConsumerService implements OnModuleInit, OnModuleDestroy 
 
     const filePaths = [...entry.filePaths];
 
+    this.logger.log(
+      `[TRACE:CONSUMER] Debounce fired for appId=${appId} | files=[${filePaths.join(', ')}] | dispatcherReady=${!!this.dispatcher}`,
+    );
+
     if (!this.dispatcher) {
       this.logger.warn(
         `Dispatcher not registered — skipping review for ${appId} (${filePaths.length} files)`,
@@ -185,7 +192,7 @@ export class FileChangeConsumerService implements OnModuleInit, OnModuleDestroy 
     this.dispatcher(appId, entry.ownerSessionKey, filePaths).catch(
       (err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(`Review dispatch failed for ${appId}: ${msg}`);
+        this.logger.error(`[TRACE:CONSUMER] Review dispatch FAILED for ${appId}: ${msg}`);
       },
     );
   }

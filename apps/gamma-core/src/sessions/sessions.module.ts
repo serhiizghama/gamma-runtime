@@ -99,7 +99,13 @@ export class SessionsModule implements OnModuleInit {
     // ── Wire up the file-change consumer dispatcher (Phase 4.2) ──
     this.fileChangeConsumer.setDispatcher(
       async (appId: string, ownerSessionKey: string, filePaths: string[]) => {
+        this.logger.log(
+          `[TRACE:DISPATCH] Dispatcher called | appId=${appId} | owner=${ownerSessionKey} | files=[${filePaths.join(', ')}]`,
+        );
+
         const windowId = await this.sessionsService.ensureAppInspectorSession();
+        this.logger.log(`[TRACE:DISPATCH] Inspector session ready — windowId=${windowId}`);
+
         const fileList = filePaths.map((p) => `- ${p}`).join('\n');
         const reviewPrompt =
           `The following files in app '${appId}' were modified by ${ownerSessionKey}:\n` +
@@ -108,13 +114,14 @@ export class SessionsModule implements OnModuleInit {
           `and architectural violations, then send your review feedback to '${ownerSessionKey}' ` +
           `using the send_message tool.`;
 
+        this.logger.log(`[TRACE:DISPATCH] Sending review prompt to inspector (${reviewPrompt.length} chars)`);
         const result = await this.sessionsService.sendMessage(windowId, reviewPrompt);
         if (!result || !result.ok) {
           this.logger.warn(
-            `App Inspector review dispatch failed for ${appId}: ${JSON.stringify(result?.error ?? 'null')}`,
+            `[TRACE:DISPATCH] sendMessage FAILED for ${appId}: ${JSON.stringify(result?.error ?? 'null')}`,
           );
         } else {
-          this.logger.log(`App Inspector review triggered for ${appId}: ${filePaths.length} file(s)`);
+          this.logger.log(`[TRACE:DISPATCH] sendMessage OK — review triggered for ${appId} (${filePaths.length} file(s))`);
         }
       },
     );

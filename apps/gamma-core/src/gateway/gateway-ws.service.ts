@@ -750,15 +750,19 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         }
 
         // Stash fs_write path for file_changed emission on successful result
-        if (
-          name === 'fs_write' &&
-          toolCallId &&
-          sessionKey.startsWith('app-owner-')
-        ) {
-          const args = (data?.arguments as Record<string, unknown>) ?? {};
-          const filePath = (args.path ?? args.file ?? args.filePath ?? '') as string;
-          if (filePath) {
-            this.pendingFsWritePaths.set(toolCallId, filePath);
+        if (name === 'fs_write' && toolCallId) {
+          this.logger.log(
+            `[TRACE:EMITTER] fs_write CALL intercepted | session=${sessionKey} | toolCallId=${toolCallId} | isAppOwner=${sessionKey.startsWith('app-owner-')}`,
+          );
+          if (sessionKey.startsWith('app-owner-')) {
+            const args = (data?.arguments as Record<string, unknown>) ?? {};
+            const filePath = (args.path ?? args.file ?? args.filePath ?? '') as string;
+            this.logger.log(
+              `[TRACE:EMITTER] Extracted filePath="${filePath}" from args keys=[${Object.keys(args).join(',')}]`,
+            );
+            if (filePath) {
+              this.pendingFsWritePaths.set(toolCallId, filePath);
+            }
           }
         }
 
@@ -886,8 +890,16 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           const filePath = this.pendingFsWritePaths.get(toolCallId);
           this.pendingFsWritePaths.delete(toolCallId);
 
+          this.logger.log(
+            `[TRACE:EMITTER] fs_write RESULT | session=${sessionKey} | toolCallId=${toolCallId} | ` +
+            `stashedPath="${filePath ?? '<none>'}" | isError=${!!data?.isError} | isAppOwner=${sessionKey.startsWith('app-owner-')}`,
+          );
+
           if (filePath && !data?.isError && sessionKey.startsWith('app-owner-')) {
             const appId = sessionKey.replace('app-owner-', '');
+            this.logger.log(
+              `[TRACE:EMITTER] Publishing file_changed to ${REDIS_KEYS.FILE_CHANGED_STREAM} | appId=${appId} | filePath=${filePath}`,
+            );
             this.redis
               .xadd(
                 REDIS_KEYS.FILE_CHANGED_STREAM,
@@ -900,9 +912,12 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
                 'windowId', windowId,
                 'timestamp', String(nowMs),
               )
+              .then((streamId) => {
+                this.logger.log(`[TRACE:EMITTER] xadd SUCCESS — streamId=${streamId}`);
+              })
               .catch((err: unknown) => {
                 const msg = err instanceof Error ? err.message : String(err);
-                this.logger.warn(`[FileChanged] Failed to emit event: ${msg}`);
+                this.logger.error(`[TRACE:EMITTER] xadd FAILED: ${msg}`);
               });
           }
         }
