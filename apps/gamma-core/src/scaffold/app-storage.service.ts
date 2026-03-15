@@ -1,8 +1,9 @@
-import { Injectable, ForbiddenException, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, ForbiddenException, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { mkdirSync, existsSync, readFileSync } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { SystemEventLog } from '../system/system-event-log.service';
 
 /**
  * Walks up from a starting directory to find the monorepo root.
@@ -46,7 +47,10 @@ export class AppStorageService implements OnModuleInit {
   readonly JAIL_ROOT: string;
   private readonly repoRoot: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly eventLog?: SystemEventLog,
+  ) {
     this.repoRoot = this.config.get<string>(
       'GAMMA_OS_REPO',
       findRepoRoot(__dirname),
@@ -153,6 +157,7 @@ export class AppStorageService implements OnModuleInit {
     await fs.cp(appDir, bakDir, { recursive: true });
 
     this.logger.log(`[SNAPSHOT] ${appId} → ${bakDir}`);
+    this.eventLog?.push(`Snapshot created for '${appId}'`);
     return bakDir;
   }
 

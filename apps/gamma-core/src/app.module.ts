@@ -10,6 +10,7 @@ import { SystemModule } from './system/system.module';
 import { ScaffoldModule } from './scaffold/scaffold.module';
 import { AppDataModule } from './app-data/app-data.module';
 import { PtyModule } from './pty/pty.module';
+import { SystemEventLogModule } from './system/system-event-log.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PtyModule } from './pty/pty.module';
       envFilePath: '.env',
     }),
     ScheduleModule.forRoot(),
+    SystemEventLogModule,
     RedisModule,
     GatewayModule,
     SessionsModule,

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { findRepoRoot } from '../scaffold/app-storage.service';
+import { SystemEventLog } from './system-event-log.service';
 import type { BackupInventory, BackupSessionEntry, BackupFileEntry } from '@gamma/types';
 
 @Injectable()
@@ -10,7 +11,10 @@ export class SystemMonitorService {
   private readonly systemAppsDir: string;
   private readonly privateAppsDir: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly eventLog: SystemEventLog,
+  ) {
     const repoRoot = this.config.get<string>(
       'GAMMA_OS_REPO',
       findRepoRoot(__dirname),
@@ -30,7 +34,7 @@ export class SystemMonitorService {
       sessions.reduce((sum, s) => sum + s.sizeBytes, 0) +
       files.reduce((sum, f) => sum + f.sizeBytes, 0);
 
-    return { ts: Date.now(), sessions, files, totalSizeBytes };
+    return { ts: Date.now(), sessions, files, totalSizeBytes, events: this.eventLog.getAll() };
   }
 
   // ── Tier scanner ────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
+import { SystemEventLog } from '../system/system-event-log.service';
 
 const TOOL_TIMEOUT_MS = 30_000;
 
@@ -12,6 +13,8 @@ const TOOL_TIMEOUT_MS = 30_000;
 @Injectable()
 export class ToolWatchdogService implements OnModuleDestroy {
   private pendingCalls = new Map<string, ReturnType<typeof setTimeout>>();
+
+  constructor(@Optional() private readonly eventLog?: SystemEventLog) {}
 
   /** Timeout duration exposed for integration callbacks */
   static readonly TIMEOUT_MS = TOOL_TIMEOUT_MS;
@@ -32,8 +35,11 @@ export class ToolWatchdogService implements OnModuleDestroy {
     const existing = this.pendingCalls.get(key);
     if (existing) clearTimeout(existing);
 
+    this.eventLog?.push(`Watchdog registered: ${windowId} / ${toolCallId}`);
+
     const timer = setTimeout(() => {
       this.pendingCalls.delete(key);
+      this.eventLog?.push(`Watchdog timeout: ${windowId} / ${toolCallId} (${TOOL_TIMEOUT_MS / 1000}s)`, 'warn');
       // Fire-and-forget — errors logged by caller
       Promise.resolve(onTimeout()).catch(() => {});
     }, TOOL_TIMEOUT_MS);
@@ -48,6 +54,7 @@ export class ToolWatchdogService implements OnModuleDestroy {
     if (timer) {
       clearTimeout(timer);
       this.pendingCalls.delete(key);
+      this.eventLog?.push(`Watchdog resolved: ${windowId} / ${toolCallId}`);
     }
   }
 

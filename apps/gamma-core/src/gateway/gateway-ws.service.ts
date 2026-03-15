@@ -4,6 +4,7 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   Inject,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import WebSocket from 'ws';
@@ -15,6 +16,7 @@ import { ulid } from 'ulid';
 import { REDIS_KEYS } from '@gamma/types';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { SystemEventLog } from '../system/system-event-log.service';
 import {
   classifyGatewayEventKind,
   isReasoningStream,
@@ -156,6 +158,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     private readonly toolWatchdog: ToolWatchdogService,
     private readonly sessionRegistry: SessionRegistryService,
     private readonly appStorage: AppStorageService,
+    @Optional() private readonly eventLog?: SystemEventLog,
   ) {
     this.gatewayUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
     this.gatewayToken = this.config.get('OPENCLAW_GATEWAY_TOKEN', '');
@@ -1072,6 +1075,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       } catch (err) {
         const stack = err instanceof Error ? err.stack : String(err);
         this.logger.error(`sendMessage: pre-flight snapshot failed for '${appId}':\n${stack}`);
+        this.eventLog?.push(`Snapshot failed for '${appId}': ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     }
 

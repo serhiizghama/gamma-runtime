@@ -210,11 +210,20 @@ export interface BackupFileEntry {
   modifiedAt: number;
 }
 
+export type SystemEventType = 'info' | 'warn' | 'error';
+
+export interface SystemEvent {
+  ts: number;
+  type: SystemEventType;
+  message: string;
+}
+
 export interface BackupInventory {
   ts: number;
   sessions: BackupSessionEntry[];
   files: BackupFileEntry[];
   totalSizeBytes: number;
+  events: SystemEvent[];
 }
 
 // ── Gateway WS Frame Types (§3.2) ───────────────────────────────────────

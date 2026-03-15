@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import type { BackupInventory, BackupSessionEntry, BackupFileEntry } from "@gamma/types";
+import type { BackupInventory, BackupSessionEntry, BackupFileEntry, SystemEvent } from "@gamma/types";
 import { systemAuthHeaders } from "../../../hooks/useSessionRegistry";
 import { API_BASE } from "../../../constants/api";
 
@@ -28,7 +28,22 @@ const HEADER: React.CSSProperties = {
 
 const BODY: React.CSSProperties = {
   display: "flex",
+  flexDirection: "column",
   flex: 1,
+  overflow: "hidden",
+};
+
+const TABLES_ROW: React.CSSProperties = {
+  display: "flex",
+  flex: 1,
+  overflow: "hidden",
+  borderBottom: "1px solid var(--color-border-subtle)",
+};
+
+const FEED_PANE: React.CSSProperties = {
+  flex: "0 0 180px",
+  display: "flex",
+  flexDirection: "column",
   overflow: "hidden",
 };
 
@@ -171,6 +186,14 @@ function tierStyle(tier: "system" | "private"): React.CSSProperties {
     background: tier === "system" ? "rgba(59,130,246,0.15)" : "rgba(234,179,8,0.15)",
     color: tier === "system" ? "#60a5fa" : "#eab308",
   };
+}
+
+function eventColor(type: SystemEvent["type"]): string {
+  switch (type) {
+    case "info":  return "#22c55e";
+    case "warn":  return "#eab308";
+    case "error": return "#ef4444";
+  }
 }
 
 // ── Throttled fetch hook ──────────────────────────────────────────────────
@@ -318,12 +341,56 @@ function FilesTable({ files }: { files: BackupFileEntry[] }): React.ReactElement
   );
 }
 
+// ── Activity feed ─────────────────────────────────────────────────────────
+
+function ActivityFeed({ events }: { events: SystemEvent[] }): React.ReactElement {
+  if (events.length === 0) {
+    return <div style={EMPTY}>No system events recorded yet.</div>;
+  }
+
+  return (
+    <div style={{ padding: "0 14px" }}>
+      {events.map((ev, i) => (
+        <div
+          key={`${ev.ts}-${i}`}
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 8,
+            padding: "3px 0",
+            borderBottom: "1px solid var(--color-border-subtle-strong)",
+            fontSize: 11,
+          }}
+        >
+          <span
+            style={{
+              display: "inline-block",
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              backgroundColor: eventColor(ev.type),
+              flexShrink: 0,
+              position: "relative",
+              top: -1,
+            }}
+          />
+          <span style={{ color: "var(--color-text-muted)", fontSize: 10, flexShrink: 0 }}>
+            {fmtTime(ev.ts)}
+          </span>
+          <span style={{ color: "var(--color-text-secondary)" }}>{ev.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 
 export function SentinelApp(): React.ReactElement {
   const { data, loading, error, refresh } = useBackupInventory();
   const sessions = useSortedSessions(data?.sessions);
   const files = useSortedFiles(data?.files);
+  const events = data?.events ?? [];
 
   return (
     <div style={ROOT}>
@@ -332,7 +399,7 @@ export function SentinelApp(): React.ReactElement {
         <div>
           <div style={{ fontSize: 13, fontWeight: 600 }}>Sentinel</div>
           <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
-            Pre-flight Snapshots &middot; File Backup Monitor
+            Pre-flight Snapshots &middot; File Backups &middot; Activity Feed
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -369,31 +436,47 @@ export function SentinelApp(): React.ReactElement {
         </div>
       )}
 
-      {/* Body: two panes */}
+      {/* Body */}
       <div style={BODY}>
-        {/* Session snapshots */}
-        <div style={PANE_LEFT}>
-          <div style={PANE_HEADER}>
-            Session Snapshots
-            <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
-              {sessions.length}
-            </span>
+        {/* Top row: tables */}
+        <div style={TABLES_ROW}>
+          {/* Session snapshots */}
+          <div style={PANE_LEFT}>
+            <div style={PANE_HEADER}>
+              Session Snapshots
+              <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
+                {sessions.length}
+              </span>
+            </div>
+            <div style={{ flex: 1, overflow: "auto" }}>
+              <SessionsTable sessions={sessions} />
+            </div>
           </div>
-          <div style={{ flex: 1, overflow: "auto" }}>
-            <SessionsTable sessions={sessions} />
+
+          {/* File backups */}
+          <div style={PANE}>
+            <div style={PANE_HEADER}>
+              File Backups
+              <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
+                {files.length}
+              </span>
+            </div>
+            <div style={{ flex: 1, overflow: "auto" }}>
+              <FilesTable files={files} />
+            </div>
           </div>
         </div>
 
-        {/* File backups */}
-        <div style={PANE}>
+        {/* Bottom row: activity feed */}
+        <div style={FEED_PANE}>
           <div style={PANE_HEADER}>
-            File Backups
+            System Activity Feed
             <span style={{ float: "right", opacity: 0.8, fontWeight: 400, letterSpacing: 0 }}>
-              {files.length}
+              {events.length}
             </span>
           </div>
           <div style={{ flex: 1, overflow: "auto" }}>
-            <FilesTable files={files} />
+            <ActivityFeed events={events} />
           </div>
         </div>
       </div>
