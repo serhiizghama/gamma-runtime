@@ -341,6 +341,7 @@ export const REDIS_KEYS = {
   AGENT_REGISTRY_INDEX: 'gamma:agent-registry:index',
   AGENT_BROADCAST: 'gamma:agent:broadcast',
   AGENT_INBOX: (agentId: string) => `gamma:agent:${agentId}:inbox` as const,
+  FILE_CHANGED_STREAM: 'gamma:system:file_changed',
 } as const;
 
 /** Stream ID is always a string — never parse as number (precision loss) */

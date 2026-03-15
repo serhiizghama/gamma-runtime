@@ -56,6 +56,11 @@ export class ToolJailGuardService {
     // System Architect is exempt — full system access
     if (sessionKey === 'system-architect') return null;
 
+    // ── App Inspector: read-only cross-app access (Phase 4.2) ─────────
+    if (sessionKey === 'app-inspector') {
+      return this.validateInspectorAccess(toolName, args);
+    }
+
     // Only enforce on app-owner sessions
     if (!sessionKey.startsWith('app-owner-')) return null;
 
@@ -132,6 +137,82 @@ export class ToolJailGuardService {
       );
     }
 
+    return null;
+  }
+
+  // ── App Inspector validation (Phase 4.2) ───────────────────────────
+  // Read-only cross-app access: fs_read and fs_list anywhere under the
+  // jail root, but all write/exec tools are blocked (defense in depth).
+
+  private validateInspectorAccess(
+    toolName: string,
+    args: Record<string, unknown> | null,
+  ): JailViolation | null {
+    // Block any write or exec tool — Inspector is strictly read-only
+    if (toolName === 'fs_write' || toolName === 'shell_exec') {
+      return this.violation(
+        toolName,
+        'app-inspector',
+        JSON.stringify(args ?? {}),
+        `App Inspector is read-only — ${toolName} is forbidden`,
+      );
+    }
+
+    // Allow fs_read / fs_list with standard path safety checks (no traversal,
+    // no absolute paths, no hidden files) but scoped to the entire jail root
+    // rather than a single app bundle.
+    if (toolName === 'fs_read' || toolName === 'fs_list') {
+      const targetPath = (args?.path ?? args?.file ?? args?.directory) as
+        | string
+        | undefined;
+
+      if (!targetPath) return null;
+
+      if (path.isAbsolute(targetPath)) {
+        return this.violation(
+          toolName,
+          'app-inspector',
+          targetPath,
+          'Absolute path forbidden for App Inspector',
+        );
+      }
+
+      const normalized = path.normalize(targetPath);
+      if (normalized.startsWith('..') || normalized.includes(`${path.sep}..`)) {
+        return this.violation(
+          toolName,
+          'app-inspector',
+          targetPath,
+          'Path traversal detected: resolves outside jail root',
+        );
+      }
+
+      const jailRoot = this.appStorage.getJailRoot();
+      const resolved = path.resolve(jailRoot, normalized);
+
+      if (resolved !== jailRoot && !resolved.startsWith(jailRoot + path.sep)) {
+        return this.violation(
+          toolName,
+          'app-inspector',
+          targetPath,
+          `Resolved path '${resolved}' escapes jail root '${jailRoot}'`,
+        );
+      }
+
+      if (normalized.split(path.sep).some((seg) => seg.startsWith('.'))) {
+        return this.violation(
+          toolName,
+          'app-inspector',
+          targetPath,
+          'Hidden files/directories are forbidden',
+        );
+      }
+
+      return null;
+    }
+
+    // Any other tool not explicitly handled — allow (tool scoping already
+    // limits the Inspector to fs_read, fs_list, send_message).
     return null;
   }
 

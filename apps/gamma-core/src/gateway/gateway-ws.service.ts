@@ -59,6 +59,13 @@ const SYSTEM_ARCHITECT_TOOLS = [
   'send_message',
 ] as const;
 
+/** Tools available to App Inspector — read-only cross-app access + IPC. */
+const APP_INSPECTOR_TOOLS = [
+  'fs_read',
+  'fs_list',
+  'send_message',
+] as const;
+
 /**
  * Resolve the tool allowlist for a given session key.
  * Returns undefined for sessions without explicit scoping (fallback to gateway defaults).
@@ -66,6 +73,7 @@ const SYSTEM_ARCHITECT_TOOLS = [
 function resolveAllowedTools(sessionKey: string): readonly string[] | undefined {
   if (sessionKey.startsWith('app-owner-')) return APP_OWNER_TOOLS;
   if (sessionKey === 'system-architect') return SYSTEM_ARCHITECT_TOOLS;
+  if (sessionKey === 'app-inspector') return APP_INSPECTOR_TOOLS;
   return undefined;
 }
 
@@ -188,6 +196,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     }
   >();
 
+  /** Stash fs_write file paths from tool_call phase for emission on result. */
+  private pendingFsWritePaths = new Map<string, string>(); // toolCallId → filePath
+
   private readonly gatewayUrl: string;
   private readonly gatewayToken: string;
   // Device identity — reserved for future paired device auth
@@ -299,6 +310,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     // Clear run tracking to avoid orphaned counters when runs are interrupted
     this.runStepCounters.clear();
     this.inflightChatSend.clear();
+    this.pendingFsWritePaths.clear();
 
     for (const [id, req] of this.pendingRequests) {
       clearTimeout(req.timer);
@@ -735,6 +747,19 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
+        // Stash fs_write path for file_changed emission on successful result
+        if (
+          name === 'fs_write' &&
+          toolCallId &&
+          sessionKey.startsWith('app-owner-')
+        ) {
+          const args = (data?.arguments as Record<string, unknown>) ?? {};
+          const filePath = (args.path ?? args.filePath ?? '') as string;
+          if (filePath) {
+            this.pendingFsWritePaths.set(toolCallId, filePath);
+          }
+        }
+
         // Tool call initiated
         const eventId = await this.pushSSE(sseKey, {
           type: 'tool_call',
@@ -853,6 +878,32 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           stepId,
           parentId,
         });
+
+        // ── File-changed event for the Duty Architect loop (Phase 4.2) ──
+        if (name === 'fs_write' && toolCallId) {
+          const filePath = this.pendingFsWritePaths.get(toolCallId);
+          this.pendingFsWritePaths.delete(toolCallId);
+
+          if (filePath && !data?.isError && sessionKey.startsWith('app-owner-')) {
+            const appId = sessionKey.replace('app-owner-', '');
+            this.redis
+              .xadd(
+                REDIS_KEYS.FILE_CHANGED_STREAM,
+                'MAXLEN', '~', '500',
+                '*',
+                'appId', appId,
+                'filePath', filePath,
+                'sessionKey', sessionKey,
+                'toolCallId', toolCallId,
+                'windowId', windowId,
+                'timestamp', String(nowMs),
+              )
+              .catch((err: unknown) => {
+                const msg = err instanceof Error ? err.message : String(err);
+                this.logger.warn(`[FileChanged] Failed to emit event: ${msg}`);
+              });
+          }
+        }
       }
       return;
     }
