@@ -68,6 +68,9 @@ export class ContextInjectorService {
         }
         lines.push(`  Redis: ${health.redis.connected ? 'connected' : 'disconnected'} (${health.redis.latencyMs}ms)`);
         lines.push(`  Gateway: ${health.gateway.connected ? 'connected' : 'disconnected'} (${health.gateway.latencyMs}ms)`);
+        if (health.watchdog?.online !== undefined) {
+          lines.push(`  Watchdog: ${health.watchdog.online ? 'online' : 'offline'}`);
+        }
       }
 
       // ── Recent Events ──
