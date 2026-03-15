@@ -13,6 +13,7 @@ import type {
   WindowSession,
   CreateSessionDto,
   WindowStateSyncSnapshot,
+  SpawnAgentDto,
 } from '@gamma/types';
 import { REDIS_KEYS } from '@gamma/types';
 import { SessionRegistryService } from './session-registry.service';
@@ -130,6 +131,8 @@ export class SessionsService {
     // hint ("app-owner", "architect") and is NOT unique across agents.
     const agentId = dto.sessionKey;
     const role = this.resolveAgentRole(dto.sessionKey);
+    // Default supervisor: app-owners and inspector report to system-architect
+    const defaultSupervisor = dto.sessionKey === 'system-architect' ? null : 'system-architect';
     await this.agentRegistry.register({
       agentId,
       role,
@@ -142,6 +145,7 @@ export class SessionsService {
       lastActivity: 'session created',
       acceptsMessages: true,
       createdAt: session.createdAt,
+      supervisorId: defaultSupervisor,
     });
 
     // Initialize App Owner sessions with a dedicated system prompt + source context.
@@ -346,6 +350,62 @@ export class SessionsService {
 
     this.logger.warn(`[PANIC] Emergency stop complete — ${abortedCount}/${sessions.length} sessions aborted`);
     return abortedCount;
+  }
+
+  /**
+   * Spawn a new app-owner agent from the Director UI (Phase 5.3).
+   * Creates the session, registers the agent, and optionally sets a supervisor
+   * and sends an initial prompt.
+   */
+  async spawnAgent(dto: SpawnAgentDto): Promise<{ ok: boolean; sessionKey?: string; windowId?: string; error?: string }> {
+    const appId = dto.appId.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (!appId) return { ok: false, error: 'Invalid appId' };
+
+    // Check agent limit (max 10)
+    const allAgents = await this.agentRegistry.getAll();
+    if (allAgents.length >= 10) {
+      return { ok: false, error: 'Agent limit reached (max 10)' };
+    }
+
+    const sessionKey = `app-owner-${appId}`;
+    const windowId = `director-spawn-${appId}-${Date.now()}`;
+
+    // Check if session already exists
+    const existing = await this.findBySessionKey(sessionKey);
+    if (existing) {
+      return { ok: false, error: `Agent '${sessionKey}' already exists` };
+    }
+
+    try {
+      const session = await this.create({
+        windowId,
+        appId,
+        sessionKey,
+        agentId: 'app-owner',
+      });
+
+      // Override supervisor if specified
+      if (dto.supervisorId !== undefined) {
+        await this.agentRegistry.setSupervisor(sessionKey, dto.supervisorId || null);
+      }
+
+      // Send initial prompt if provided
+      if (dto.initialPrompt) {
+        // Small delay to let the Gateway session initialize
+        setTimeout(() => {
+          this.sendMessage(session.windowId, dto.initialPrompt!).catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.logger.warn(`spawnAgent: initial prompt failed for ${sessionKey}: ${msg}`);
+          });
+        }, 2000);
+      }
+
+      return { ok: true, sessionKey, windowId };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`spawnAgent failed for ${appId}: ${msg}`);
+      return { ok: false, error: msg };
+    }
   }
 
   /** Abort a running agent session (spec §4.2) */

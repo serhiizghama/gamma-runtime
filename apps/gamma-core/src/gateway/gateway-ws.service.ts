@@ -600,7 +600,23 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           this.appendQualityAuditLog(windowId, runId, nowMs).catch(() => {});
         }
 
-        // Activity Stream (Phase 5)
+        // Activity Stream (Phase 5) — emit message_completed with text snippet
+        {
+          const streamText = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'streamText') ?? '';
+          if (streamText.length > 0) {
+            const snippet = streamText.length > 160 ? streamText.slice(0, 160) + '…' : streamText;
+            this.activityStream?.emit({
+              kind: 'message_completed',
+              agentId: sessionKey,
+              windowId,
+              runId,
+              payload: snippet,
+              severity: 'info',
+            });
+            this.logger.log(`[DIRECTOR-DEBUG] EMIT message_completed | session=${sessionKey} | snippet=${snippet.slice(0, 80)}`);
+          }
+        }
+
         this.activityStream?.emit({
           kind: 'lifecycle_end',
           agentId: sessionKey,
@@ -1065,6 +1081,12 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       }
       return;
     }
+
+    // ── FALLBACK: unrecognized stream — log for debugging ────────────
+    this.logger.warn(
+      `[DIRECTOR-DEBUG] UNHANDLED stream="${stream}" | session=${sessionKey} | ` +
+      `runId=${runId} | data=${JSON.stringify(data).slice(0, 200)}`,
+    );
   }
 
   // ── Step ID generator (spec §3.6) ──────────────────────────────────
@@ -1424,6 +1446,15 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         // Best-effort — live context failure must never block message delivery
       }
     }
+
+    // Activity Stream — context_injected (Phase 5)
+    this.activityStream?.emit({
+      kind: 'context_injected',
+      agentId: sessionKey,
+      windowId,
+      payload: `${outgoingMessage.length} chars injected`,
+      severity: 'info',
+    });
 
     // ── Pre-flight snapshot: capture app directory before agent run ──────
     if (sessionKey.startsWith('app-owner-')) {

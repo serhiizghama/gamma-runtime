@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { create } from "zustand";
-import type { AgentRegistryEntry, GammaSSEEvent } from "@gamma/types";
+import type { AgentRegistryEntry, GammaSSEEvent, SpawnAgentDto, AgentRole } from "@gamma/types";
 import { systemAuthHeaders } from "../../../hooks/useSessionRegistry";
 import { API_BASE } from "../../../constants/api";
 
@@ -27,6 +27,8 @@ const KIND_COLORS: Record<string, string> = {
   tool_call_start: "#ffd787",
   tool_call_end:   "#ffd787",
   message_sent:    "#5fd7ff",
+  message_completed: "#87d7ff",
+  context_injected:  "#d7afff",
   lifecycle_start: "#5fff87",
   lifecycle_end:   "#888",
   lifecycle_error: "#ff5f5f",
@@ -35,6 +37,7 @@ const KIND_COLORS: Record<string, string> = {
   agent_deregistered: "#d787ff",
   agent_status_change: "#888",
   file_change:     "#87ffd7",
+  hierarchy_change: "#d7afff",
   system_event:    "#d787ff",
 };
 
@@ -47,6 +50,8 @@ const KIND_ICONS: Record<string, string> = {
   tool_call_start: "⚙",
   tool_call_end:   "⚙",
   message_sent:    "→",
+  message_completed: "✦",
+  context_injected:  "↯",
   lifecycle_start: "▶",
   lifecycle_end:   "■",
   lifecycle_error: "✕",
@@ -55,6 +60,7 @@ const KIND_ICONS: Record<string, string> = {
   agent_deregistered: "−",
   agent_status_change: "◦",
   file_change:     "◇",
+  hierarchy_change: "⇅",
   system_event:    "⚡",
 };
 
@@ -363,11 +369,13 @@ function ActivityFeed() {
   );
 }
 
-// ─── Agent Monitor Panel ──────────────────────────────────────────────────────
+// ─── Agent Hierarchy Panel ────────────────────────────────────────────────────
 
-function AgentMonitor() {
+function AgentHierarchy() {
   const [agents, setAgents] = useState<AgentRegistryEntry[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [showSpawn, setShowSpawn] = useState(false);
+  const events = useActivityStore((s) => s.events);
 
   const fetchAgents = useCallback(() => {
     fetch(`${API_BASE}/api/system/agents`, { headers: systemAuthHeaders() })
@@ -376,17 +384,15 @@ function AgentMonitor() {
         return r.json() as Promise<AgentRegistryEntry[]>;
       })
       .then((data) => setAgents(data))
-      .catch(() => {/* best-effort */});
+      .catch(() => {});
   }, []);
 
-  // Initial fetch + poll every 5s
   useEffect(() => {
     fetchAgents();
     const t = setInterval(fetchAgents, 5000);
     return () => clearInterval(t);
   }, [fetchAgents]);
 
-  // Also listen to SSE broadcast for instant updates
   useEffect(() => {
     const es = new EventSource(`${API_BASE}/api/stream/agent-monitor`);
     es.onmessage = (ev) => {
@@ -400,115 +406,296 @@ function AgentMonitor() {
     return () => es.close();
   }, []);
 
+  // Build tree: find agents waiting for IPC responses
+  const waitingAgents = useMemo(() => {
+    const waiting = new Set<string>();
+    for (const ev of events) {
+      if (ev.kind === "message_sent" && ev.agentId) waiting.add(ev.agentId);
+      if (ev.kind === "message_completed" && ev.agentId) waiting.delete(ev.agentId);
+      if (ev.kind === "lifecycle_end" && ev.agentId) waiting.delete(ev.agentId);
+    }
+    return waiting;
+  }, [events]);
+
+  // Build tree structure: roots are agents with no supervisor or supervisor not in list
+  const agentMap = useMemo(() => new Map(agents.map((a) => [a.agentId, a])), [agents]);
+  const roots = useMemo(() => {
+    return agents.filter(
+      (a) => !a.supervisorId || !agentMap.has(a.supervisorId),
+    );
+  }, [agents, agentMap]);
+
+  const childrenOf = useCallback(
+    (parentId: string) => agents.filter((a) => a.supervisorId === parentId),
+    [agents],
+  );
+
   const selectedAgent = agents.find((a) => a.agentId === selected) ?? null;
+
+  const handleReassign = async (agentId: string, supervisorId: string | null) => {
+    await fetch(`${API_BASE}/api/system/agents/${encodeURIComponent(agentId)}/hierarchy`, {
+      method: "PATCH",
+      headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ supervisorId }),
+    });
+    fetchAgents();
+  };
 
   return (
     <div style={AGENTS_PANE}>
       <div style={PANE_HEADER}>
-        <span>Agents ({agents.length})</span>
+        <span>Hierarchy ({agents.length})</span>
+        <button
+          onClick={() => setShowSpawn(true)}
+          style={{
+            ...FEED_BTN,
+            color: "#87ffd7",
+            borderColor: "rgba(135,255,215,0.3)",
+          }}
+        >
+          + SPAWN
+        </button>
       </div>
       <div style={SCROLL}>
         {agents.length === 0 && (
-          <div
-            style={{
-              padding: "24px 12px",
-              color: "var(--color-text-muted)",
-              textAlign: "center",
-              fontSize: 11,
-            }}
-          >
+          <div style={{ padding: "24px 12px", color: "var(--color-text-muted)", textAlign: "center", fontSize: 11 }}>
             No agents online
           </div>
         )}
-        {agents.map((ag) => {
-          const dotColor = STATUS_COLORS[ag.status] ?? "#666";
-          const isSelected = ag.agentId === selected;
-          return (
-            <div
-              key={ag.agentId}
-              onClick={() => setSelected(isSelected ? null : ag.agentId)}
-              style={{
-                padding: "7px 12px",
-                borderBottom: "1px solid rgba(255,255,255,0.04)",
-                cursor: "pointer",
-                background: isSelected ? "rgba(255,255,255,0.05)" : "transparent",
-                transition: "background 0.1s",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                {/* Glowing status dot */}
-                <span
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: "50%",
-                    background: dotColor,
-                    flexShrink: 0,
-                    boxShadow: ag.status === "running" ? `0 0 6px ${dotColor}, 0 0 2px ${dotColor}` : `0 0 3px ${dotColor}`,
-                    transition: "box-shadow 0.3s",
-                  }}
-                />
-                <span
-                  style={{
-                    fontWeight: 600,
-                    fontSize: 11,
-                    color: "var(--color-text-primary)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {ag.agentId}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  paddingLeft: 14,
-                  color: "var(--color-text-muted)",
-                  fontSize: 10,
-                  marginTop: 2,
-                }}
-              >
-                <span style={{ color: dotColor, fontWeight: 600 }}>{ag.status.toUpperCase()}</span>
-                <span style={{ opacity: 0.5 }}>{ag.role}</span>
-                {ag.appId && <span>· {ag.appId}</span>}
-              </div>
-            </div>
-          );
-        })}
+        {roots.map((root) => (
+          <AgentTreeNode
+            key={root.agentId}
+            agent={root}
+            depth={0}
+            selected={selected}
+            onSelect={setSelected}
+            childrenOf={childrenOf}
+            waitingAgents={waitingAgents}
+          />
+        ))}
 
         {/* Selected agent detail */}
         {selectedAgent && (
-          <div
+          <AgentDetail
+            agent={selectedAgent}
+            agents={agents}
+            onReassign={handleReassign}
+            onRefresh={fetchAgents}
+          />
+        )}
+      </div>
+
+      {showSpawn && (
+        <SpawnModal
+          agents={agents}
+          onClose={() => setShowSpawn(false)}
+          onSpawned={fetchAgents}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Recursive Tree Node ──────────────────────────────────────────────────────
+
+function AgentTreeNode({
+  agent,
+  depth,
+  selected,
+  onSelect,
+  childrenOf,
+  waitingAgents,
+}: {
+  agent: AgentRegistryEntry;
+  depth: number;
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  childrenOf: (id: string) => AgentRegistryEntry[];
+  waitingAgents: Set<string>;
+}) {
+  const children = childrenOf(agent.agentId);
+  const dotColor = STATUS_COLORS[agent.status] ?? "#666";
+  const isSelected = agent.agentId === selected;
+  const isWaiting = waitingAgents.has(agent.agentId);
+
+  return (
+    <>
+      <div
+        onClick={() => onSelect(isSelected ? null : agent.agentId)}
+        style={{
+          padding: "5px 12px",
+          paddingLeft: 12 + depth * 16,
+          borderBottom: "1px solid rgba(255,255,255,0.03)",
+          cursor: "pointer",
+          background: isSelected ? "rgba(255,255,255,0.05)" : "transparent",
+          transition: "background 0.1s",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Hierarchy connector */}
+          {depth > 0 && (
+            <span style={{ color: "var(--color-text-muted)", fontSize: 9, opacity: 0.4, marginRight: -2 }}>└</span>
+          )}
+          {/* Glowing status dot with pulse for waiting */}
+          <span
             style={{
-              padding: "10px 12px",
-              borderTop: "1px solid var(--color-border-subtle)",
-              background: "rgba(0,0,0,0.15)",
-              fontSize: 10,
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: dotColor,
+              flexShrink: 0,
+              boxShadow: isWaiting
+                ? `0 0 8px ${dotColor}, 0 0 3px ${dotColor}`
+                : agent.status === "running"
+                  ? `0 0 6px ${dotColor}, 0 0 2px ${dotColor}`
+                  : `0 0 3px ${dotColor}`,
+              animation: isWaiting ? "pulse 1.5s ease-in-out infinite" : undefined,
+              transition: "box-shadow 0.3s",
+            }}
+          />
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: 11,
+              color: "var(--color-text-primary)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6 }}>
-              {selectedAgent.agentId}
-            </div>
-            <DetailRow label="Role" value={selectedAgent.role} />
-            <DetailRow label="Status" value={selectedAgent.status} />
-            <DetailRow label="App" value={selectedAgent.appId || "—"} />
-            <DetailRow label="Window" value={selectedAgent.windowId || "—"} />
-            <DetailRow
-              label="Heartbeat"
-              value={selectedAgent.lastHeartbeat ? relativeTime(selectedAgent.lastHeartbeat) : "—"}
-            />
-            <DetailRow
-              label="Capabilities"
-              value={selectedAgent.capabilities.length > 0 ? selectedAgent.capabilities.join(", ") : "—"}
-            />
-            {selectedAgent.lastActivity && (
-              <DetailRow label="Activity" value={selectedAgent.lastActivity} />
-            )}
-          </div>
-        )}
+            {agent.agentId}
+          </span>
+          {isWaiting && (
+            <span style={{ fontSize: 8, color: "#ffd787", opacity: 0.8 }}>WAIT</span>
+          )}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            paddingLeft: depth > 0 ? 22 : 13,
+            color: "var(--color-text-muted)",
+            fontSize: 10,
+            marginTop: 1,
+          }}
+        >
+          <span style={{ color: dotColor, fontWeight: 600 }}>{agent.status.toUpperCase()}</span>
+          <span style={{ opacity: 0.5 }}>{agent.role}</span>
+          {agent.appId && <span>· {agent.appId}</span>}
+          {children.length > 0 && <span style={{ opacity: 0.4 }}>({children.length})</span>}
+        </div>
+      </div>
+      {children.map((child) => (
+        <AgentTreeNode
+          key={child.agentId}
+          agent={child}
+          depth={depth + 1}
+          selected={selected}
+          onSelect={onSelect}
+          childrenOf={childrenOf}
+          waitingAgents={waitingAgents}
+        />
+      ))}
+    </>
+  );
+}
+
+// ─── Agent Detail Panel ───────────────────────────────────────────────────────
+
+function AgentDetail({
+  agent,
+  agents,
+  onReassign,
+  onRefresh,
+}: {
+  agent: AgentRegistryEntry;
+  agents: AgentRegistryEntry[];
+  onReassign: (agentId: string, supervisorId: string | null) => Promise<void>;
+  onRefresh: () => void;
+}) {
+  const [reassigning, setReassigning] = useState(false);
+  const [killing, setKilling] = useState(false);
+
+  const handleKill = async () => {
+    if (!confirm(`Terminate agent "${agent.agentId}"?`)) return;
+    setKilling(true);
+    try {
+      await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(agent.sessionKey)}/kill`, {
+        method: "POST",
+        headers: systemAuthHeaders(),
+      });
+      onRefresh();
+    } catch { /* best-effort */ }
+    setKilling(false);
+  };
+
+  const supervisorOptions = agents
+    .filter((a) => a.agentId !== agent.agentId)
+    .map((a) => a.agentId);
+
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderTop: "1px solid var(--color-border-subtle)",
+        background: "rgba(0,0,0,0.15)",
+        fontSize: 10,
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6 }}>{agent.agentId}</div>
+      <DetailRow label="Role" value={agent.role} />
+      <DetailRow label="Status" value={agent.status} />
+      <DetailRow label="App" value={agent.appId || "—"} />
+      <DetailRow label="Supervisor" value={agent.supervisorId || "(root)"} />
+      <DetailRow label="Heartbeat" value={agent.lastHeartbeat ? relativeTime(agent.lastHeartbeat) : "—"} />
+      {agent.lastActivity && <DetailRow label="Activity" value={agent.lastActivity} />}
+
+      {/* Reassign supervisor */}
+      <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}>
+        <select
+          style={{
+            background: "var(--color-surface-muted)",
+            border: "1px solid var(--color-border-subtle)",
+            color: "var(--color-text-primary)",
+            borderRadius: 4,
+            padding: "2px 4px",
+            fontSize: 10,
+            fontFamily: "inherit",
+            flex: 1,
+          }}
+          defaultValue={agent.supervisorId ?? ""}
+          onChange={(e) => {
+            setReassigning(true);
+            onReassign(agent.agentId, e.target.value || null).finally(() => setReassigning(false));
+          }}
+          disabled={reassigning}
+        >
+          <option value="">(root — no supervisor)</option>
+          {supervisorOptions.map((id) => (
+            <option key={id} value={id}>{id}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Kill button */}
+      <div style={{ marginTop: 8 }}>
+        <button
+          onClick={() => void handleKill()}
+          disabled={killing}
+          style={{
+            background: "var(--button-danger-bg, #7a2020)",
+            border: "1px solid var(--button-danger-border, rgba(255,80,80,0.4))",
+            color: "var(--button-danger-fg, #fff)",
+            borderRadius: 4,
+            padding: "3px 10px",
+            fontSize: 10,
+            cursor: killing ? "not-allowed" : "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          {killing ? "Killing…" : "Terminate"}
+        </button>
       </div>
     </div>
   );
@@ -522,6 +709,168 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+// ─── Spawn Modal ──────────────────────────────────────────────────────────────
+
+function SpawnModal({
+  agents,
+  onClose,
+  onSpawned,
+}: {
+  agents: AgentRegistryEntry[];
+  onClose: () => void;
+  onSpawned: () => void;
+}) {
+  const [appId, setAppId] = useState("");
+  const [role] = useState<AgentRole>("app-owner");
+  const [supervisorId, setSupervisorId] = useState("system-architect");
+  const [initialPrompt, setInitialPrompt] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const handleSpawn = async () => {
+    if (!appId.trim()) { setError("App ID is required"); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const body: SpawnAgentDto = {
+        appId: appId.trim(),
+        role,
+        supervisorId: supervisorId || undefined,
+        initialPrompt: initialPrompt.trim() || undefined,
+      };
+      const res = await fetch(`${API_BASE}/api/system/agents/spawn`, {
+        method: "POST",
+        headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json()) as { ok: boolean; sessionKey?: string; error?: string };
+      if (!data.ok) {
+        setError(data.error || "Spawn failed");
+      } else {
+        setSuccess(true);
+        onSpawned();
+        setTimeout(onClose, 1200);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--glass-bg, #1a1a2e)",
+          border: "1px solid var(--color-border-subtle)",
+          borderRadius: 8,
+          padding: "20px 24px",
+          minWidth: 320,
+          maxWidth: 400,
+          backdropFilter: "var(--glass-blur)",
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>Spawn New Agent</div>
+
+        <label style={LABEL_STYLE}>
+          App ID
+          <input
+            style={INPUT_STYLE}
+            value={appId}
+            onChange={(e) => setAppId(e.target.value)}
+            placeholder="my-app"
+            disabled={loading}
+          />
+        </label>
+
+        <label style={LABEL_STYLE}>
+          Supervisor
+          <select
+            style={INPUT_STYLE}
+            value={supervisorId}
+            onChange={(e) => setSupervisorId(e.target.value)}
+            disabled={loading}
+          >
+            <option value="">(root — no supervisor)</option>
+            {agents.map((a) => (
+              <option key={a.agentId} value={a.agentId}>{a.agentId}</option>
+            ))}
+          </select>
+        </label>
+
+        <label style={LABEL_STYLE}>
+          Initial Prompt (optional)
+          <textarea
+            style={{ ...INPUT_STYLE, minHeight: 60, resize: "vertical" }}
+            value={initialPrompt}
+            onChange={(e) => setInitialPrompt(e.target.value)}
+            placeholder="Build a weather dashboard..."
+            disabled={loading}
+          />
+        </label>
+
+        {error && (
+          <div style={{ color: "#ff5f5f", fontSize: 10, marginBottom: 8 }}>{error}</div>
+        )}
+        {success && (
+          <div style={{ color: "#5fff87", fontSize: 10, marginBottom: 8 }}>Agent spawned successfully</div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+          <button onClick={onClose} style={FEED_BTN} disabled={loading}>Cancel</button>
+          <button
+            onClick={() => void handleSpawn()}
+            disabled={loading || success}
+            style={{
+              ...FEED_BTN,
+              color: "#5fff87",
+              borderColor: "rgba(95,255,135,0.3)",
+              fontWeight: 600,
+            }}
+          >
+            {loading ? "Spawning…" : "Spawn"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const LABEL_STYLE: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  marginBottom: 12,
+  fontSize: 10,
+  color: "var(--color-text-muted)",
+  fontWeight: 600,
+};
+
+const INPUT_STYLE: React.CSSProperties = {
+  background: "rgba(0,0,0,0.3)",
+  border: "1px solid var(--color-border-subtle)",
+  borderRadius: 4,
+  padding: "6px 8px",
+  color: "var(--color-text-primary)",
+  fontSize: 11,
+  fontFamily: "inherit",
+  outline: "none",
+};
 
 // ─── SSE connection hook ──────────────────────────────────────────────────────
 
@@ -660,7 +1009,14 @@ export default function DirectorApp() {
   const { connected, eventCount } = useActivityStream();
 
   return (
-    <div style={ROOT}>
+    <div style={{ ...ROOT, position: "relative" }}>
+      {/* Pulse animation for waiting agents */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
       {/* Header */}
       <div style={HEADER}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -675,7 +1031,7 @@ export default function DirectorApp() {
       {/* Body */}
       <div style={BODY}>
         <ActivityFeed />
-        <AgentMonitor />
+        <AgentHierarchy />
       </div>
 
       {/* Status bar */}

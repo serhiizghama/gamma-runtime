@@ -310,6 +310,17 @@ export interface AgentRegistryEntry {
   lastActivity: string;
   acceptsMessages: boolean;
   createdAt: number;
+  /** Phase 5.3: supervisor agent ID (null = root node) */
+  supervisorId: string | null;
+}
+
+/** Phase 5.3: DTO for spawning a new agent from the Director */
+export interface SpawnAgentDto {
+  appId: string;
+  displayName?: string;
+  role?: AgentRole;
+  supervisorId?: string;
+  initialPrompt?: string;
 }
 
 // ── §18 Agent Message Bus ────────────────────────────────────────────────
@@ -333,12 +344,15 @@ export type ActivityEventKind =
   | 'agent_deregistered'
   | 'agent_status_change'
   | 'message_sent'
+  | 'message_completed'
+  | 'context_injected'
   | 'tool_call_start'
   | 'tool_call_end'
   | 'lifecycle_start'
   | 'lifecycle_end'
   | 'lifecycle_error'
   | 'file_change'
+  | 'hierarchy_change'
   | 'system_event'
   | 'emergency_stop';
 

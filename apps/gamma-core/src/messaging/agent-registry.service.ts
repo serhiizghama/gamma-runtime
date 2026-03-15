@@ -45,6 +45,7 @@ export class AgentRegistryService {
       lastActivity: entry.lastActivity,
       acceptsMessages: entry.acceptsMessages ? '1' : '0',
       createdAt: String(entry.createdAt),
+      supervisorId: entry.supervisorId ?? '',
     };
 
     await this.redis
@@ -85,6 +86,7 @@ export class AgentRegistryService {
     if (fields.lastActivity != null) flat.lastActivity = fields.lastActivity;
     if (fields.acceptsMessages != null) flat.acceptsMessages = fields.acceptsMessages ? '1' : '0';
     if (fields.createdAt != null) flat.createdAt = String(fields.createdAt);
+    if (fields.supervisorId !== undefined) flat.supervisorId = fields.supervisorId ?? '';
 
     if (Object.keys(flat).length === 0) return;
 
@@ -223,6 +225,52 @@ export class AgentRegistryService {
       lastActivity: raw.lastActivity || '',
       acceptsMessages: raw.acceptsMessages === '1',
       createdAt: Number(raw.createdAt || 0),
+      supervisorId: raw.supervisorId || null,
     };
+  }
+
+  // ── Hierarchy (Phase 5.3) ──────────────────────────────────────────
+
+  /**
+   * Set or change the supervisor of an agent.
+   * Validates: target exists, supervisor exists (or null for root), no self-loop, no cycles.
+   */
+  async setSupervisor(agentId: string, supervisorId: string | null): Promise<{ ok: boolean; error?: string }> {
+    if (agentId === supervisorId) {
+      return { ok: false, error: 'Agent cannot supervise itself' };
+    }
+
+    const agent = await this.getOne(agentId);
+    if (!agent) return { ok: false, error: `Agent '${agentId}' not found` };
+
+    if (supervisorId) {
+      const supervisor = await this.getOne(supervisorId);
+      if (!supervisor) return { ok: false, error: `Supervisor '${supervisorId}' not found` };
+
+      // Cycle detection: walk up from the proposed supervisor
+      let current: string | null = supervisorId;
+      const visited = new Set<string>();
+      while (current) {
+        if (current === agentId) {
+          return { ok: false, error: 'Cycle detected: this assignment would create a supervision loop' };
+        }
+        if (visited.has(current)) break; // already checked
+        visited.add(current);
+        const entry = await this.getOne(current);
+        current = entry?.supervisorId ?? null;
+      }
+    }
+
+    await this.update(agentId, { supervisorId });
+
+    this.activityStream?.emit({
+      kind: 'hierarchy_change',
+      agentId,
+      targetAgentId: supervisorId ?? undefined,
+      payload: supervisorId ? `supervisor → ${supervisorId}` : 'promoted to root',
+      severity: 'info',
+    });
+
+    return { ok: true };
   }
 }

@@ -2,6 +2,9 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Body,
+  Param,
   Query,
   Sse,
   MessageEvent,
@@ -24,6 +27,7 @@ import type {
   BackupInventory,
   AgentRegistryEntry,
   ActivityEvent,
+  SpawnAgentDto,
 } from '@gamma/types';
 
 @Controller('api/system')
@@ -68,6 +72,27 @@ export class SystemController {
     this.logger.warn('PANIC endpoint triggered');
     const killedCount = await this.sessions.emergencyStopAll();
     return { ok: true, killedCount };
+  }
+
+  // ── Hierarchy (Phase 5.3) ─────────────────────────────────────────────
+
+  @Patch('agents/:id/hierarchy')
+  @UseGuards(SystemAppGuard)
+  async setHierarchy(
+    @Param('id') agentId: string,
+    @Body() body: { supervisorId: string | null },
+  ): Promise<{ ok: boolean; error?: string }> {
+    return this.agentRegistry.setSupervisor(agentId, body.supervisorId);
+  }
+
+  // ── Agent Spawning (Phase 5.3) ──────────────────────────────────────
+
+  @Post('agents/spawn')
+  @UseGuards(SystemAppGuard)
+  async spawnAgent(
+    @Body() body: SpawnAgentDto,
+  ): Promise<{ ok: boolean; sessionKey?: string; windowId?: string; error?: string }> {
+    return this.sessions.spawnAgent(body);
   }
 
   // ── Activity Stream (Phase 5) ──────────────────────────────────────────

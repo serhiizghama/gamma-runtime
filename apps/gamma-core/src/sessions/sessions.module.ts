@@ -89,6 +89,7 @@ export class SessionsModule implements OnModuleInit {
           lastActivity: 'restored on boot',
           acceptsMessages: true,
           createdAt: session.createdAt,
+          supervisorId: session.sessionKey === 'system-architect' ? null : 'system-architect',
         });
         synced++;
       }
