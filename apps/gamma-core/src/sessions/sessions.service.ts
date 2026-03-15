@@ -134,7 +134,7 @@ export class SessionsService {
 
     // Route the global system-architect session to its dedicated OpenClaw agent.
     if (dto.sessionKey === 'system-architect') {
-      this.gatewayWs.createSession('system-architect', undefined, 'system-architect').catch(
+      this.initializeSystemArchitectSession(dto.sessionKey, windowId).catch(
         (err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
           this.logger.error(`Failed to initialize system-architect Gateway session: ${msg}`);
@@ -403,12 +403,6 @@ export class SessionsService {
     windowId: string,
     appIdFromDto?: string | null,
   ): Promise<void> {
-    // TODO (Stage 4): Context Injection for specific apps is currently bypassed.
-    // The backend successfully reads the app's context.md, but OpenClaw session
-    // initialization requires a refactor to properly ingest the custom
-    // system_prompt. App Owner sessions currently fall back to the default
-    // Gamma Agent Runtime Assistant persona despite the app-specific context being
-    // available here.
     if (!sessionKey || typeof sessionKey !== 'string') {
       this.logger.warn(
         'initializeAppOwnerSession: sessionKey is empty or invalid',
@@ -497,6 +491,52 @@ export class SessionsService {
     ]);
 
     await this.redis.hset(stateKey, APP_OWNER_INIT_FIELD, '1');
+  }
+
+  /**
+   * Initialize the System Architect Gateway session with its persona prompt
+   * and persist the prompt to Redis for dual-path injection via chat.send.
+   */
+  private async initializeSystemArchitectSession(
+    sessionKey: string,
+    windowId: string,
+  ): Promise<void> {
+    const repoRoot = process.cwd();
+    let personaContent = '';
+    try {
+      const personaPath = path.join(repoRoot, 'docs/agents/system-architect.md');
+      personaContent = await fs.readFile(personaPath, 'utf8');
+    } catch {
+      this.logger.debug('system-architect.md not found — using default persona');
+    }
+
+    const systemPrompt = personaContent
+      ? `[SYSTEM INJECTION] You are the System Architect of Gamma Agent Runtime.\n\n${personaContent}`
+      : undefined;
+
+    const created = await this.gatewayWs.createSession(
+      sessionKey,
+      systemPrompt,
+      'system-architect',
+    );
+    if (!created) {
+      this.logger.warn('initializeSystemArchitectSession: Gateway sessions.create failed');
+      return;
+    }
+
+    // Persist for dual-path injection on chat.send
+    if (systemPrompt) {
+      await Promise.all([
+        this.registry.setContext(sessionKey, systemPrompt),
+        this.registry.upsert({
+          sessionKey,
+          windowId,
+          appId: 'system-architect',
+          systemPromptSnippet: systemPrompt.slice(0, 2000),
+          lastActiveAt: Date.now(),
+        }),
+      ]);
+    }
   }
 
   /**

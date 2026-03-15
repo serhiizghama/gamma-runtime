@@ -109,6 +109,23 @@ Two-tier agent model:
 
 Each agent maps to an OpenClaw session. The System Architect delegates modification requests to the appropriate App Owner.
 
+### Tool Scoping
+
+Role-based tool allowlists are defined in `GatewayWsService` and passed to the Gateway on `sessions.create`:
+
+| Role | Tools |
+|------|-------|
+| **System Architect** | `shell_exec`, `fs_read`, `fs_write`, `fs_list`, `scaffold`, `unscaffold`, `system_health`, `list_apps`, `read_file` |
+| **App Owner** | `shell_exec`, `fs_read`, `fs_write`, `fs_list`, `update_app`, `read_context`, `list_assets`, `add_asset` (scoped to own bundle) |
+
+### Context Injection
+
+Agent prompts are assembled in three layers:
+
+1. **Session-level system prompt** — built once by `SessionsService.initializeAppOwnerSession()` from `agent-prompt.md`, `context.md`, and the app's `*App.tsx` source code. Passed to OpenClaw via `sessions.create`.
+2. **First-message invisible context** — `GatewayWsService.sendMessage()` prepends a hidden `[SYSTEM CONTEXT]` block on the first user message (runCount === 0) with working directory and fs access info.
+3. **Dynamic live context** — `ContextInjectorService.getLiveContext()` appends a `[LIVE SYSTEM STATE]` block to every message with active sessions, system health (CPU/RAM/Redis/Gateway), and recent system events.
+
 ---
 
 ## 4. Stability Layer

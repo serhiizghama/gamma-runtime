@@ -27,6 +27,45 @@ import { AppStorageService } from '../scaffold/app-storage.service';
 import { ContextInjectorService } from '../scaffold/context-injector.service';
 import type { GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
+// ── Tool Scoping ──────────────────────────────────────────────────────────
+// Role-based tool allowlists. App Owners are restricted to their jail;
+// System Architect gets full access.
+
+/** Tools available to App Owner agents — limited to their own app bundle. */
+const APP_OWNER_TOOLS = [
+  'shell_exec',   // Sandboxed shell within jail
+  'fs_read',      // Read files within jail
+  'fs_write',     // Write files within jail
+  'fs_list',      // List directory within jail
+  'update_app',   // Scaffold update (PATCH semantics)
+  'read_context', // Read own context.md
+  'list_assets',  // List own assets
+  'add_asset',    // Upload asset to own bundle
+] as const;
+
+/** Tools available to System Architect — full system access. */
+const SYSTEM_ARCHITECT_TOOLS = [
+  'shell_exec',
+  'fs_read',
+  'fs_write',
+  'fs_list',
+  'scaffold',
+  'unscaffold',
+  'system_health',
+  'list_apps',
+  'read_file',
+] as const;
+
+/**
+ * Resolve the tool allowlist for a given session key.
+ * Returns undefined for sessions without explicit scoping (fallback to gateway defaults).
+ */
+function resolveAllowedTools(sessionKey: string): readonly string[] | undefined {
+  if (sessionKey.startsWith('app-owner-')) return APP_OWNER_TOOLS;
+  if (sessionKey === 'system-architect') return SYSTEM_ARCHITECT_TOOLS;
+  return undefined;
+}
+
 // ── Local types ───────────────────────────────────────────────────────────
 
 interface GWFrame {
@@ -1009,8 +1048,11 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Create or initialize an OpenClaw session with an optional systemPrompt.
-   * This must run before the first chat.send for persona/context injection.
+   * Create or initialize an OpenClaw session with an optional systemPrompt
+   * and role-based tool scoping.
+   *
+   * The systemPrompt is also passed on every chat.send as a `system` field
+   * (dual-path) because some Gateway versions ignore it on sessions.create.
    */
   async createSession(
     sessionKey: string,
@@ -1024,15 +1066,21 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
 
+    const allowedTools = resolveAllowedTools(sessionKey);
+
     const frameId = ulid();
     const params: Record<string, unknown> = {
       sessionKey: this.toOpenClawKey(sessionKey),
       ...(systemPrompt ? { systemPrompt } : {}),
       ...(agentId ? { agentId } : {}),
+      ...(allowedTools ? { allowedTools: [...allowedTools] } : {}),
     };
 
-    // Surface the exact payload we send to OpenClaw for observability
-    console.log('[Backend] OpenClaw sessions.create payload:', params);
+    this.logger.log(
+      `createSession: ${sessionKey} | agentId=${agentId ?? 'default'} | ` +
+      `tools=${allowedTools ? allowedTools.length : 'all'} | ` +
+      `promptLen=${systemPrompt?.length ?? 0}`,
+    );
 
     this.send({
       type: 'req',
@@ -1118,15 +1166,40 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // ── Retrieve persisted system prompt for dual-path injection ──────────
+    // OpenClaw may ignore systemPrompt on sessions.create, so we also pass it
+    // as a `system` field on every chat.send. This ensures the agent always
+    // "hears" its persona/context regardless of Gateway version.
+    let systemPromptForSend: string | undefined;
+    try {
+      const stored = await this.sessionRegistry.getContext(sessionKey);
+      if (stored) systemPromptForSend = stored;
+    } catch {
+      // Best-effort — if context retrieval fails, send without system prompt
+    }
+
     const frameId = ulid();
     // inflightChatSend stores the internal key — used for error routing and token accumulation
     this.inflightChatSend.set(frameId, { windowId, sessionKey });
-    this.logger.log(`sendMessage: ${sessionKey} → ${outgoingMessage.slice(0, 60)}... (frame=${frameId})`);
+    this.logger.log(`sendMessage: ${sessionKey} → ${outgoingMessage.slice(0, 60)}... (frame=${frameId}) | system=${systemPromptForSend ? systemPromptForSend.length : 0}chars`);
+
+    const chatParams: Record<string, unknown> = {
+      sessionKey: this.toOpenClawKey(sessionKey),
+      message: outgoingMessage,
+      idempotencyKey: frameId,
+    };
+
+    // Dual-path: pass system prompt on every chat.send so the Gateway applies
+    // it even if sessions.create didn't honor the systemPrompt field.
+    if (systemPromptForSend) {
+      chatParams.system = systemPromptForSend;
+    }
+
     this.send({
       type: 'req',
       id: frameId,
       method: 'chat.send',
-      params: { sessionKey: this.toOpenClawKey(sessionKey), message: outgoingMessage, idempotencyKey: frameId },
+      params: chatParams,
     });
     // 10s timeout: if no ack, clean up inflight (avoid leak). Error routing
     // only applies when we get res with ok:false; timeout is silent.

@@ -24,11 +24,6 @@ function EmbeddedAgentChat({
   onClose: () => void;
 }): React.ReactElement {
   const sessionKey = `app-owner-${appId}`;
-  // TODO (Stage 4): Context Injection for specific apps is currently bypassed.
-  // The backend successfully reads the app's context.md, but OpenClaw session
-  // initialization requires a refactor to properly ingest the custom
-  // system_prompt. The embedded chat currently falls back to the default
-  // Gamma Agent Runtime Assistant persona, even when using app-owner session keys.
   const { messages, status, pendingToolLines, sendMessage } =
     useAgentStream(sessionKey);
   return (

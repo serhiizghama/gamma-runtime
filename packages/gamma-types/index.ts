@@ -77,6 +77,8 @@ export interface WindowSession {
   agentId: string;
   createdAt: number;
   status: AgentStatus;
+  /** Role-based tool allowlist (undefined = all tools). */
+  allowedTools?: string[];
 }
 
 export interface CreateSessionDto {
