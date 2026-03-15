@@ -42,11 +42,14 @@ export function NotesApp(): React.ReactElement {
 
   const deleteNote = (id: string) => {
     console.log("[NotesApp] Note deleted:", id);
-    setNotes((prev) => prev.filter((n) => n.id !== id));
-    if (activeId === id) {
-      const remaining = notes.filter((n) => n.id !== id);
-      setActiveId(remaining[0]?.id ?? "");
-    }
+    setNotes((prev) => {
+      const remaining = prev.filter((n) => n.id !== id);
+      // Derive next activeId from the same snapshot to avoid stale closure
+      if (activeId === id) {
+        setActiveId(remaining[0]?.id ?? "");
+      }
+      return remaining;
+    });
   };
 
   return (

@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import type { WindowSession } from "@gamma/types";
+import { API_BASE } from "../../../constants/api";
+import { systemAuthHeaders } from "../../../hooks/useSessionRegistry";
 
 // ── Local UI types ────────────────────────────────────────────────────────
 
@@ -11,12 +13,7 @@ interface SSELogEntry {
 
 // ── Config ───────────────────────────────────────────────────────────────
 
-// Auto-detect: if accessing via Tailscale, use the same hostname for API
-const API_BASE =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1"
-    ? "http://localhost:3001"
-    : `http://${window.location.hostname}:3001`;
+// API_BASE is imported from ../../../constants/api (shared project constant)
 
 // ── Styles ───────────────────────────────────────────────────────────────
 
@@ -154,7 +151,7 @@ export function KernelMonitorApp(): React.ReactElement {
 
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/sessions`);
+      const res = await fetch(`${API_BASE}/api/sessions`, { headers: systemAuthHeaders() });
       if (res.ok) {
         const data = (await res.json()) as WindowSession[];
         setSessions(data);
@@ -178,7 +175,7 @@ export function KernelMonitorApp(): React.ReactElement {
       const id = `win-${Math.random().toString(36).slice(2, 8)}`;
       await fetch(`${API_BASE}/api/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           windowId: id,
           appId: "kernel-monitor",
@@ -198,7 +195,7 @@ export function KernelMonitorApp(): React.ReactElement {
 
   const deleteSession = async (wid: string) => {
     try {
-      await fetch(`${API_BASE}/api/sessions/${wid}`, { method: "DELETE" });
+      await fetch(`${API_BASE}/api/sessions/${wid}`, { method: "DELETE", headers: systemAuthHeaders() });
       await fetchSessions();
     } catch {
       // silent
@@ -210,7 +207,7 @@ export function KernelMonitorApp(): React.ReactElement {
   const addLog = (data: Record<string, unknown>) => {
     logIdRef.current++;
     setLogs((prev) => [
-      ...prev.slice(-200), // keep last 200 entries
+      ...prev.slice(-199), // keep last 200 entries (slice(-199) + 1 new = 200)
       { id: logIdRef.current, ts: Date.now(), data },
     ]);
   };
@@ -220,7 +217,7 @@ export function KernelMonitorApp(): React.ReactElement {
       esRef.current.close();
     }
 
-    const es = new EventSource(`${API_BASE}/api/stream/${windowId}`);
+    const es = new EventSource(`${API_BASE}/api/stream/${encodeURIComponent(windowId)}`);
 
     es.onopen = () => {
       setSseConnected(true);
@@ -257,6 +254,11 @@ export function KernelMonitorApp(): React.ReactElement {
     if (!logRef.current) return;
     logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
+
+  // SSE cleanup on unmount — prevent connection leak
+  useEffect(() => {
+    return () => { esRef.current?.close(); };
+  }, []);
 
   const statusColor = (status: string): string => {
     switch (status) {

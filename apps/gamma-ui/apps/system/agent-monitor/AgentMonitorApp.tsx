@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import type { AgentStatus, SessionRecord } from "@gamma/types";
 import { useSessionRegistry, systemAuthHeaders } from "../../../hooks/useSessionRegistry";
 import { API_BASE } from "../../../constants/api";
@@ -268,10 +268,10 @@ export function AgentMonitorApp(): React.ReactElement {
 
   const selectedRecord = records.find((r) => r.sessionKey === selectedKey) ?? null;
 
-  // Deselect if session disappears from registry
-  if (selectedKey && !selectedRecord) {
-    setSelectedKey(null);
-  }
+  // Deselect if session disappears from registry — useEffect avoids setState-during-render
+  useEffect(() => {
+    if (selectedKey && !selectedRecord) setSelectedKey(null);
+  }, [selectedKey, selectedRecord]);
 
   const handleFlush = useCallback(async () => {
     if (!window.confirm("Clear all stale registry records?\n\nThis removes all session-registry and session-context entries from Redis.")) return;

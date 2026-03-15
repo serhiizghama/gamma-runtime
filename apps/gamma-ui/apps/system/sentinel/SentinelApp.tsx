@@ -383,7 +383,12 @@ function useAgentRegistry() {
 
   // Live updates via SSE broadcast
   useEffect(() => {
-    const es = new EventSource(`${API_BASE}/api/stream/agent-monitor`);
+    const authHeaders = systemAuthHeaders() as Record<string, string>;
+    const sseToken = authHeaders["X-Gamma-System-Token"] ?? "";
+    const sseUrl = sseToken
+      ? `${API_BASE}/api/stream/agent-monitor?token=${encodeURIComponent(sseToken)}`
+      : `${API_BASE}/api/stream/agent-monitor`;
+    const es = new EventSource(sseUrl);
 
     es.onmessage = (ev) => {
       let event: GammaSSEEvent;

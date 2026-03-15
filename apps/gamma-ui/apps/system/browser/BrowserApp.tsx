@@ -91,6 +91,7 @@ export function BrowserApp(): React.ReactElement {
           <iframe
             src={url}
             title="Gamma Browser"
+            sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
             style={{ flex: 1, border: "none", background: "var(--color-bg-base)" }}
           />
         ) : (

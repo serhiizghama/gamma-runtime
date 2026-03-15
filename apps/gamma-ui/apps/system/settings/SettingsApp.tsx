@@ -154,6 +154,7 @@ function SegmentedControl({
       {options.map((o) => (
           <button
             key={o.value}
+            type="button"
             onClick={() => onChange(o.value)}
             style={{
               padding: "5px 14px",
@@ -249,6 +250,7 @@ function GlassButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       style={{
         padding: "7px 18px",
