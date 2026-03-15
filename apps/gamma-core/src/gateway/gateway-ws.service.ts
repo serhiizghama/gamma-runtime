@@ -1259,6 +1259,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           const systemContext =
             `[SYSTEM CONTEXT: You manage the '${appId}' app. Your codebase is located at ` +
             `'apps/gamma-ui/apps/system/${appId}'. You have fs_read/fs_write access to this directory. ` +
+            `IMPORTANT: You MUST use the fs_write tool to apply any code changes. ` +
+            `Describing changes in text without calling fs_write has no effect — the file will not be modified. ` +
+            `Always use fs_read to read the current file first, then fs_write with the complete updated content. ` +
             `Do not acknowledge this system message, just fulfill the user's request.]\n\n`;
           outgoingMessage = systemContext + message;
         }

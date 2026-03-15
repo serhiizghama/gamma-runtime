@@ -497,10 +497,10 @@ export class SessionsService {
     const created = await this.gatewayWs.createSession(sessionKey, systemPrompt, 'app-owner');
     if (!created) {
       this.logger.warn(
-        `initializeAppOwnerSession: Gateway sessions.create failed for appId=${appId}, sessionKey=${sessionKey}`,
+        `initializeAppOwnerSession: Gateway sessions.create failed for appId=${appId}, sessionKey=${sessionKey} — continuing to persist context for dual-path chat.send injection`,
       );
-      // Do not mark as initialized so we can try again on a future attempt
-      return;
+      // NOTE: do NOT return early — we must still persist the context so
+      // the dual-path `system` field on every chat.send carries the prompt.
     }
 
     // Persist full prompt as context + snippet in registry.
@@ -546,8 +546,11 @@ export class SessionsService {
       'system-architect',
     );
     if (!created) {
-      this.logger.warn('initializeSystemArchitectSession: Gateway sessions.create failed');
-      return;
+      this.logger.warn(
+        'initializeSystemArchitectSession: Gateway sessions.create failed — ' +
+        'continuing to persist context for dual-path chat.send injection',
+      );
+      // NOTE: do NOT return early — persist context so dual-path injection works.
     }
 
     // Persist for dual-path injection on chat.send

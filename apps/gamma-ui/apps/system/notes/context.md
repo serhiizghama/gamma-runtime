@@ -20,6 +20,12 @@
   - `activeId: string` — the ID of the note currently being edited.
 - There are no external dependencies (no OS store usage, no backend calls).
 
+**How to modify code (MANDATORY)**
+- To change any file, you MUST call `fs_write` with the complete updated file content.
+- Never describe code changes in text only — the change must be executed via the `fs_write` tool or it has no effect.
+- Workflow: use `fs_read` to read the current file → make your changes → call `fs_write` with the full new content.
+- Do not confirm changes in text unless you have already written them via `fs_write`.
+
 **Extension ideas for the AI agent**
 - Persist notes to a backend or to Gamma Agent Runtime's global store.
 - Add tagging, search, and pinning.
