@@ -1313,17 +1313,19 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     this.inflightChatSend.set(frameId, { windowId, sessionKey });
     this.logger.log(`sendMessage: ${sessionKey} → ${outgoingMessage.slice(0, 60)}... (frame=${frameId}) | system=${systemPromptForSend ? systemPromptForSend.length : 0}chars`);
 
+    // Dual-path: Gateway's chat.send does NOT accept a `system` field.
+    // Instead, prepend the stored system prompt directly to the message so
+    // the agent always receives its persona/context regardless of whether
+    // sessions.create honored the systemPrompt field.
+    if (systemPromptForSend) {
+      outgoingMessage = `[SYSTEM]\n${systemPromptForSend}\n[/SYSTEM]\n\n${outgoingMessage}`;
+    }
+
     const chatParams: Record<string, unknown> = {
       sessionKey: this.toOpenClawKey(sessionKey),
       message: outgoingMessage,
       idempotencyKey: frameId,
     };
-
-    // Dual-path: pass system prompt on every chat.send so the Gateway applies
-    // it even if sessions.create didn't honor the systemPrompt field.
-    if (systemPromptForSend) {
-      chatParams.system = systemPromptForSend;
-    }
 
     this.send({
       type: 'req',

@@ -26,6 +26,32 @@ function EmbeddedAgentChat({
   const sessionKey = `app-owner-${appId}`;
   const { messages, status, pendingToolLines, sendMessage } =
     useAgentStream(sessionKey);
+
+  // Ensure the backend session exists on mount (handles page-reload case where
+  // agentPanelOpen is restored from persisted Zustand state but the Redis
+  // session was never created this restart).
+  useEffect(() => {
+    const windowId = `app-owner-${appId}`;
+    fetch(`${API_BASE}/api/sessions`)
+      .then((r) => r.ok ? r.json() as Promise<{ windowId: string }[]> : [])
+      .then((sessions) => {
+        const exists = sessions.some((s) => s.windowId === windowId);
+        if (!exists) {
+          return fetch(`${API_BASE}/api/sessions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              windowId,
+              appId,
+              sessionKey: windowId,
+              agentId: "app-owner",
+            }),
+          });
+        }
+      })
+      .catch(() => { /* kernel may not be running */ });
+  }, [appId]);
+
   return (
     <AgentChat
       mode="live"
