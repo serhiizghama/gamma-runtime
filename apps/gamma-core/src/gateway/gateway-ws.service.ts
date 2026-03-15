@@ -174,6 +174,13 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
    */
   private toInternalKey(openClawKey: string): string {
     if (openClawKey === 'agent:system-architect:main') return 'system-architect';
+    if (openClawKey === 'agent:inspector:main') return 'inspector';
+    // OpenClaw actual format: agent:app-owner-<appId>:main
+    if (openClawKey.startsWith('agent:app-owner-') && openClawKey.endsWith(':main')) {
+      return openClawKey.replace(/^agent:/, '').replace(/:main$/, '');
+      // e.g. agent:app-owner-terminal:main → app-owner-terminal
+    }
+    // Legacy / toOpenClawKey format: agent:app-owner:<appId>
     if (openClawKey.startsWith('agent:app-owner:')) {
       const appId = openClawKey.replace('agent:app-owner:', '');
       return `app-owner-${appId}`;
