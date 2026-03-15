@@ -17,7 +17,7 @@ import { WatchdogCommandListenerService } from '../gateway/watchdog-command-list
   ],
   controllers: [SessionsController],
   providers: [SessionsService, SessionGcService, SystemAppGuard, WatchdogCommandListenerService],
-  exports: [SessionsService, SessionRegistryModule],
+  exports: [SessionsService, SessionRegistryModule, SystemAppGuard],
 })
 export class SessionsModule implements OnModuleInit {
   private readonly logger = new Logger(SessionsModule.name);

@@ -190,6 +190,33 @@ export interface SystemHealthReport {
   eventLag: { avgMs: number; maxMs: number; samples: number } | null;
 }
 
+// ── §17 Sentinel — Backup Inventory ─────────────────────────────────────
+
+export interface BackupSessionEntry {
+  appId: string;
+  tier: 'system' | 'private';
+  bakSessionPath: string;
+  sizeBytes: number;
+  fileCount: number;
+  createdAt: number;
+}
+
+export interface BackupFileEntry {
+  appId: string;
+  tier: 'system' | 'private';
+  originalFile: string;
+  bakFile: string;
+  sizeBytes: number;
+  modifiedAt: number;
+}
+
+export interface BackupInventory {
+  ts: number;
+  sessions: BackupSessionEntry[];
+  files: BackupFileEntry[];
+  totalSizeBytes: number;
+}
+
 // ── Gateway WS Frame Types (§3.2) ───────────────────────────────────────
 
 export type GWFrameType = 'res' | 'event';

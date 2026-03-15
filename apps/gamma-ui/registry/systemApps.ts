@@ -62,6 +62,14 @@ const _registry = new Map<string, LazyApp>([
       })),
     ),
   ],
+  [
+    "sentinel",
+    lazy(() =>
+      import("../apps/system/sentinel/SentinelApp").then((m) => ({
+        default: m.SentinelApp,
+      })),
+    ),
+  ],
 ]);
 
 /** Returns the lazy-loaded component for a built-in system app, or undefined. */
