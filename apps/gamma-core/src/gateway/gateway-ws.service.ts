@@ -9,9 +9,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import WebSocket from 'ws';
 import { createPrivateKey, sign as cryptoSign } from 'crypto';
-import { readFile } from 'fs/promises';
+import { readFile, appendFile, mkdir } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
+import { findRepoRoot } from '../scaffold/app-storage.service';
 import { ulid } from 'ulid';
 import { REDIS_KEYS } from '@gamma/types';
 import Redis from 'ioredis';
@@ -570,6 +571,11 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         // Reset rollback cooldown on successful completion
         if (sessionKey.startsWith('app-owner-')) {
           this.toolWatchdog.resetRollbackCount(sessionKey.replace('app-owner-', ''));
+        }
+
+        // Log inspector verdicts to quality-audit.log
+        if (sessionKey === 'inspector') {
+          this.appendQualityAuditLog(windowId, runId, nowMs).catch(() => {});
         }
         return;
       }
@@ -1497,6 +1503,42 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       'pendingToolLines', JSON.stringify(lines),
       'lastEventAt', String(nowMs),
     );
+  }
+
+  // ── Quality Audit Log (Inspector verdicts) ───────────────────────────
+
+  /**
+   * Appends the inspector's final text output to logs/quality-audit.log.
+   * Extracts the accumulated streamText from Redis state for the window.
+   */
+  private async appendQualityAuditLog(
+    windowId: string,
+    runId: string,
+    nowMs: number,
+  ): Promise<void> {
+    try {
+      const streamText = await this.redis.hget(
+        `${REDIS_KEYS.STATE_PREFIX}${windowId}`,
+        'streamText',
+      );
+      if (!streamText) return;
+
+      const repoRoot = findRepoRoot(__dirname);
+      const logDir = join(repoRoot, 'logs');
+      await mkdir(logDir, { recursive: true });
+
+      const timestamp = new Date(nowMs).toISOString();
+      const entry =
+        `\n[${'─'.repeat(60)}]\n` +
+        `[${timestamp}] Inspector Run ${runId}\n` +
+        `${streamText}\n`;
+
+      await appendFile(join(logDir, 'quality-audit.log'), entry, 'utf8');
+      this.logger.debug(`[AUDIT] Inspector verdict logged for run ${runId}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[AUDIT] Failed to write quality-audit.log: ${msg}`);
+    }
   }
 
   // ── v1.6: Explicit session kill — free Gateway resources ────────────
