@@ -190,6 +190,35 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     return openClawKey;
   }
 
+  /**
+   * Attempt to resolve a parent session key from a sub-agent or compound key.
+   * Sub-agents use formats like:
+   *   agent:system-architect:main:subagent:xyz → system-architect
+   *   agent:app-owner-notes:main:subagent:abc → app-owner-notes
+   *   some-session:subagent:123              → some-session
+   *
+   * Returns the parent's internal key, or null if no parent found.
+   */
+  private resolveParentSessionKey(sessionKey: string): string | null {
+    // Strip :subagent:* suffix and re-translate
+    const subagentIdx = sessionKey.indexOf(':subagent:');
+    if (subagentIdx > 0) {
+      const parentRaw = sessionKey.slice(0, subagentIdx);
+      // If the stripped key starts with 'agent:', translate it
+      if (parentRaw.startsWith('agent:')) {
+        return this.toInternalKey(parentRaw + ':main');
+      }
+      return parentRaw;
+    }
+    // Try matching known session prefixes: if key contains a known parent prefix
+    for (const known of this.sessionToWindow.keys()) {
+      if (sessionKey.startsWith(known + ':') || sessionKey.startsWith(known + '-')) {
+        return known;
+      }
+    }
+    return null;
+  }
+
   // ── Hierarchy tracking for memory bus (spec §3.6) ──
   // Maps runId → { seq, lastThinkingStepId, toolCallStepIds }
   /** In-memory cumulative text tracker — avoids Redis race on rapid events */
@@ -468,7 +497,22 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     // Update Agent Registry heartbeat on EVERY incoming event
     this.agentRegistry.heartbeat(sessionKey, `${payload.stream}`).catch(() => {});
 
-    const windowId = this.sessionToWindow.get(sessionKey);
+    let windowId = this.sessionToWindow.get(sessionKey);
+
+    if (!windowId) {
+      // Try to resolve as a sub-agent of a known parent session
+      const parentKey = this.resolveParentSessionKey(sessionKey);
+      if (parentKey) {
+        const parentWindow = this.sessionToWindow.get(parentKey);
+        if (parentWindow) {
+          windowId = parentWindow;
+          this.logger.log(
+            `[DIRECTOR-DEBUG] SUB-AGENT resolved | session=${sessionKey} → parent=${parentKey} → window=${parentWindow}`,
+          );
+        }
+      }
+    }
+
     if (!windowId) {
       // External sessions (e.g. Discord agents) have no UI window — silently skip
       const isExternal = /:(discord|telegram|slack|api):/.test(sessionKey);
@@ -479,6 +523,22 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           `[DIRECTOR-DEBUG] DROPPED — no windowId | session=${sessionKey} | stream=${payload.stream} | ` +
           `knownSessions=[${[...this.sessionToWindow.keys()].join(',')}]`,
         );
+
+        // Even without a windowId, emit to Activity Stream so the Director sees it
+        if (payload.stream === 'tool' || payload.stream === 'lifecycle') {
+          const { data: evData } = payload;
+          this.activityStream?.emit({
+            kind: payload.stream === 'tool'
+              ? (evData?.phase === 'result' ? 'tool_call_end' : 'tool_call_start')
+              : (evData?.phase === 'start' ? 'lifecycle_start' : evData?.phase === 'end' ? 'lifecycle_end' : 'lifecycle_error'),
+            agentId: sessionKey,
+            runId: payload.runId,
+            toolName: evData?.name ?? undefined,
+            toolCallId: evData?.toolCallId ?? undefined,
+            payload: JSON.stringify(evData ?? {}).slice(0, 200),
+            severity: evData?.isError || evData?.phase === 'error' ? 'error' : 'info',
+          });
+        }
       }
       return;
     }

@@ -69,11 +69,18 @@ function formatKind(kind: string): string {
 }
 
 function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString("en-US", { hour12: false });
+  if (!ts || ts <= 0) return "--:--:--";
+  try {
+    return new Date(ts).toLocaleTimeString("en-US", { hour12: false });
+  } catch {
+    return "--:--:--";
+  }
 }
 
 function relativeTime(ts: number): string {
+  if (!ts || ts <= 0) return "—";
   const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 0) return "just now";
   if (diff < 2) return "just now";
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
@@ -216,6 +223,7 @@ function ActivityFeed() {
   const feedRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState<string>("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Auto-scroll to top (newest first) unless paused
   useEffect(() => {
@@ -228,7 +236,7 @@ function ActivityFeed() {
     if (filter === "all") return events;
     if (filter === "errors") return events.filter((e) => e.severity === "error");
     if (filter === "tools") return events.filter((e) => e.kind.startsWith("tool_"));
-    if (filter === "ipc") return events.filter((e) => e.kind === "message_sent");
+    if (filter === "ipc") return events.filter((e) => e.kind === "message_sent" || e.kind === "message_completed");
     if (filter === "lifecycle") return events.filter((e) => e.kind.startsWith("lifecycle_"));
     return events;
   }, [events, filter]);
@@ -238,7 +246,6 @@ function ActivityFeed() {
       <div style={PANE_HEADER}>
         <span>The Pulse ({events.length})</span>
         <div style={{ display: "flex", gap: 6 }}>
-          {/* Filter pills */}
           {["all", "errors", "tools", "ipc", "lifecycle"].map((f) => (
             <button
               key={f}
@@ -282,89 +289,163 @@ function ActivityFeed() {
               : "No events match the current filter."}
           </div>
         )}
-        {filtered.map((ev) => {
-          const color = getEventColor(ev.kind, ev.severity);
-          const icon = KIND_ICONS[ev.kind] ?? "·";
-          const detail = buildDetail(ev);
-          return (
-            <div
-              key={ev.id}
-              style={{
-                display: "flex",
-                gap: 8,
-                padding: "3px 12px",
-                borderBottom: "1px solid rgba(255,255,255,0.03)",
-                alignItems: "baseline",
-                lineHeight: 1.5,
-              }}
-            >
-              {/* Timestamp */}
-              <span
-                style={{
-                  color: "var(--color-text-muted)",
-                  flexShrink: 0,
-                  fontSize: 10,
-                  fontVariantNumeric: "tabular-nums",
-                  minWidth: 60,
-                }}
-                title={relativeTime(ev.ts)}
-              >
-                {formatTime(ev.ts)}
-              </span>
-              {/* Icon */}
-              <span style={{ color, flexShrink: 0, width: 12, textAlign: "center", fontSize: 10 }}>
-                {icon}
-              </span>
-              {/* Source agent */}
-              <span
-                style={{
-                  color: "#87ffd7",
-                  flexShrink: 0,
-                  minWidth: 100,
-                  maxWidth: 140,
-                  fontSize: 10,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={ev.agentId}
-              >
-                {ev.agentId}
-              </span>
-              {/* Kind badge */}
-              <span
-                style={{
-                  color,
-                  flexShrink: 0,
-                  minWidth: 110,
-                  fontSize: 9,
-                  fontWeight: 600,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {formatKind(ev.kind)}
-              </span>
-              {/* Detail */}
-              {detail && (
-                <span
-                  style={{
-                    color: "var(--color-text-secondary)",
-                    fontSize: 10,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                  title={detail}
-                >
-                  {truncate(detail, 140)}
-                </span>
-              )}
-            </div>
-          );
-        })}
+        {filtered.map((ev) => (
+          <EventRow
+            key={ev.id}
+            event={ev}
+            isExpanded={expandedId === ev.id}
+            onToggle={() => setExpandedId(expandedId === ev.id ? null : ev.id)}
+          />
+        ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Expandable Event Row ─────────────────────────────────────────────────────
+
+function EventRow({
+  event: ev,
+  isExpanded,
+  onToggle,
+}: {
+  event: ActivityEvent;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const color = getEventColor(ev.kind, ev.severity);
+  const icon = KIND_ICONS[ev.kind] ?? "·";
+  const detail = buildDetail(ev);
+
+  return (
+    <div
+      style={{
+        borderBottom: "1px solid rgba(255,255,255,0.03)",
+        cursor: "pointer",
+        background: isExpanded ? "rgba(255,255,255,0.02)" : "transparent",
+        transition: "background 0.1s",
+      }}
+      onClick={onToggle}
+    >
+      {/* Summary row */}
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          padding: "3px 12px",
+          alignItems: "baseline",
+          lineHeight: 1.5,
+        }}
+      >
+        {/* Expand indicator */}
+        <span style={{ color: "var(--color-text-muted)", fontSize: 8, flexShrink: 0, width: 8, opacity: 0.5 }}>
+          {isExpanded ? "▾" : "▸"}
+        </span>
+        {/* Timestamp */}
+        <span
+          style={{
+            color: "var(--color-text-muted)",
+            flexShrink: 0,
+            fontSize: 10,
+            fontVariantNumeric: "tabular-nums",
+            minWidth: 56,
+          }}
+          title={relativeTime(ev.ts)}
+        >
+          {formatTime(ev.ts)}
+        </span>
+        {/* Icon */}
+        <span style={{ color, flexShrink: 0, width: 12, textAlign: "center", fontSize: 10 }}>
+          {icon}
+        </span>
+        {/* Source agent */}
+        <span
+          style={{
+            color: "#87ffd7",
+            flexShrink: 0,
+            minWidth: 100,
+            maxWidth: 140,
+            fontSize: 10,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={ev.agentId}
+        >
+          {ev.agentId}
+        </span>
+        {/* Kind badge */}
+        <span
+          style={{
+            color,
+            flexShrink: 0,
+            minWidth: 110,
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+          }}
+        >
+          {formatKind(ev.kind)}
+        </span>
+        {/* Detail */}
+        {detail && (
+          <span
+            style={{
+              color: "var(--color-text-secondary)",
+              fontSize: 10,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+              minWidth: 0,
+            }}
+            title={detail}
+          >
+            {truncate(detail, 140)}
+          </span>
+        )}
+      </div>
+
+      {/* Expanded detail panel */}
+      {isExpanded && (
+        <div
+          style={{
+            padding: "6px 12px 8px 32px",
+            background: "rgba(0,0,0,0.15)",
+            borderTop: "1px solid rgba(255,255,255,0.04)",
+            fontSize: 10,
+            lineHeight: 1.5,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <pre
+            style={{
+              margin: 0,
+              fontFamily: "var(--font-system)",
+              fontSize: 10,
+              color: "var(--color-text-secondary)",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              maxHeight: 200,
+              overflow: "auto",
+            }}
+          >
+            {JSON.stringify(ev, null, 2)}
+          </pre>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(JSON.stringify(ev, null, 2)).catch(() => {});
+            }}
+            style={{
+              ...FEED_BTN,
+              marginTop: 6,
+              fontSize: 9,
+            }}
+          >
+            Copy JSON
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -407,9 +488,11 @@ function AgentHierarchy() {
   }, []);
 
   // Build tree: find agents waiting for IPC responses
+  // Events are stored newest-first, so iterate in reverse for chronological order
   const waitingAgents = useMemo(() => {
     const waiting = new Set<string>();
-    for (const ev of events) {
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i];
       if (ev.kind === "message_sent" && ev.agentId) waiting.add(ev.agentId);
       if (ev.kind === "message_completed" && ev.agentId) waiting.delete(ev.agentId);
       if (ev.kind === "lifecycle_end" && ev.agentId) waiting.delete(ev.agentId);
@@ -905,7 +988,14 @@ function useActivityStream(): { connected: boolean; eventCount: number } {
           // Filter out keep_alive and malformed events
           if (data.type === "keep_alive" || !data.kind) return;
 
-          push(data as unknown as ActivityEvent);
+          // Validate & apply fallbacks for missing fields
+          const event = data as unknown as ActivityEvent;
+          if (!event.id) event.id = `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          if (!event.ts || typeof event.ts !== "number" || event.ts <= 0) event.ts = Date.now();
+          if (!event.agentId) event.agentId = "unknown";
+          if (!event.severity) event.severity = "info";
+
+          push(event);
         } catch {
           console.warn("[Director] SSE parse error:", ev.data);
         }
