@@ -86,6 +86,27 @@ export class ContextInjectorService {
         }
       }
 
+      // ── Hierarchy (Phase 5.4) ──
+      if (callerSessionKey) {
+        const self = agents.find((a) => a.sessionKey === callerSessionKey);
+        if (self) {
+          lines.push('');
+          lines.push('[HIERARCHY]');
+          if (self.supervisorId) {
+            lines.push(`Your supervisor: ${self.supervisorId}`);
+            lines.push('Prioritize their requests and report progress to them.');
+          } else {
+            lines.push('You are a root-level agent with no supervisor.');
+          }
+          const subordinates = agents.filter((a) => a.supervisorId === self.agentId);
+          if (subordinates.length > 0) {
+            lines.push(`Agents reporting to you: ${subordinates.map((s) => s.agentId).join(', ')}`);
+            lines.push('You are responsible for overseeing their work. Delegate tasks via send_message.');
+          }
+          lines.push('[/HIERARCHY]');
+        }
+      }
+
       // ── Available Agents (IPC targets) ──
       const others = agents.filter(
         (a) => a.sessionKey !== callerSessionKey && a.status !== 'offline',
@@ -95,7 +116,8 @@ export class ContextInjectorService {
         lines.push('Available Agents:');
         for (const a of others) {
           const ipc = a.acceptsMessages ? 'ipc=yes' : 'ipc=no';
-          lines.push(`  - ${a.agentId} | ${a.role} | ${a.status} | ${ipc}`);
+          const sup = a.supervisorId ? ` | supervisor=${a.supervisorId}` : ' | root';
+          lines.push(`  - ${a.agentId} | ${a.role} | ${a.status} | ${ipc}${sup}`);
         }
         lines.push('Use send_message tool with target agentId to communicate.');
       }

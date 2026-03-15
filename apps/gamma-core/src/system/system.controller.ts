@@ -82,7 +82,35 @@ export class SystemController {
     @Param('id') agentId: string,
     @Body() body: { supervisorId: string | null },
   ): Promise<{ ok: boolean; error?: string }> {
-    return this.agentRegistry.setSupervisor(agentId, body.supervisorId);
+    const result = await this.agentRegistry.setSupervisor(agentId, body.supervisorId);
+    if (!result.ok) return result;
+
+    // Notify the agent about the hierarchy change via a system message
+    this.notifyHierarchyChange(agentId, body.supervisorId).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Failed to notify ${agentId} about hierarchy change: ${msg}`);
+    });
+
+    return result;
+  }
+
+  /**
+   * Send a system-level notification to an agent about a hierarchy change.
+   * Best-effort — failure never blocks the hierarchy update itself.
+   */
+  private async notifyHierarchyChange(agentId: string, newSupervisorId: string | null): Promise<void> {
+    // Find the agent's session to get the windowId
+    const agent = await this.agentRegistry.getOne(agentId);
+    if (!agent?.windowId) return;
+
+    const supervisorLabel = newSupervisorId ?? '(none — you are now a root-level agent)';
+    const message =
+      `[SYSTEM]: Your hierarchy has changed. Your new supervisor is: ${supervisorLabel}. ` +
+      (newSupervisorId
+        ? `Prioritize requests from ${newSupervisorId} and report progress to them.`
+        : 'You now operate independently as a root agent.');
+
+    await this.sessions.sendMessage(agent.windowId, message);
   }
 
   // ── Agent Spawning (Phase 5.3) ──────────────────────────────────────
