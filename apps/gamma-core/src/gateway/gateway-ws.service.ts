@@ -29,6 +29,7 @@ import { AppStorageService } from '../scaffold/app-storage.service';
 import { ContextInjectorService } from '../scaffold/context-injector.service';
 import { MessageBusService } from '../messaging/message-bus.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
+import { ActivityStreamService } from '../activity/activity-stream.service';
 import type { GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
 // ── Tool Scoping ──────────────────────────────────────────────────────────
@@ -227,6 +228,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     private readonly agentRegistry: AgentRegistryService,
     @Optional() private readonly contextInjector?: ContextInjectorService,
     @Optional() private readonly eventLog?: SystemEventLog,
+    @Optional() private readonly activityStream?: ActivityStreamService,
   ) {
     this.gatewayUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
     this.gatewayToken = this.config.get('OPENCLAW_GATEWAY_TOKEN', '');
@@ -527,6 +529,15 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         // Mirror status to Agent Registry so UI sees 'running'
         await this.agentRegistry.update(sessionKey, { status: 'running' });
+
+        // Activity Stream (Phase 5)
+        this.activityStream?.emit({
+          kind: 'lifecycle_start',
+          agentId: sessionKey,
+          windowId,
+          runId,
+          severity: 'info',
+        });
         return;
       }
 
@@ -577,6 +588,15 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         if (sessionKey === 'inspector') {
           this.appendQualityAuditLog(windowId, runId, nowMs).catch(() => {});
         }
+
+        // Activity Stream (Phase 5)
+        this.activityStream?.emit({
+          kind: 'lifecycle_end',
+          agentId: sessionKey,
+          windowId,
+          runId,
+          severity: 'info',
+        });
         return;
       }
 
@@ -605,6 +625,16 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         // Mirror status to Agent Registry
         await this.agentRegistry.update(sessionKey, { status: 'error' });
+
+        // Activity Stream (Phase 5)
+        this.activityStream?.emit({
+          kind: 'lifecycle_error',
+          agentId: sessionKey,
+          windowId,
+          runId,
+          payload: typeof data?.text === 'string' ? data.text : 'Run error',
+          severity: 'error',
+        });
 
         this.runStepCounters.delete(runId);
         this.toolWatchdog.clearWindow(windowId);
@@ -804,6 +834,17 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           arguments: data?.arguments ?? null,
         });
 
+        // Activity Stream (Phase 5)
+        this.activityStream?.emit({
+          kind: 'tool_call_start',
+          agentId: sessionKey,
+          windowId,
+          runId,
+          toolName: name,
+          toolCallId,
+          severity: 'info',
+        });
+
         // Update pending tool lines in live state
         const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
         const lines: string[] = raw ? (JSON.parse(raw) as string[]) : [];
@@ -883,6 +924,17 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           isError: data?.isError ?? false,
         });
 
+        // Activity Stream (Phase 5)
+        this.activityStream?.emit({
+          kind: 'tool_call_end',
+          agentId: sessionKey,
+          windowId,
+          runId,
+          toolName: name,
+          toolCallId,
+          severity: data?.isError ? 'error' : 'info',
+        });
+
         // Update pending tool lines
         const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
         const lines: string[] = raw ? (JSON.parse(raw) as string[]) : [];
@@ -948,6 +1000,17 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
                 const msg = err instanceof Error ? err.message : String(err);
                 this.logger.error(`[TRACE:EMITTER] xadd FAILED: ${msg}`);
               });
+
+            // Activity Stream (Phase 5)
+            this.activityStream?.emit({
+              kind: 'file_change',
+              agentId: sessionKey,
+              windowId,
+              appId,
+              toolCallId,
+              payload: filePath,
+              severity: 'info',
+            });
           }
         }
       }
@@ -1479,6 +1542,19 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       toolCallId,
       result: resultPayload,
       isError,
+    });
+
+    // Activity Stream (Phase 5) — IPC message
+    this.activityStream?.emit({
+      kind: 'message_sent',
+      agentId: sessionKey,
+      targetAgentId: to || undefined,
+      windowId,
+      runId,
+      toolName: 'send_message',
+      toolCallId,
+      payload: subject,
+      severity: isError ? 'error' : 'info',
     });
 
     // Send the result back to the Gateway so the agent receives it

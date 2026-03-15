@@ -1,6 +1,7 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { ActivityStreamService } from '../activity/activity-stream.service';
 import type { AgentRegistryEntry, AgentRole, AgentStatus } from '@gamma/types';
 import { REDIS_KEYS } from '@gamma/types';
 
@@ -18,7 +19,10 @@ const TTL_24H = 86_400; // seconds
 export class AgentRegistryService {
   private readonly logger = new Logger(AgentRegistryService.name);
 
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    @Optional() private readonly activityStream?: ActivityStreamService,
+  ) {}
 
   // ── Public API ────────────────────────────────────────────────────────
 
@@ -49,6 +53,14 @@ export class AgentRegistryService {
       .expire(key, TTL_24H)
       .sadd(REDIS_KEYS.AGENT_REGISTRY_INDEX, entry.agentId)
       .exec();
+
+    this.activityStream?.emit({
+      kind: 'agent_registered',
+      agentId: entry.agentId,
+      windowId: entry.windowId || undefined,
+      appId: entry.appId || undefined,
+      severity: 'info',
+    });
 
     this.broadcastUpdate();
   }
@@ -81,6 +93,15 @@ export class AgentRegistryService {
       .hset(key, flat)
       .expire(key, TTL_24H)
       .exec();
+
+    if (fields.status != null) {
+      this.activityStream?.emit({
+        kind: 'agent_status_change',
+        agentId,
+        payload: fields.status,
+        severity: fields.status === 'error' ? 'error' : 'info',
+      });
+    }
 
     this.broadcastUpdate();
   }
@@ -116,6 +137,12 @@ export class AgentRegistryService {
       .del(key)
       .srem(REDIS_KEYS.AGENT_REGISTRY_INDEX, agentId)
       .exec();
+
+    this.activityStream?.emit({
+      kind: 'agent_deregistered',
+      agentId,
+      severity: 'info',
+    });
 
     this.broadcastUpdate();
   }

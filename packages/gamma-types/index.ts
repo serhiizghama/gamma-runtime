@@ -67,6 +67,8 @@ export type GammaSSEEvent =
   | { type: 'session_registry_update'; records: SessionRecord[] }
   // Agent Registry
   | { type: 'agent_registry_update'; agents: AgentRegistryEntry[] }
+  // Emergency stop (Phase 5 — Director)
+  | { type: 'emergency_stop'; ts: number; killedCount: number }
   // Error
   | { type: 'error'; windowId: string; message: string };
 
@@ -324,6 +326,37 @@ export interface AgentMessage {
   ttl?: number;
 }
 
+// ── §19 Activity Stream (Phase 5 — Director) ────────────────────────────
+
+export type ActivityEventKind =
+  | 'agent_registered'
+  | 'agent_deregistered'
+  | 'agent_status_change'
+  | 'message_sent'
+  | 'tool_call_start'
+  | 'tool_call_end'
+  | 'lifecycle_start'
+  | 'lifecycle_end'
+  | 'lifecycle_error'
+  | 'file_change'
+  | 'system_event'
+  | 'emergency_stop';
+
+export interface ActivityEvent {
+  id: string;
+  ts: number;
+  kind: ActivityEventKind;
+  agentId: string;
+  targetAgentId?: string;
+  windowId?: string;
+  appId?: string;
+  toolName?: string;
+  toolCallId?: string;
+  runId?: string;
+  payload?: string;
+  severity: 'info' | 'warn' | 'error';
+}
+
 // ── Redis Key Constants ──────────────────────────────────────────────────
 
 export const REDIS_KEYS = {
@@ -342,6 +375,7 @@ export const REDIS_KEYS = {
   AGENT_BROADCAST: 'gamma:agent:broadcast',
   AGENT_INBOX: (agentId: string) => `gamma:agent:${agentId}:inbox` as const,
   FILE_CHANGED_STREAM: 'gamma:system:file_changed',
+  SYSTEM_ACTIVITY: 'gamma:system:activity',
 } as const;
 
 /** Stream ID is always a string — never parse as number (precision loss) */

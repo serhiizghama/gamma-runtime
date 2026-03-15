@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger, forwardRef } from '@nestjs/common';
+import { Injectable, Inject, Logger, forwardRef, Optional } from '@nestjs/common';
 import Redis from 'ioredis';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -6,6 +6,7 @@ import { ulid } from 'ulid';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { GatewayWsService } from '../gateway/gateway-ws.service';
 import { ToolWatchdogService } from '../gateway/tool-watchdog.service';
+import { ActivityStreamService } from '../activity/activity-stream.service';
 import type {
   AgentStatus,
   MemoryBusEntry,
@@ -79,6 +80,7 @@ export class SessionsService {
     private readonly scaffoldService: ScaffoldService,
     private readonly registry: SessionRegistryService,
     private readonly agentRegistry: AgentRegistryService,
+    @Optional() private readonly activityStream?: ActivityStreamService,
   ) {}
 
   /** Create a new window↔session mapping */
@@ -269,6 +271,81 @@ export class SessionsService {
       })),
     );
     return killable.length;
+  }
+
+  /**
+   * Emergency Stop — abort ALL running sessions and broadcast a panic event.
+   *
+   * 1. Aborts every active session (sends abort to Gateway, clears watchdog).
+   * 2. Sets all agents to 'aborted' in the Agent Registry.
+   * 3. Broadcasts an `emergency_stop` event via SSE so all connected UIs react.
+   * 4. Emits to the Activity Stream for audit.
+   *
+   * Global sessions (system-architect, inspector) are also stopped.
+   * Returns the number of sessions that were aborted.
+   */
+  async emergencyStopAll(): Promise<number> {
+    this.logger.warn('[PANIC] Emergency stop triggered — aborting all sessions');
+
+    const sessions = await this.findAll();
+    let abortedCount = 0;
+
+    // 1. Abort all sessions in parallel
+    await Promise.all(
+      sessions.map(async (s) => {
+        try {
+          // Send abort to Gateway
+          await this.gatewayWs.abortRun(s.sessionKey);
+
+          // Update Redis state
+          await this.redis.hset(
+            `${REDIS_KEYS.STATE_PREFIX}${s.windowId}`,
+            'status', 'aborted',
+            'runId', '',
+          );
+
+          // Push lifecycle_error to per-window SSE
+          await this.redis.xadd(
+            `${REDIS_KEYS.SSE_PREFIX}${s.windowId}`, '*',
+            'type', 'lifecycle_error',
+            'windowId', s.windowId,
+            'runId', '',
+            'message', 'Emergency stop — all agents halted',
+          );
+
+          // Clear watchdog timers
+          this.toolWatchdog.clearWindow(s.windowId);
+
+          // Update agent registry status
+          await this.agentRegistry.update(s.sessionKey, { status: 'aborted' });
+
+          abortedCount++;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[PANIC] Failed to abort session ${s.sessionKey}: ${msg}`);
+        }
+      }),
+    );
+
+    // 2. Broadcast emergency_stop to all connected UIs via SSE broadcast
+    const nowMs = Date.now();
+    await this.redis.xadd(
+      REDIS_KEYS.SSE_BROADCAST, '*',
+      'type', 'emergency_stop',
+      'ts', String(nowMs),
+      'killedCount', String(abortedCount),
+    ).catch(() => {});
+
+    // 3. Activity Stream audit event
+    this.activityStream?.emit({
+      kind: 'emergency_stop',
+      agentId: 'system',
+      payload: JSON.stringify({ killedCount: abortedCount, sessionKeys: sessions.map(s => s.sessionKey) }),
+      severity: 'error',
+    });
+
+    this.logger.warn(`[PANIC] Emergency stop complete — ${abortedCount}/${sessions.length} sessions aborted`);
+    return abortedCount;
   }
 
   /** Abort a running agent session (spec §4.2) */

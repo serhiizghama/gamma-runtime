@@ -2,6 +2,7 @@ import { Module, OnModuleInit, Logger, forwardRef } from '@nestjs/common';
 import { GatewayModule } from '../gateway/gateway.module';
 import { ScaffoldModule } from '../scaffold/scaffold.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { ActivityModule } from '../activity/activity.module';
 import { SessionRegistryModule } from './session-registry.module';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
@@ -28,6 +29,7 @@ function resolveRole(sessionKey: string): AgentRole {
     forwardRef(() => ScaffoldModule),
     SessionRegistryModule,
     MessagingModule,
+    ActivityModule,
   ],
   controllers: [SessionsController],
   providers: [SessionsService, SessionGcService, SystemAppGuard, WatchdogCommandListenerService],

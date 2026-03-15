@@ -4,10 +4,11 @@ import { ToolWatchdogService } from './tool-watchdog.service';
 import { ToolJailGuardService } from './tool-jail-guard.service';
 import { SessionRegistryModule } from '../sessions/session-registry.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { ActivityModule } from '../activity/activity.module';
 import { AppStorageService } from '../scaffold/app-storage.service';
 
 @Module({
-  imports: [SessionRegistryModule, MessagingModule],
+  imports: [SessionRegistryModule, MessagingModule, ActivityModule],
   providers: [GatewayWsService, ToolWatchdogService, ToolJailGuardService, AppStorageService],
   exports: [GatewayWsService, ToolWatchdogService, ToolJailGuardService],
 })
