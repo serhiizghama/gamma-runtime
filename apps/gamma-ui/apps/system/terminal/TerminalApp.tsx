@@ -22,6 +22,11 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   error:        "Error",
 };
 
+// ─── Timeouts ─────────────────────────────────────────────────────────────────
+
+const TOKEN_FETCH_TIMEOUT_MS = 8_000;   // max wait for /api/pty/token
+const WS_CONNECT_TIMEOUT_MS  = 10_000;  // max wait for WebSocket onopen
+
 // ─── WS URL helper ────────────────────────────────────────────────────────────
 
 function getPtyWsUrl(token: string, cols: number, rows: number): string {
@@ -87,26 +92,50 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
 
       let token: string;
       try {
+        // Abort fetch after TOKEN_FETCH_TIMEOUT_MS even if server never responds
+        const fetchAbort = AbortSignal.any
+          ? AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(TOKEN_FETCH_TIMEOUT_MS)])
+          : abortCtrl.signal;
+
+        term.write("\x1b[90m  Requesting PTY token…\x1b[0m\r\n");
         const res = await fetch(`${API_BASE}/api/pty/token`, {
           method: "POST",
-          signal: abortCtrl.signal,
+          signal: fetchAbort,
         });
         if (!res.ok) throw new Error(`Token request failed: HTTP ${res.status}`);
         token = ((await res.json()) as { token: string }).token;
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") return;
-        const msg = err instanceof Error ? err.message : String(err);
+        const isTimeout = (err as { name?: string }).name === "TimeoutError";
+        const msg = isTimeout
+          ? `Token request timed out after ${TOKEN_FETCH_TIMEOUT_MS / 1000}s — is the server running?`
+          : err instanceof Error ? err.message : String(err);
         onStatusChange("error", msg);
-        term.write(`\r\n\x1b[31mFailed to connect: ${msg}\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[31m✗ ${msg}\x1b[0m\r\n`);
+        console.error("[TerminalApp] Token fetch failed:", msg);
         return;
       }
 
       // ── 3. Open WS ──────────────────────────────────────────────────
+      term.write("\x1b[90m  Opening PTY shell…\x1b[0m\r\n");
       const ws = new WebSocket(getPtyWsUrl(token, cols, rows));
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
+      // Timeout if WS never opens
+      const wsTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          const msg = `WebSocket did not connect within ${WS_CONNECT_TIMEOUT_MS / 1000}s`;
+          onStatusChange("error", msg);
+          term.write(`\r\n\x1b[31m✗ ${msg}\x1b[0m\r\n`);
+          console.error("[TerminalApp] WS connect timeout");
+          ws.close();
+        }
+      }, WS_CONNECT_TIMEOUT_MS);
+
       ws.onopen = () => {
+        clearTimeout(wsTimeout);
+        console.log("[TerminalApp] WebSocket connected to PTY shell");
         onStatusChange("connected");
         term.write("\x1b[36m⬡ Gamma Agent Runtime\x1b[0m  \x1b[90mv2.0 · PTY Shell · macOS\x1b[0m\r\n");
         term.focus();
@@ -129,6 +158,7 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
       };
 
       ws.onerror = () => {
+        clearTimeout(wsTimeout);
         onStatusChange("error", "WebSocket error");
         term.write("\r\n\x1b[31m[Connection error]\x1b[0m\r\n");
       };

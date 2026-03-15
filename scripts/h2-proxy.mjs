@@ -15,6 +15,8 @@
 import http2 from 'http2';
 import http from 'http';
 import https from 'https';
+import net from 'net';
+import tls from 'tls';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -32,6 +34,9 @@ if (!fs.existsSync(KEY_PATH) || !fs.existsSync(CERT_PATH)) {
 
 const PROXY_PORT  = parseInt(process.env.H2_PORT ?? '5173', 10);
 const VITE_PORT   = parseInt(process.env.VITE_PORT ?? '5174', 10);
+const CORE_PORT   = parseInt(process.env.CORE_PORT ?? '3001', 10);
+// gamma-core runs HTTPS/HTTP2 — backend WS connections must use TLS
+const CORE_TLS    = true;
 // Vite runs as plain HTTP when started with H2_PROXY=1
 const VITE_HTTPS  = false;
 const viteAgent   = undefined;
@@ -84,7 +89,39 @@ server.on('stream', (stream, headers) => {
   stream.pipe(proxy);
 });
 
-// Handle WebSocket upgrades (Vite HMR)
+// ── WebSocket upgrade handler ──────────────────────────────────────────────────
+// Forward ALL WS upgrades to Vite (plain HTTP, port 5174).
+// Vite's proxy config already handles:
+//   /pty  → wss://localhost:3001  (PTY shell)
+//   HMR   → internal Vite WS
+server.on('upgrade', (req, socket, head) => {
+  const backend = net.connect(VITE_PORT, '127.0.0.1', () => {
+    const headerLines = Object.entries(req.headers)
+      .filter(([k]) => k !== 'host')
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('\r\n');
+
+    backend.write(
+      `GET ${req.url} HTTP/1.1\r\n` +
+      `Host: 127.0.0.1:${VITE_PORT}\r\n` +
+      headerLines + '\r\n\r\n'
+    );
+    if (head?.length) backend.write(head);
+  });
+
+  backend.on('error', (err) => {
+    console.error(`[h2-proxy] WS upgrade error (→ Vite:${VITE_PORT}):`, err.message);
+    socket.destroy();
+  });
+
+  socket.on('error', () => backend.destroy());
+
+  // Bidirectional pipe — Vite handles the 101 + proxies frames to core
+  backend.pipe(socket);
+  socket.pipe(backend);
+});
+
+// HTTP/2 streams that use unknownProtocol (non-WS) — still destroy
 server.on('unknownProtocol', (socket) => {
   socket.destroy();
 });
