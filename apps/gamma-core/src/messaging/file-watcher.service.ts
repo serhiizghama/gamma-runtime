@@ -55,10 +55,13 @@ export class FileWatcherService implements OnModuleInit, OnModuleDestroy {
 
   /** Debounce: appId:filePath → timer */
   private readonly debounce = new Map<string, ReturnType<typeof setTimeout>>();
-  private static readonly DEBOUNCE_MS = 800;
+  private static readonly DEBOUNCE_MS = 3_000;
 
   /** Content hash cache: absolutePath → SHA-256 hex. Suppresses false triggers. */
   private readonly contentHashes = new Map<string, string>();
+
+  /** mtime cache: absolutePath → mtime ms. Fast pre-check before hashing. */
+  private readonly lastMtime = new Map<string, number>();
 
   /** Extensions that trigger the Inspector loop */
   private static readonly WATCHED_EXTS = new Set(['.tsx', '.ts', '.md', '.css', '.json']);
@@ -139,6 +142,22 @@ export class FileWatcherService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async publish(appId: string, filePath: string): Promise<void> {
+    // Fast mtime pre-check: skip hash if file hasn't been modified
+    let stat: fs.Stats;
+    try {
+      stat = await fs.promises.stat(filePath);
+    } catch {
+      // File may have been deleted between event and publish — skip
+      return;
+    }
+    const mtimeMs = stat.mtimeMs;
+    const prevMtime = this.lastMtime.get(filePath);
+    if (prevMtime !== undefined && prevMtime === mtimeMs) {
+      this.logger.debug(`[WATCHER] mtime unchanged — skipping publish for ${path.basename(filePath)}`);
+      return;
+    }
+    this.lastMtime.set(filePath, mtimeMs);
+
     // Hash-based dedup: suppress publish if file content hasn't actually changed
     let currentHash: string;
     try {
