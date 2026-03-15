@@ -172,6 +172,9 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
       };
 
       ws.onclose = (ev) => {
+        // Cancel connect-timeout — socket is already closed, no point firing it
+        clearTimeout(wsTimeoutRef.current ?? undefined);
+        wsTimeoutRef.current = null;
         // 4500 = PTY spawn failed (our custom code)
         if (ev.code === 4500) {
           onStatusChange("error", "PTY spawn failed on server");
