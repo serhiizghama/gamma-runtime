@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Real-time monitoring dashboard for the Gamma OS stability layer. Displays an inventory of:
+Real-time monitoring dashboard for the Gamma stability layer. Displays an inventory of:
 
 1. **Session Snapshots** (`.bak_session` directories) — created by `AppStorageService.snapshotApp()` before every agent run.
 2. **File Backups** (`.bak` files) — created by `AppStorageService.writeFile()` before every agent write.

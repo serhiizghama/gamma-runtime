@@ -1,10 +1,10 @@
 import React from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 import { WindowErrorBoundary } from "./WindowErrorBoundary";
 import { WindowNode } from "./WindowNode";
 
 export function WindowManager(): React.ReactElement {
-  const windows = useOSStore((s) => s.windows);
+  const windows = useGammaStore((s) => s.windows);
 
   return (
     <div

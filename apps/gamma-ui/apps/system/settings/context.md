@@ -5,12 +5,12 @@
 - Controls theme, live background parameters, and global reset.
 
 **Current behavior**
-- Reads and writes `uiSettings` from the global OS store (`useOSStore`).
+- Reads and writes `uiSettings` from the global OS store (`useGammaStore`).
 - Lets the user:
   - Switch between light and dark themes.
   - Adjust live background blur (`bgBlur`) and animation speed (`bgSpeed`).
   - Reset all Gamma Agent Runtime state (windows, preferences, persisted session) via a single button.
-- All changes are persisted through the `gamma-os-session` local storage key.
+- All changes are persisted through the `gamma-session` local storage key.
 
 **Architecture notes**
 - Implemented as a React component that talks only to the OS store, never directly to `localStorage`.

@@ -51,7 +51,7 @@ import { REDIS_KEYS } from '@gamma/types';
 const mockConfig = {
   get: (key: string, fallback: string) => {
     const values: Record<string, string> = {
-      GAMMA_OS_REPO: '/tmp/test-gamma-os',
+      GAMMA_RUNTIME_REPO: '/tmp/test-gamma-runtime',
       SCAFFOLD_GIT_BRANCH: 'private-apps',
       SCAFFOLD_AUTO_PUSH: 'false',
       SCAFFOLD_PRIVATE_REPO_URL: '',
@@ -107,21 +107,21 @@ describe('ScaffoldService', () => {
     it('should resolve a valid relative path', () => {
       const result = service.jailPath('weather/WeatherApp.tsx');
       expect(result).toBe(
-        '/tmp/test-gamma-os/apps/gamma-ui/apps/private/weather/WeatherApp.tsx',
+        '/tmp/test-gamma-runtime/apps/gamma-ui/apps/private/weather/WeatherApp.tsx',
       );
     });
 
     it('should resolve nested paths', () => {
       const result = service.jailPath('weather/assets/weather/icon.png');
       expect(result).toBe(
-        '/tmp/test-gamma-os/apps/gamma-ui/apps/private/weather/assets/weather/icon.png',
+        '/tmp/test-gamma-runtime/apps/gamma-ui/apps/private/weather/assets/weather/icon.png',
       );
     });
 
     it('should resolve bundle directory', () => {
       const result = service.jailPath('weather');
       expect(result).toBe(
-        '/tmp/test-gamma-os/apps/gamma-ui/apps/private/weather',
+        '/tmp/test-gamma-runtime/apps/gamma-ui/apps/private/weather',
       );
     });
 

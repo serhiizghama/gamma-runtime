@@ -498,6 +498,6 @@
 
 /* ── Agent Chat ────────────────────────────────────────────────── */
 .agent-chat-message-list {
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><text x="50%25" y="50%25" font-family="Inter, sans-serif" font-weight="800" font-size="16" fill="rgba(255, 255, 255, 0.03)" transform="rotate(-45 80 80)" text-anchor="middle" letter-spacing="2">GAMMA OS</text></svg>');
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><text x="50%25" y="50%25" font-family="Inter, sans-serif" font-weight="800" font-size="16" fill="rgba(255, 255, 255, 0.03)" transform="rotate(-45 80 80)" text-anchor="middle" letter-spacing="2">GAMMA</text></svg>');
   background-repeat: repeat;
 }

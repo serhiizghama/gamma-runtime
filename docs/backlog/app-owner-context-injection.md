@@ -1,7 +1,7 @@
 ## Backlog — OpenClaw System Prompt Ingestion for App Owners
 
 **Status**: RESOLVED (2026-03-15)
-**Owner**: Gamma OS Architect / Backend
+**Owner**: Gamma Architect / Backend
 **Area**: Kernel `SessionsService` ↔ OpenClaw Gateway protocol
 
 ### Resolution

@@ -7,11 +7,11 @@ interface PortalProps {
 }
 
 /**
- * Portal — renders children into #gamma-os-portal-root (or any container by id).
+ * Portal — renders children into #gamma-portal-root (or any container by id).
  * Required by spec §11: dropdowns, tooltips, context menus must escape
  * the stacking context created by window `transform` properties.
  */
-export function Portal({ children, containerId = "gamma-os-portal-root" }: PortalProps) {
+export function Portal({ children, containerId = "gamma-portal-root" }: PortalProps) {
   const containerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {

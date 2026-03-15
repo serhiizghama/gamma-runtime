@@ -1,4 +1,4 @@
-# Gamma OS — The Agentic Meta-OS
+# Gamma — Agent Runtime
 
 ![Status](https://img.shields.io/badge/status-active%20development-blue)
 ![Version](https://img.shields.io/badge/version-0.1.0-informational)
@@ -15,11 +15,11 @@
 
 ## 🌌 Vision
 
-Gamma OS is a browser-native, microkernel-based operating system for AI. It is also the subject of a **Master of Science (MSc) thesis** in Human-Computer Interaction and AI Systems Architecture.
+Gamma (Gamma Agent Runtime) is a browser-native, microkernel-based runtime for AI agents. It is also the subject of a **Master of Science (MSc) thesis** in Human-Computer Interaction and AI Systems Architecture.
 
-The core thesis: **LLMs should not be chatbots. They should be OS co-processors.**
+The core thesis: **LLMs should not be chatbots. They should be runtime co-processors.**
 
-In Gamma OS, every agent is a first-class system process with its own lifecycle, memory space, and managed state. Agents autonomously create, own, and operate micro-applications — self-contained, agent-generated bundles that are scaffolded, compiled, and mounted at runtime inside a live browser desktop. The window you see on screen is not the agent — it's a *viewport* into a long-lived agent process. Closing the window does not terminate the process. The agent continues running in daemon mode.
+In Gamma, every agent is a first-class system process with its own lifecycle, memory space, and managed state. Agents autonomously create, own, and operate micro-applications — self-contained, agent-generated bundles that are scaffolded, compiled, and mounted at runtime inside a live browser desktop. The window you see on screen is not the agent — it's a *viewport* into a long-lived agent process. Closing the window does not terminate the process. The agent continues running in daemon mode.
 
 The entire system communicates through a **Redis Streams Memory Bus** — a persistent, replayable event fabric that enables cross-agent debugging, interaction tracing, and full observability of the agent network.
 
@@ -145,7 +145,7 @@ npm run start:kernel   # runs the compiled kernel
 ## 📁 Repository Structure
 
 ```
-gamma-os/
+gamma-runtime/
 ├── web/                            # Desktop environment (React + Vite)
 │   ├── apps/
 │   │   └── system/                 # Built-in OS apps
@@ -212,4 +212,4 @@ Full roadmap with architectural detail: [`docs/roadmap.md`](./docs/roadmap.md)
 
 ## License
 
-MIT © Gamma OS Contributors
+MIT © Gamma Contributors

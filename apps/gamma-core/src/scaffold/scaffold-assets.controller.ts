@@ -50,7 +50,7 @@ export class ScaffoldAssetsController {
 
   constructor(private readonly config: ConfigService) {
     const repoRoot = this.config.get<string>(
-      'GAMMA_OS_REPO',
+      'GAMMA_RUNTIME_REPO',
       findRepoRoot(__dirname),
     );
     this.assetsRoot = path.resolve(repoRoot, 'apps/gamma-ui/apps/private/assets');

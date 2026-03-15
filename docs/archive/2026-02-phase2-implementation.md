@@ -1,4 +1,4 @@
-# [DONE] Gamma OS — Phase 2 Implementation Plan
+# [DONE] Gamma — Phase 2 Implementation Plan
 **Based on:** Backend Integration Specification v1.6  
 **Status:** COMPLETE
 **Completion Date:** 2026-03-15
@@ -188,7 +188,7 @@ When `GammaSSEEvent` is updated (e.g., adding a new stream type in v1.5), the Ty
 
 **Structure:**
 ```
-gamma-os/
+gamma-runtime/
 ├── packages/
 │   └── gamma-types/
 │       ├── index.ts        ← re-exports all shared interfaces
@@ -592,7 +592,7 @@ Before marking Phase 2 complete, verify:
 - [ ] Loop 3: SSE streams live, batching reduces re-renders, keep-alive fires every 15s
 - [ ] Loop 4: F5 restores live state, abort works, health endpoint returns valid metrics, user input flows to agent, GC cleans orphaned sessions
 - [ ] Loop 5: Scaffold creates/deletes apps in nested Git repo, security scan blocks dangerous code, assets served correctly
-- [ ] Integration: Open Gamma OS, send a message in a window, see thinking + tool + text stream live
+- [ ] Integration: Open Gamma, send a message in a window, see thinking + tool + text stream live
 - [ ] Edge cases: Gateway disconnect → reconnect, tool timeout, F5 mid-stream, abort in flight
 
 ---

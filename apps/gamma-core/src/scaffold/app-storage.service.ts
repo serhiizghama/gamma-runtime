@@ -52,7 +52,7 @@ export class AppStorageService implements OnModuleInit {
     @Optional() private readonly eventLog?: SystemEventLog,
   ) {
     this.repoRoot = this.config.get<string>(
-      'GAMMA_OS_REPO',
+      'GAMMA_RUNTIME_REPO',
       findRepoRoot(__dirname),
     );
     this.JAIL_ROOT = path.resolve(this.repoRoot, 'apps/gamma-ui/apps/private');

@@ -23,7 +23,7 @@ function pickNextFocused(
   return remaining[0]?.id ?? null;
 }
 
-export const useOSStore = create<OSStore>()(
+export const useGammaStore = create<OSStore>()(
   persist(
     immer((set) => ({
       windows: {},
@@ -148,12 +148,12 @@ export const useOSStore = create<OSStore>()(
         }),
 
       resetAll: () => {
-        localStorage.removeItem("gamma-os-session");
+        localStorage.removeItem("gamma-session");
         window.location.reload();
       },
     })),
     {
-      name: "gamma-os-session",
+      name: "gamma-session",
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         windows: state.windows,

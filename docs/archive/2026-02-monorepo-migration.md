@@ -3,7 +3,7 @@
 **Status:** COMPLETE
 **Completion Date:** 2026-03-15
 **Archived from:** `docs/plans/monorepo-migration.md`
-**Goal:** Safely migrate the flat `web/` + `kernel/` structure into a proper `apps/` monorepo layout and replace all "Gamma OS" references with "Gamma Agent Runtime" (or just "Gamma").
+**Goal:** Safely migrate the flat `web/` + `kernel/` structure into a proper `apps/` monorepo layout and replace all "Gamma" references with "Gamma Agent Runtime" (or just "Gamma").
 
 > **Rule:** Do NOT skip milestones. Each milestone must pass its verification step before proceeding to the next. This prevents broken intermediate states.
 
@@ -63,7 +63,7 @@ Replace the contents of the root `package.json`. Remove any `"workspaces"` array
 ```
 
 **Key changes from the old root `package.json`:**
-- `name`: `gamma-os-monorepo` → `gamma-runtime`
+- `name`: `gamma-runtime-monorepo` → `gamma-runtime`
 - No `"workspaces"` array — pnpm reads `pnpm-workspace.yaml` instead
 - All `--prefix web/kernel` flags replaced with `pnpm --filter @gamma/<package>`
 
@@ -88,7 +88,7 @@ cat pnpm-workspace.yaml
 
 Change the `name` field:
 ```diff
-- "name": "gamma-os",
+- "name": "gamma-runtime",
 + "name": "@gamma/ui",
 ```
 
@@ -97,7 +97,7 @@ Change the `name` field:
 Change `name` and `description`:
 ```diff
 - "name": "gamma-kernel",
-- "description": "Gamma OS Phase 2 — Backend Integration Server",
+- "description": "Gamma Phase 2 — Backend Integration Server",
 + "name": "@gamma/core",
 + "description": "Gamma Agent Runtime — Backend Integration Server",
 ```
@@ -112,9 +112,9 @@ Also update the `start:prod` script which hardcodes the old path:
 
 ### 2.3 Update `packages/gamma-types/package.json`
 
-The description still references "Gamma OS":
+The description still references "Gamma":
 ```diff
-- "description": "Shared TypeScript types for Gamma OS frontend and backend",
+- "description": "Shared TypeScript types for Gamma frontend and backend",
 + "description": "Shared TypeScript types for Gamma Agent Runtime",
 ```
 
@@ -217,11 +217,11 @@ cd ../gamma-ui && pnpm typecheck
 
 ## Milestone 3 — Codebase Rebranding
 
-**Goal:** Replace all user-facing and internal "Gamma OS" strings. Split into UI, backend, and docs sub-steps to make review easier.
+**Goal:** Replace all user-facing and internal "Gamma" strings. Split into UI, backend, and docs sub-steps to make review easier.
 
 ### 3.1 UI Components
 
-The following files contain "Gamma OS" or "gamma-os" strings:
+The following files contain "Gamma" or "gamma-runtime" strings:
 
 | File | Type of reference |
 |------|------------------|
@@ -236,8 +236,8 @@ The following files contain "Gamma OS" or "gamma-os" strings:
 | `apps/gamma-ui/store/useOSStore.ts` | Store name / log messages |
 
 **For each file**, search and replace:
-- `"Gamma OS"` → `"Gamma"` for short display labels (menu bar, window titles)
-- `"Gamma OS"` → `"Gamma Agent Runtime"` for descriptive/about text
+- `"Gamma"` → `"Gamma"` for short display labels (menu bar, window titles)
+- `"Gamma"` → `"Gamma Agent Runtime"` for descriptive/about text
 
 **Rename the root component file:**
 ```bash
@@ -253,7 +253,7 @@ Update the import path and component name in each file found.
 
 ### 3.2 Backend (`gamma-core`)
 
-Files with "Gamma OS" log/label strings:
+Files with "Gamma" log/label strings:
 
 | File | Reference |
 |------|-----------|
@@ -261,16 +261,16 @@ Files with "Gamma OS" log/label strings:
 | `apps/gamma-core/src/sessions/sessions.service.ts` | Session log message |
 | `apps/gamma-core/src/gateway/gateway-ws.service.ts` | WebSocket log message |
 
-Replace `"Gamma OS"` with `"Gamma"` in all `Logger` / `console` output strings.
+Replace `"Gamma"` with `"Gamma"` in all `Logger` / `console` output strings.
 
 Also update `kernel/.env.example` (now `apps/gamma-core/.env.example`):
 
 ```diff
-- GAMMA_DEVICE_ID=gamma-os-bridge-001
+- GAMMA_DEVICE_ID=gamma-runtime-bridge-001
 + GAMMA_DEVICE_ID=gamma-runtime-bridge-001
 
-- # ── Gamma OS Repo ────────────────────────────────────────
-- GAMMA_OS_REPO=/path/to/gamma-os
+- # ── Gamma Repo ────────────────────────────────────────
+- GAMMA_RUNTIME_REPO=/path/to/gamma-runtime
 + # ── Gamma Runtime Repo ───────────────────────────────────
 + GAMMA_RUNTIME_REPO=/path/to/gamma-runtime
 ```
@@ -278,23 +278,23 @@ Also update `kernel/.env.example` (now `apps/gamma-core/.env.example`):
 ### 3.3 Documentation
 
 ```bash
-# Find all docs containing "Gamma OS"
-grep -r "Gamma OS" docs/ README.md --include="*.md" -l
+# Find all docs containing "Gamma"
+grep -r "Gamma" docs/ README.md --include="*.md" -l
 ```
 
 Update each file:
-- `Gamma OS` → `Gamma Agent Runtime` in conceptual/descriptive prose
-- `Gamma OS` → `Gamma` in short-form references
+- `Gamma` → `Gamma Agent Runtime` in conceptual/descriptive prose
+- `Gamma` → `Gamma` in short-form references
 
 ### 3.4 Verification
 
 ```bash
-# No "Gamma OS" strings remaining in source code
-grep -r "Gamma OS" apps/ packages/ --include="*.ts" --include="*.tsx"
+# No "Gamma" strings remaining in source code
+grep -r "Gamma" apps/ packages/ --include="*.ts" --include="*.tsx"
 # Expected: zero results
 
-# No "gamma-os" package name references remaining
-grep -r "gamma-os" apps/ packages/ --include="*.json" --include="*.ts"
+# No "gamma-runtime" package name references remaining
+grep -r "gamma-runtime" apps/ packages/ --include="*.json" --include="*.ts"
 # Expected: zero results
 ```
 
@@ -346,8 +346,8 @@ Expected: Vite dev server starts on `http://localhost:5173`. Confirm HMR is acti
 - [ ] `ls apps/` shows `gamma-ui` and `gamma-core`
 - [ ] `cat pnpm-workspace.yaml` shows both `apps/*` and `packages/*`
 - [ ] `ls node_modules/@gamma/` shows `ui`, `core`, `types`
-- [ ] `grep -r "Gamma OS" apps/ packages/` returns zero results
-- [ ] `grep -r "gamma-os" apps/ --include="*.json"` returns zero results
+- [ ] `grep -r "Gamma" apps/ packages/` returns zero results
+- [ ] `grep -r "gamma-runtime" apps/ --include="*.json"` returns zero results
 - [ ] `pnpm dev:core` starts without errors
 - [ ] `pnpm dev` starts Vite on port 5173 without errors
 - [ ] HMR works (edit a `.tsx` file, confirm hot reload in browser, no full-page refresh)

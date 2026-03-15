@@ -1,13 +1,13 @@
 import React from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 import { AppIcon } from "./AppIcon";
 
 export function Dock(): React.ReactElement {
-  const toggleLaunchpad = useOSStore((s) => s.toggleLaunchpad);
-  const launchpadOpen   = useOSStore((s) => s.launchpadOpen);
-  const focusWindow     = useOSStore((s) => s.focusWindow);
+  const toggleLaunchpad = useGammaStore((s) => s.toggleLaunchpad);
+  const launchpadOpen   = useGammaStore((s) => s.launchpadOpen);
+  const focusWindow     = useGammaStore((s) => s.focusWindow);
 
-  const minimizedWindows = useOSStore((s) =>
+  const minimizedWindows = useGammaStore((s) =>
     Object.values(s.windows).filter((w) => w.isMinimized)
   );
 

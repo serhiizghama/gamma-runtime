@@ -1,4 +1,4 @@
-# Gamma OS — Phase 3: Frontend & Multi-Agent Architecture
+# Gamma — Phase 3: Frontend & Multi-Agent Architecture
 **Version:** 1.5  
 **Status:** Draft — Ready for Review  
 **Audience:** Senior Frontend Developer (React), Agent Architect  
@@ -23,7 +23,7 @@ Two fundamental shifts:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Gamma OS Desktop                                        │
+│  Gamma Desktop                                           │
 │  ┌────────────────────────────────────────────────────┐  │
 │  │  Menu Bar  [🔬 System Health] [💬 Architect Chat]  │  │
 │  └────────────────────────────────────────────────────┘  │
@@ -134,7 +134,7 @@ This file defines who the App Owner agent is for this specific app. It's scoped 
 ```markdown
 # Weather App — Agent Prompt
 
-You are the **Weather App Owner** for Gamma OS.
+You are the **Weather App Owner** for Gamma.
 
 ## Your Scope
 - You own ONLY the Weather App: `WeatherApp.tsx`, its assets, and this context.
@@ -220,7 +220,7 @@ interface AppRegistryEntry {
 ```markdown
 # System Architect — Agent Persona
 
-You are the **System Architect** of Gamma OS.
+You are the **System Architect** of Gamma.
 
 ## Your Role
 You are the builder and overseer of the operating system.
@@ -315,7 +315,7 @@ The menu bar is the OS-level control surface. Always visible, always accessible.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Γ  Gamma OS    │  🟢 System OK  │  ☰ Apps  │  💬 Architect │
+│  Γ  Gamma       │  🟢 System OK  │  ☰ Apps  │  💬 Architect │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -617,7 +617,7 @@ The System Architect's tool call to `scaffold` must be structured to produce all
 
 ```
 Tool: scaffold
-Description: Create a new App Bundle in Gamma OS.
+Description: Create a new App Bundle in Gamma.
 
 Parameters:
 - appId (string): kebab-case identifier (e.g., "weather", "note-taking")
@@ -840,7 +840,7 @@ But generated apps need to persist user data: saved notes, selected cities, them
 
 ### 8.2 The Solution: `useAppStorage<T>()` Hook
 
-Gamma OS provides a **system-level React hook** injected into the app runtime environment. Generated apps use it instead of `localStorage`:
+Gamma provides a **system-level React hook** injected into the app runtime environment. Generated apps use it instead of `localStorage`:
 
 ```typescript
 /**
@@ -1136,7 +1136,7 @@ Add to the System Architect's scaffold prompt:
 ## 10. File Structure (Phase 3 Additions)
 
 ```
-gamma-os/
+gamma-runtime/
 ├── docs/
 │   ├── architecture/
 │   │   ├── phase2-backend.md              ← Phase 2 backend spec
@@ -1193,7 +1193,7 @@ gamma-os/
 
 ## 12. Summary
 
-Phase 3 transforms Gamma OS from a "browser OS with AI streaming" into a **self-evolving agentic operating system**:
+Phase 3 transforms Gamma from a browser runtime with AI streaming into a **self-evolving agentic system**:
 
 - **App Bundles** give generated apps memory and identity
 - **System Architect** builds and oversees the OS

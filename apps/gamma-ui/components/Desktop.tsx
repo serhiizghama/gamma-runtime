@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 
 // ---------------------------------------------------------------------------
 // Aurora Waves — horizontal sine-band layers + glowing crests + star field.
@@ -135,7 +135,7 @@ function useAuroraWaves(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
 // ---------------------------------------------------------------------------
 
 export function Desktop(): React.ReactElement {
-  const launchpadOpen = useOSStore((s) => s.launchpadOpen);
+  const launchpadOpen = useGammaStore((s) => s.launchpadOpen);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useAuroraWaves(canvasRef);
 

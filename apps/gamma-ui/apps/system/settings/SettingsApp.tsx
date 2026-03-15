@@ -1,5 +1,5 @@
 import React from "react";
-import { useOSStore } from "../../../store/useOSStore";
+import { useGammaStore } from "../../../store/useGammaStore";
 import type { UISettings } from "@gamma/types";
 
 const SECTION: React.CSSProperties = {
@@ -35,9 +35,9 @@ const VALUE_BADGE: React.CSSProperties = {
 };
 
 export function SettingsApp(): React.ReactElement {
-  const uiSettings = useOSStore((s) => s.uiSettings);
-  const updateUI = useOSStore((s) => s.updateUISettings);
-  const resetAll = useOSStore((s) => s.resetAll);
+  const uiSettings = useGammaStore((s) => s.uiSettings);
+  const updateUI = useGammaStore((s) => s.updateUISettings);
+  const resetAll = useGammaStore((s) => s.resetAll);
 
   const set = <K extends keyof UISettings>(key: K, val: UISettings[K]) =>
     updateUI({ [key]: val } as Partial<UISettings>);

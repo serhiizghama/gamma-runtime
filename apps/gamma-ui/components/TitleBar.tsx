@@ -1,5 +1,5 @@
 import React from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 
 interface TitleBarProps {
   windowId: string;
@@ -21,9 +21,9 @@ export function TitleBar({
   agentPanelOpen = false,
   onToggleAgent,
 }: TitleBarProps): React.ReactElement {
-  const closeWindow = useOSStore((s) => s.closeWindow);
-  const minimizeWindow = useOSStore((s) => s.minimizeWindow);
-  const maximizeWindow = useOSStore((s) => s.maximizeWindow);
+  const closeWindow = useGammaStore((s) => s.closeWindow);
+  const minimizeWindow = useGammaStore((s) => s.minimizeWindow);
+  const maximizeWindow = useGammaStore((s) => s.maximizeWindow);
 
   return (
     <div className="window-titlebar" onPointerDown={onDragStart}>

@@ -1,12 +1,12 @@
 import React, { useEffect, useCallback } from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 import { INSTALLED_APPS } from "../constants/apps";
 import { AppIcon } from "./AppIcon";
 
 export function Launchpad(): React.ReactElement {
-  const launchpadOpen = useOSStore((s) => s.launchpadOpen);
-  const closeLaunchpad = useOSStore((s) => s.closeLaunchpad);
-  const openWindow = useOSStore((s) => s.openWindow);
+  const launchpadOpen = useGammaStore((s) => s.launchpadOpen);
+  const closeLaunchpad = useGammaStore((s) => s.closeLaunchpad);
+  const openWindow = useGammaStore((s) => s.openWindow);
 
   const handleAppClick = useCallback(
     (appId: string, appName: string) => {

@@ -9,8 +9,8 @@ function normalizeUrl(raw: string): string {
 }
 
 export function BrowserApp(): React.ReactElement {
-  const [input, setInput] = useState("https://gammaos.dev");
-  const [url, setUrl] = useState<string | null>(normalizeUrl("https://gammaos.dev"));
+  const [input, setInput] = useState("https://gammaruntime.dev");
+  const [url, setUrl] = useState<string | null>(normalizeUrl("https://gammaruntime.dev"));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +54,7 @@ export function BrowserApp(): React.ReactElement {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Enter URL (e.g. docs.gammaos.dev)"
+          placeholder="Enter URL (e.g. docs.gammaruntime.dev)"
           spellCheck={false}
           style={{
             flex: 1,

@@ -14,7 +14,7 @@ export function useSystemEvents(): void {
     const es = new EventSource("/api/events");
     es.onmessage = (event) => {
       const payload = JSON.parse(event.data);
-      useOSStore.getState().pushNotification(payload);
+      useGammaStore.getState().pushNotification(payload);
     };
     return () => es.close();
     */

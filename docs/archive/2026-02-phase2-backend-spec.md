@@ -1,4 +1,4 @@
-# [DONE] Gamma OS — Phase 2: Backend Integration Specification
+# [DONE] Gamma — Phase 2: Backend Integration Specification
 **Version:** 1.6  
 **Status:** COMPLETE — All features implemented.
 **Completion Date:** 2026-03-15
@@ -15,7 +15,7 @@
 
 ## 1. Overview
 
-Phase 2 connects Gamma OS (React-based Web OS) to the **OpenClaw Gateway** running locally on the Mac Mini M4. The result is a live OS where:
+Phase 2 connects Gamma (React frontend) to the **OpenClaw Gateway** running locally on the Mac Mini M4. The result is a live OS where:
 
 - Each open **Window** maps to an **OpenClaw agent session**
 - Agent responses stream live into the window: thinking blocks, tool calls, assistant text — all in real-time
@@ -23,7 +23,7 @@ Phase 2 connects Gamma OS (React-based Web OS) to the **OpenClaw Gateway** runni
 - All agent "thought tokens" are intercepted and pushed to `gamma:memory:bus` (Redis Streams)
 
 ```
-Browser (Gamma OS React)
+Browser (Gamma React)
     │  SSE /api/stream/:windowId
     ▼
 NestJS Backend (kernel/)
@@ -125,7 +125,7 @@ export interface GWChatEventPayload {
 }
 ```
 
-### 3.3 Gamma OS SSE Events
+### 3.3 Gamma SSE Events
 
 ```typescript
 /**
@@ -1331,10 +1331,10 @@ streamText      → live-printing assistant response (shown while running)
 ```
 
 **Git Isolation (v1.5):**  
-The `web/apps/generated/` directory is `.gitignore`d in the main Gamma OS repository. Generated apps live in a **separate, nested Git repository** inside that directory. This decouples the open-source core from user-generated/private applications:
+The `web/apps/generated/` directory is `.gitignore`d in the main Gamma repository. Generated apps live in a **separate, nested Git repository** inside that directory. This decouples the open-source core from user-generated/private applications:
 
 ```
-gamma-os/                  ← main repo (public / open source)
+gamma-runtime/                  ← main repo (public / open source)
 ├── .gitignore             ← includes "web/apps/generated/"
 ├── kernel/
 ├── web/
@@ -1352,7 +1352,7 @@ gamma-os/                  ← main repo (public / open source)
 ```typescript
 @Injectable()
 export class ScaffoldService {
-  private readonly appsDir = path.resolve(GAMMA_OS_REPO, "web/apps/generated");
+  private readonly appsDir = path.resolve(GAMMA_RUNTIME_REPO, "web/apps/generated");
   private readonly branch: string;        // SCAFFOLD_GIT_BRANCH || "private-apps"
   private readonly autoPush: boolean;     // SCAFFOLD_AUTO_PUSH || false
   private readonly privateRepoUrl: string | null; // SCAFFOLD_PRIVATE_REPO_URL || null
@@ -1580,7 +1580,7 @@ if (req.files?.length) {
 // src/scaffold/scaffold-assets.controller.ts
 @Controller("api/assets")
 export class ScaffoldAssetsController {
-  private readonly assetsRoot = path.join(GAMMA_OS_REPO, "web/apps/generated/assets");
+  private readonly assetsRoot = path.join(GAMMA_RUNTIME_REPO, "web/apps/generated/assets");
 
   @Get(":appId/*")
   async serveAsset(
@@ -1621,7 +1621,7 @@ All scaffold file writes are **jailed** to `web/apps/generated/`. The service mu
 
 ```typescript
 // src/scaffold/scaffold.service.ts — path jail utility
-private readonly JAIL_ROOT = path.resolve(GAMMA_OS_REPO, "web/apps/generated");
+private readonly JAIL_ROOT = path.resolve(GAMMA_RUNTIME_REPO, "web/apps/generated");
 
 /**
  * Resolves a relative path and verifies it stays within JAIL_ROOT.
@@ -1828,7 +1828,7 @@ export interface SystemHealthReport {
 
 **Usage in frontend:**
 - Poll `GET /api/system/health` every 30s
-- Show a subtle status bar in Gamma OS menu bar: 🟢 OK / 🟡 Degraded / 🔴 Error
+- Show a subtle status bar in Gamma menu bar: 🟢 OK / 🟡 Degraded / 🔴 Error
 - On degraded: show which component is down (Redis? Gateway?)
 
 ---
@@ -1913,8 +1913,8 @@ GAMMA_DEVICE_PRIVATE_KEY=base64...
 # ── Redis ─────────────────────────────────────────────────
 REDIS_URL=redis://localhost:6379
 
-# ── Gamma OS Repo ────────────────────────────────────────
-GAMMA_OS_REPO=/path/to/gamma-os
+# ── Gamma Repo ────────────────────────────────────────────
+GAMMA_RUNTIME_REPO=/path/to/gamma-runtime
 
 # ── Git Author ────────────────────────────────────────────
 GIT_AUTHOR_NAME=serhiizghama
@@ -1938,7 +1938,7 @@ PORT=3001
 | `OPENCLAW_GATEWAY_TOKEN` | *(none)* | Gateway auth token (if empty, Gateway connection skipped) |
 | `GAMMA_DEVICE_ID` | `gamma-os-bridge-001` | Ed25519 device identity |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
-| `GAMMA_OS_REPO` | *(cwd)* | Absolute path to the monorepo root |
+| `GAMMA_RUNTIME_REPO` | *(cwd)* | Absolute path to the monorepo root |
 | `GIT_AUTHOR_NAME` | — | Git commit author name |
 | `GIT_AUTHOR_EMAIL` | — | Git commit author email |
 | `SCAFFOLD_GIT_BRANCH` | `private-apps` | Branch for generated app commits in the nested repo (v1.5) |
@@ -2003,7 +2003,7 @@ kernel/
 | P1 | Scaffold service + Git integration | 1 day |
 | P1 | FS watcher (hot-reload fallback) | 0.5 day |
 | P2 | Frontend dynamic import registry | 1 day |
-| P2 | Memory bus visualization (Gamma OS UI panel) | 1 day |
+| P2 | Memory bus visualization (Gamma UI panel) | 1 day |
 | P2 | **v1.2** Session sync endpoint + Redis state hash | 0.5 day |
 | P2 | **v1.2** SSE keep-alive + gateway_status events | 0.5 day |
 | P2 | **v1.2** Scaffold code validation (AST parse) | 0.5 day |

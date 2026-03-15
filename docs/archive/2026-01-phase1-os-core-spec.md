@@ -1,4 +1,4 @@
-# [DONE] Gamma OS — Phase 1 Technical Specification & PRD
+# [DONE] Gamma — Phase 1 Technical Specification & PRD
 
 **Status:** COMPLETE — Foundational specification, fully implemented.
 **Completion Date:** 2026-03-15
@@ -15,7 +15,7 @@
 │                     Browser (Client)                     │
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │                  <GammaOS />                     │   │
+│  │                  <Gamma />                     │   │
 │  │  ┌─────────────┐  ┌──────────────────────────┐  │   │
 │  │  │  <Desktop /> │  │    <WindowManager />     │  │   │
 │  │  │  background  │  │  [WindowNode] × N        │  │   │
@@ -48,7 +48,7 @@
 
 ### Phase 1 User Interaction Flow
 
-1. **Boot** → `<GammaOS />` mounts, Zustand store initializes, SSE connection opens with `Last-Event-ID` header
+1. **Boot** → `<Gamma />` mounts, Zustand store initializes, SSE connection opens with `Last-Event-ID` header
 2. **Desktop renders** → wallpaper visible, Dock anchored bottom, `<Launchpad />` mounted but `visibility: hidden`
 3. **User clicks "Apps"** → `launchpadOpen = true` → desktop dims, Launchpad grid fades in
 4. **User clicks app icon** → `openWindow(appId)` → `WindowNode` added, `focusedWindowId` set
@@ -165,7 +165,7 @@ pointerup   → updateWindowDimensions(id, {width, height}) ← 1 Zustand write
 ## 3. React Component Architecture
 
 ```
-<GammaOS />                              # Root kernel. SSE hook. OS-level ErrorBoundary.
+<Gamma />                              # Root kernel. SSE hook. OS-level ErrorBoundary.
 ├── <Desktop />                          # Wallpaper. Launchpad blur class.
 ├── <Launchpad />                        # Always mounted. visibility toggled.
 │   └── <AppIcon /> × N                 # onClick → openWindow(appId)
@@ -186,7 +186,7 @@ pointerup   → updateWindowDimensions(id, {width, height}) ← 1 Zustand write
 
 | Component | Responsibility |
 |---|---|
-| `<GammaOS />` | SSE init, global keyboard shortcuts (Esc), OS-level ErrorBoundary |
+| `<Gamma />` | SSE init, global keyboard shortcuts (Esc), OS-level ErrorBoundary |
 | `<Desktop />` | Wallpaper render, launchpad overlay class |
 | `<Launchpad />` | App grid, visibility toggle, outside-click dismiss |
 | `<WindowManager />` | Map store.windows → components, nothing else |
@@ -469,7 +469,7 @@ export class WindowErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error(`[GammaOS] Window ${this.props.windowId} crashed:`, error, info);
+    console.error(`[Gamma] Window ${this.props.windowId} crashed:`, error, info);
   }
 
   render() {
@@ -757,7 +757,7 @@ export const useOSStore = create<OSStore>()(
   persist(
     immer((set) => ({ /* ...store implementation... */ })),
     {
-      name: 'gamma-os-session',
+      name: 'gamma-session',
       storage: createJSONStorage(() => localStorage),
       // Only persist layout state — never volatile connection handles
       partialize: (state) => ({
@@ -775,7 +775,7 @@ export const useOSStore = create<OSStore>()(
 );
 ```
 
-On mount, `<GammaOS />` reads the persisted snapshot and restores window layout before first paint. App components reconnect their own WebSocket/WebGL in their `useEffect` — the OS kernel just provides the coordinates.
+On mount, `<Gamma />` reads the persisted snapshot and restores window layout before first paint. App components reconnect their own WebSocket/WebGL in their `useEffect` — the OS kernel just provides the coordinates.
 
 ### Phase 2 — Server-Side Session (PostgreSQL/Redis)
 
@@ -885,7 +885,7 @@ app.get('/api/v1/system/events', async (req, res) => {
 
 // SIGTERM handler
 process.on('SIGTERM', async () => {
-  console.log('[GammaOS] SIGTERM received — draining SSE connections');
+  console.log('[Gamma] SIGTERM received — draining SSE connections');
 
   // 1. Stop accepting new connections
   server.close();
@@ -1073,7 +1073,7 @@ This is a browser-level constraint, not a CSS bug. `z-index` only competes withi
 
 **Solution: React Portals for all floating UI**
 
-Portals render children into a DOM node outside the component tree hierarchy — in this case, directly into `<GammaOS />` root — bypassing the Stacking Context of individual windows entirely.
+Portals render children into a DOM node outside the component tree hierarchy — in this case, directly into `<Gamma />` root — bypassing the Stacking Context of individual windows entirely.
 
 ```typescript
 // components/Portal.tsx
@@ -1105,7 +1105,7 @@ export function Portal({ anchorRef, children }: PortalProps) {
     >
       {children}
     </div>,
-    document.getElementById('gamma-os-portal-root')!  // sibling of <GammaOS /> in DOM
+    document.getElementById('gamma-portal-root')!  // sibling of <Gamma /> in DOM
   );
 }
 ```
@@ -1113,7 +1113,7 @@ export function Portal({ anchorRef, children }: PortalProps) {
 ```html
 <!-- index.html — portal root must be outside the main app tree -->
 <div id="root"></div>
-<div id="gamma-os-portal-root"></div>
+<div id="gamma-portal-root"></div>
 ```
 
 **Rule:** Every floating UI element inside `<AppContent />` (dropdown, tooltip, context menu, datepicker) **must** use `<Portal>`. This is a code review gate — same as the cleanup contract in §5.
@@ -1292,4 +1292,4 @@ export function useMemoryBus(agentId: string) {
 
 ---
 
-*Gamma OS Phase 1 Spec v5 — revised 2026-03-08*
+*Gamma Phase 1 Spec v5 — revised 2026-03-08*

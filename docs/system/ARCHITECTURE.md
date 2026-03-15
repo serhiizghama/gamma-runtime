@@ -230,7 +230,7 @@ A naive `path.resolve(__dirname, '../../..')` landed inside `dist/apps/`, not th
 
 Both resolve to `/Users/serhii/dev/personal/gamma-runtime`.
 
-The `GAMMA_OS_REPO` environment variable can override this for non-standard deployments.
+The `GAMMA_RUNTIME_REPO` environment variable can override this for non-standard deployments.
 
 ---
 

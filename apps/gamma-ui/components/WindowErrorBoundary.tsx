@@ -19,7 +19,7 @@ export class WindowErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error(`[GammaOS] Window ${this.props.windowId} crashed:`, error, info);
+    console.error(`[Gamma] Window ${this.props.windowId} crashed:`, error, info);
   }
 
   render() {

@@ -1,10 +1,10 @@
 import React from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 import { ToastNotification } from "./ToastNotification";
 
 export function NotificationCenter(): React.ReactElement {
   // Scoped selector — only this component re-renders when toastQueue changes
-  const toastQueue = useOSStore((s) => s.toastQueue);
+  const toastQueue = useGammaStore((s) => s.toastQueue);
 
   return (
     <div

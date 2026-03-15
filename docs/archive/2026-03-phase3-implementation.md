@@ -1,4 +1,4 @@
-# Gamma OS — Phase 3 Implementation Plan
+# Gamma — Phase 3 Implementation Plan
 **Based on:** Frontend & Multi-Agent Architecture Specification v1.4  
 **Status:** IN PROGRESS — Loops 6-8 implemented, Loop 9 partially complete.
 **Last audit:** 2026-03-15  
@@ -237,7 +237,7 @@ web/components/
 - **☰ Apps:** Opens Launchpad (calls existing `onOpenLaunchpad` callback)
 - **💬 Architect:** Opens/focuses the System Architect chat window
 - Style: fixed at top, `height: 28px`, dark background, subtle border bottom
-- Integrate into `GammaOS.tsx` — render above the desktop/window manager
+- Integrate into `Gamma.tsx` — render above the desktop/window manager
 
 **Acceptance criteria:**
 - Menu bar renders at the top of the screen, above all windows
@@ -252,7 +252,7 @@ web/components/
 **Files to create/update:**
 ```
 web/components/MenuBar.tsx     ← NEW
-web/components/GammaOS.tsx     ← integrate MenuBar
+web/components/Gamma.tsx     ← integrate MenuBar
 web/store/useOSStore.ts        ← add systemHealth state if needed
 ```
 
@@ -286,7 +286,7 @@ web/store/useOSStore.ts        ← add systemHealth state if needed
 docs/agents/system-architect.md             ← NEW: persona file
 web/components/AgentChat.tsx                ← wire to useAgentStream + send API
 web/hooks/useAgentStream.ts                 ← NEW or update existing
-web/components/GammaOS.tsx                  ← boot session creation
+web/components/Gamma.tsx                  ← boot session creation
 web/store/useOSStore.ts                     ← architect window management
 ```
 

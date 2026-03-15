@@ -16,7 +16,7 @@ export class SystemMonitorService {
     private readonly eventLog: SystemEventLog,
   ) {
     const repoRoot = this.config.get<string>(
-      'GAMMA_OS_REPO',
+      'GAMMA_RUNTIME_REPO',
       findRepoRoot(__dirname),
     );
     this.systemAppsDir = path.resolve(repoRoot, 'apps/gamma-ui/apps/system');

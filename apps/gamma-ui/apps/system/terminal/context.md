@@ -33,7 +33,7 @@
 - Command history stored in component state; survives re-renders within the session.
 
 **Extension ideas**
-- Add `ls apps` / `open <app>` to control the window manager via useOSStore.
+- Add `ls apps` / `open <app>` to control the window manager via useGammaStore.
 - Add `agent <id> <message>` to send messages to sessions.
 - Pipe support: `health | grep cpu`.
 - Persist history across sessions with useAppStorage.

@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { AgentChat } from "./AgentChat";
 import { MENU_HEIGHT } from "./MenuBar";
@@ -59,8 +59,8 @@ const DEFAULT_WIDTH = 420;
  * Left-edge resizable. Wired to the live SSE stream + POST /send endpoint.
  */
 export function ArchitectWindow(): React.ReactElement | null {
-  const architectOpen = useOSStore((s) => s.architectOpen);
-  const toggleArchitect = useOSStore((s) => s.toggleArchitect);
+  const architectOpen = useGammaStore((s) => s.architectOpen);
+  const toggleArchitect = useGammaStore((s) => s.toggleArchitect);
   const { reInit } = useArchitectSession();
 
   const { messages, status, pendingToolLines, sendMessage } =

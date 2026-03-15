@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import "../styles/os-theme.css";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 import { BootScreen } from "./BootScreen";
 import { Desktop } from "./Desktop";
 import { Dock } from "./Dock";
@@ -22,8 +22,8 @@ import { useAppRegistry } from "../hooks/useAppRegistry";
 
 function useFreshBootDefaults() {
   useEffect(() => {
-    const { openWindow } = useOSStore.getState();
-    const hasSession = !!localStorage.getItem("gamma-os-session");
+    const { openWindow } = useGammaStore.getState();
+    const hasSession = !!localStorage.getItem("gamma-session");
     if (!hasSession) {
       openWindow("terminal", "Terminal");
       openWindow("browser",  "Browser");
@@ -31,11 +31,11 @@ function useFreshBootDefaults() {
   }, []);
 }
 
-export function GammaOS(): React.ReactElement {
+export function Gamma(): React.ReactElement {
   const [booting, setBooting] = useState(true);
   const handleBootDone = useCallback(() => setBooting(false), []);
-  const toggleArchitect = useOSStore((s) => s.toggleArchitect);
-  const toggleLaunchpad = useOSStore((s) => s.toggleLaunchpad);
+  const toggleArchitect = useGammaStore((s) => s.toggleArchitect);
+  const toggleLaunchpad = useGammaStore((s) => s.toggleLaunchpad);
 
   useFreshBootDefaults();
   useAppRegistry(); // fetch registry + subscribe to component_ready/removed
@@ -47,7 +47,7 @@ export function GammaOS(): React.ReactElement {
 
   return (
     <div
-      id="gamma-os"
+      id="gamma-runtime"
       className="desktop-shell"
       style={{
         position: "fixed",
@@ -91,7 +91,7 @@ export function GammaOS(): React.ReactElement {
 
       {/* Portal root for dropdowns / tooltips — spec §11 */}
       <div
-        id="gamma-os-portal-root-inner"
+        id="gamma-portal-root-inner"
         style={{
           position: "fixed",
           inset: 0,

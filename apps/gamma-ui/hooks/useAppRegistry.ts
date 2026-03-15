@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 import { API_BASE } from "../constants/api";
 
 /**
@@ -7,9 +7,9 @@ import { API_BASE } from "../constants/api";
  * via broadcast SSE. Updates Zustand store for DynamicAppRenderer hot-reload.
  */
 export function useAppRegistry(): void {
-  const setAppRegistry = useOSStore((s) => s.setAppRegistry);
-  const updateAppRegistryEntry = useOSStore((s) => s.updateAppRegistryEntry);
-  const removeAppRegistryEntry = useOSStore((s) => s.removeAppRegistryEntry);
+  const setAppRegistry = useGammaStore((s) => s.setAppRegistry);
+  const updateAppRegistryEntry = useGammaStore((s) => s.updateAppRegistryEntry);
+  const removeAppRegistryEntry = useGammaStore((s) => s.removeAppRegistryEntry);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +45,7 @@ export function useAppRegistry(): void {
         if (appId) {
           updateAppRegistryEntry(appId, { updatedAt: updatedAt ?? Date.now() });
           // If we don't have the entry yet, refetch full registry
-          const current = useOSStore.getState().appRegistry[appId];
+          const current = useGammaStore.getState().appRegistry[appId];
           if (!current) fetchRegistry();
         }
       } else if (type === "component_removed") {

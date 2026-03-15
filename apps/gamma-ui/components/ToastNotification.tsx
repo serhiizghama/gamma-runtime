@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 import { INSTALLED_APPS } from "../constants/apps";
 import type { Notification } from "@gamma/types";
 
@@ -8,8 +8,8 @@ interface ToastNotificationProps {
 }
 
 export function ToastNotification({ notification }: ToastNotificationProps): React.ReactElement {
-  const dismissToast = useOSStore((s) => s.dismissToast);
-  const focusWindow = useOSStore((s) => s.focusWindow);
+  const dismissToast = useGammaStore((s) => s.dismissToast);
+  const focusWindow = useGammaStore((s) => s.focusWindow);
 
   const [dismissing, setDismissing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -32,7 +32,7 @@ export function ToastNotification({ notification }: ToastNotificationProps): Rea
   const handleClick = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     // Find a window for this appId and focus it
-    const windows = useOSStore.getState().windows;
+    const windows = useGammaStore.getState().windows;
     const match = Object.values(windows).find((w) => w.appId === notification.appId);
     if (match) focusWindow(match.id);
     startDismiss();

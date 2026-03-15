@@ -36,7 +36,7 @@ export class GitWorkspaceService {
       this.config.get<string>('SCAFFOLD_PRIVATE_REPO_URL', '') || null;
     this.gitAuthorName = this.config.get<string>(
       'GIT_AUTHOR_NAME',
-      'gamma-os',
+      'gamma-runtime',
     );
     this.gitAuthorEmail = this.config.get<string>(
       'GIT_AUTHOR_EMAIL',

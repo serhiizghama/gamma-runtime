@@ -206,7 +206,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     this.gatewayUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
     this.gatewayToken = this.config.get('OPENCLAW_GATEWAY_TOKEN', '');
     // Device identity reserved for future paired device auth
-    // this.deviceId = this.config.get('GAMMA_DEVICE_ID', 'gamma-os-bridge-001');
+    // this.deviceId = this.config.get('GAMMA_DEVICE_ID', 'gamma-bridge-001');
     // this.publicKey = this.config.get('GAMMA_DEVICE_PUBLIC_KEY', '');
     // this.privateKey = this.config.get('GAMMA_DEVICE_PRIVATE_KEY', '');
   }
@@ -412,7 +412,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
   /** Enqueue agent event processing — serialized per session to prevent race conditions */
   private enqueueAgentEvent(payload: GWAgentEventPayload): void {
-    // Translate inbound OpenClaw key back to internal Gamma OS key at the boundary
+    // Translate inbound OpenClaw key back to internal Gamma key at the boundary
     const sessionKey = this.toInternalKey(payload.sessionKey);
 
     const prev = this.eventQueue.get(sessionKey) ?? Promise.resolve();

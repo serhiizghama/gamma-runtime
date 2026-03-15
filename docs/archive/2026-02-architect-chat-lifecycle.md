@@ -98,7 +98,7 @@ Registration: `registerWindowSession('system-architect', 'system-architect')` on
 
 ## 4. Timeout Management
 
-- **chat.send ack**: OpenClaw SHOULD respond with `res` within ~2s. Gamma OS uses 10s timeout as safety.
+- **chat.send ack**: OpenClaw SHOULD respond with `res` within ~2s. Gamma uses 10s timeout as safety.
 - **Non-blocking**: HTTP returns 202 immediately after dispatch; ack is handled asynchronously.
 - **Error propagation**: If `res.ok === false`, push `lifecycle_error` to `gamma:sse:{windowId}`.
 

@@ -5,7 +5,7 @@ import React, {
   Suspense,
   useState,
 } from "react";
-import { useOSStore } from "../store/useOSStore";
+import { useGammaStore } from "../store/useGammaStore";
 import { TitleBar } from "./TitleBar";
 import { ResizeHandles, ResizeEdge } from "./ResizeHandles";
 import { DynamicAppRenderer } from "./DynamicAppRenderer";
@@ -92,12 +92,12 @@ interface WindowNodeProps {
 }
 
 export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
-  const win = useOSStore((s) => s.windows[id]);
-  const isFocused = useOSStore((s) => s.focusedWindowId === id);
-  const focusWindow = useOSStore((s) => s.focusWindow);
-  const appRegistry = useOSStore((s) => s.appRegistry);
-  const windowAgentPanelOpen = useOSStore((s) => s.windowAgentPanelOpen);
-  const toggleWindowAgentPanel = useOSStore((s) => s.toggleWindowAgentPanel);
+  const win = useGammaStore((s) => s.windows[id]);
+  const isFocused = useGammaStore((s) => s.focusedWindowId === id);
+  const focusWindow = useGammaStore((s) => s.focusWindow);
+  const appRegistry = useGammaStore((s) => s.appRegistry);
+  const windowAgentPanelOpen = useGammaStore((s) => s.windowAgentPanelOpen);
+  const toggleWindowAgentPanel = useGammaStore((s) => s.toggleWindowAgentPanel);
 
   const registryEntry = win ? appRegistry[win.appId] : null;
   const hasAgent = registryEntry?.hasAgent ?? false;
@@ -154,7 +154,7 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
         window.removeEventListener("pointermove", onMove);
         el.style.setProperty("--win-x", `${currentX}px`);
         el.style.setProperty("--win-y", `${currentY}px`);
-        useOSStore.getState().updateWindowPosition(id, { x: currentX, y: currentY });
+        useGammaStore.getState().updateWindowPosition(id, { x: currentX, y: currentY });
       };
 
       window.addEventListener("pointermove", onMove);
@@ -234,8 +234,8 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
         el.style.setProperty("--win-x", `${curX}px`);
         el.style.setProperty("--win-y", `${curY}px`);
         // Single Zustand write
-        useOSStore.getState().updateWindowDimensions(id, { width: curW, height: curH });
-        useOSStore.getState().updateWindowPosition(id, { x: curX, y: curY });
+        useGammaStore.getState().updateWindowDimensions(id, { width: curW, height: curH });
+        useGammaStore.getState().updateWindowPosition(id, { x: curX, y: curY });
       };
 
       window.addEventListener("pointermove", onMove);
