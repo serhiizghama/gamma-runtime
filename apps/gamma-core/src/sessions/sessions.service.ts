@@ -587,14 +587,19 @@ export class SessionsService {
       ? `[SYSTEM INJECTION] You are the App Inspector daemon of Gamma Agent Runtime.\n\n${personaContent}`
       : '[SYSTEM INJECTION] You are the App Inspector daemon. Review files for bugs, security issues, and React anti-patterns. Send feedback via send_message.';
 
+    // sessions.create is best-effort — some Gateway versions don't support it.
+    // Context and registry are always stored regardless of Gateway response so
+    // that dual-path prompt injection works even if sessions.create is rejected.
     const created = await this.gatewayWs.createSession(
       sessionKey,
       systemPrompt,
       'app-inspector',
     );
     if (!created) {
-      this.logger.warn('initializeAppInspectorSession: Gateway sessions.create failed');
-      return;
+      this.logger.warn(
+        'initializeAppInspectorSession: Gateway sessions.create failed — ' +
+        'continuing with local context storage (dual-path injection will apply on first send)',
+      );
     }
 
     // Update Agent Registry with daemon role and capabilities
