@@ -5,6 +5,7 @@ import type { Logger } from 'pino';
 import type { CrashReport, SessionAbort } from './types';
 
 const WATCHDOG_COMMANDS_CHANNEL = 'gamma:watchdog:commands';
+const SYSTEM_EVENTS_CHANNEL = 'gamma:system:events';
 
 /**
  * Orchestrates the healing sequence: FREEZE → ROLLBACK → (future: RESTART → FEEDBACK)
@@ -48,11 +49,15 @@ export class HealingLoop {
     }
 
     // ── PHASE 2: ROLLBACK ──────────────────────────────────────────────
+    let rollbackOk = false;
     if (report.affectedFile) {
-      this.rollback(report.affectedFile);
+      rollbackOk = this.rollback(report.affectedFile);
     } else {
       this.logger.info('No affectedFile — skipping ROLLBACK phase');
     }
+
+    // ── PHASE 2.5: PUBLISH SYSTEM EVENT (Sentinel visibility) ─────────
+    await this.publishSystemEvent(report, rollbackOk);
 
     // ── PHASE 3+4: RESTART & FEEDBACK (future milestones) ─────────────
   }
@@ -84,22 +89,60 @@ export class HealingLoop {
 
   // ── ROLLBACK ────────────────────────────────────────────────────────
 
-  private rollback(affectedFile: string): void {
+  // ── SYSTEM EVENT BRIDGE ─────────────────────────────────────────────
+
+  private async publishSystemEvent(report: CrashReport, rollbackOk: boolean): Promise<void> {
+    const appDir = report.affectedFile ? this.resolveAppDir(report.affectedFile) : 'unknown';
+    const appId = appDir.split(path.sep).pop() ?? appDir;
+    const agentPart = report.agentSessionId ? ` (agent: ${report.agentSessionId})` : '';
+
+    const message = rollbackOk
+      ? `CRITICAL: Rollback — '${appId}' restored from .bak_session${agentPart} [${report.crashType}]`
+      : `CRITICAL: Rollback FAILED — could not restore '${appId}'${agentPart} [${report.crashType}]`;
+
+    const payload = JSON.stringify({
+      type: 'critical',
+      message,
+      ts: Date.now(),
+      meta: {
+        service: report.service,
+        crashType: report.crashType,
+        appId,
+        agentSessionId: report.agentSessionId,
+        rollbackOk,
+      },
+    });
+
+    try {
+      await this.redis.publish(SYSTEM_EVENTS_CHANNEL, payload);
+      this.logger.info(
+        { channel: SYSTEM_EVENTS_CHANNEL, appId, rollbackOk },
+        '[BRIDGE] System event published to gamma:system:events',
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error({ err: msg }, '[BRIDGE] Failed to publish system event');
+    }
+  }
+
+  // ── ROLLBACK ────────────────────────────────────────────────────────
+
+  private rollback(affectedFile: string): boolean {
     const appDir = this.resolveAppDir(affectedFile);
     const bakDir = `${appDir}.bak_session`;
 
     // Prefer directory-level snapshot; fall back to legacy per-file .bak
     if (existsSync(bakDir)) {
-      this.rollbackDirectory(appDir, bakDir);
+      return this.rollbackDirectory(appDir, bakDir);
     } else {
-      this.rollbackSingleFile(affectedFile);
+      return this.rollbackSingleFile(affectedFile);
     }
   }
 
   /**
    * Restores the entire app directory from a `.bak_session` snapshot.
    */
-  private rollbackDirectory(appDir: string, bakDir: string): void {
+  private rollbackDirectory(appDir: string, bakDir: string): boolean {
     try {
       rmSync(appDir, { recursive: true, force: true });
       cpSync(bakDir, appDir, { recursive: true });
@@ -107,19 +150,21 @@ export class HealingLoop {
         { appDir },
         `[ROLLBACK] Directory restored: ${appDir} ← ${bakDir}`,
       );
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(
         { appDir, err: msg },
         `[ROLLBACK] CRITICAL: directory restore failed — ${msg}`,
       );
+      return false;
     }
   }
 
   /**
    * Legacy fallback: restores a single file from its `.bak` copy.
    */
-  private rollbackSingleFile(affectedFile: string): void {
+  private rollbackSingleFile(affectedFile: string): boolean {
     const bakPath = `${affectedFile}.bak`;
 
     if (!existsSync(bakPath)) {
@@ -127,7 +172,7 @@ export class HealingLoop {
         { affectedFile, bakPath },
         `[ROLLBACK] CRITICAL: no .bak_session or .bak found — backup contract violated`,
       );
-      return;
+      return false;
     }
 
     try {
@@ -136,12 +181,14 @@ export class HealingLoop {
         { affectedFile },
         `[ROLLBACK] Single-file rollback successful for ${affectedFile}`,
       );
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(
         { affectedFile, err: msg },
         `[ROLLBACK] CRITICAL: Failed to restore .bak — ${msg}`,
       );
+      return false;
     }
   }
 

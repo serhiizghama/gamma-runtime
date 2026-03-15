@@ -95,7 +95,9 @@ export class ScaffoldService {
   async scaffold(req: ScaffoldRequest): Promise<ScaffoldResult> {
     const safeId = req.appId.replace(/[^a-z0-9-]/gi, '');
     const pascalName = pascal(safeId);
-    const fileName = `${pascalName}App.tsx`;
+    // Avoid double "App" suffix: smoke-test-app → SmokeTestApp (already ends in App)
+    const componentName = pascalName.endsWith('App') ? pascalName : `${pascalName}App`;
+    const fileName = `${componentName}.tsx`;
 
     // Security scan + structural validation
     const result = this.validation.validateSource(req.sourceCode, fileName);
@@ -156,7 +158,7 @@ export class ScaffoldService {
     const hasAgent = await this.storage.fileExists(agentPromptPath);
 
     // Register in app registry — preserve createdAt from existing entry
-    const modulePath = `./apps/gamma-ui/apps/private/${safeId}/${pascalName}App`;
+    const modulePath = `./apps/gamma-ui/apps/private/${safeId}/${componentName}`;
     const bundlePath = `./apps/gamma-ui/apps/private/${safeId}/`;
     const now = Date.now();
 
@@ -243,9 +245,10 @@ export class ScaffoldService {
       }
 
       const pascalName = pascal(safeId);
+      const componentName = pascalName.endsWith('App') ? pascalName : `${pascalName}App`;
       const modulePath =
         entry?.modulePath ??
-        `./apps/gamma-ui/apps/private/${safeId}/${pascalName}App`;
+        `./apps/gamma-ui/apps/private/${safeId}/${componentName}`;
       const bundlePath =
         entry?.bundlePath ?? `./apps/gamma-ui/apps/private/${safeId}/`;
 
