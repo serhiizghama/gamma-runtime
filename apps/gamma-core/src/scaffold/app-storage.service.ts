@@ -184,6 +184,47 @@ export class AppStorageService implements OnModuleInit {
     return null;
   }
 
+  // ── Automated Rollback ───────────────────────────────────────────────
+
+  /**
+   * Restores an app from its `.bak_session` snapshot.
+   * Returns true if rollback succeeded, false if no valid snapshot exists.
+   */
+  async rollbackApp(appId: string): Promise<boolean> {
+    const appDir = await this.resolveAppRoot(appId);
+    if (!appDir) {
+      this.logger.warn(`[ROLLBACK] App directory not found for '${appId}' — skipping`);
+      return false;
+    }
+
+    const bakDir = `${appDir}.bak_session`;
+
+    // Sanity check: .bak_session must exist and contain at least one file
+    if (!(await this.fileExists(bakDir))) {
+      this.logger.warn(`[ROLLBACK] No .bak_session found for '${appId}' — skipping`);
+      return false;
+    }
+
+    try {
+      const entries = await fs.readdir(bakDir);
+      if (entries.length === 0) {
+        this.logger.warn(`[ROLLBACK] .bak_session for '${appId}' is empty — skipping`);
+        return false;
+      }
+    } catch {
+      this.logger.warn(`[ROLLBACK] .bak_session for '${appId}' is unreadable — skipping`);
+      return false;
+    }
+
+    // Remove the corrupted app directory and restore from snapshot
+    await fs.rm(appDir, { recursive: true, force: true });
+    await fs.cp(bakDir, appDir, { recursive: true });
+
+    this.logger.log(`[ROLLBACK] ${appId} restored from ${bakDir}`);
+    this.eventLog?.push(`Automated rollback completed for '${appId}'`, 'critical');
+    return true;
+  }
+
   async fileExists(absolutePath: string): Promise<boolean> {
     try {
       await fs.access(absolutePath);

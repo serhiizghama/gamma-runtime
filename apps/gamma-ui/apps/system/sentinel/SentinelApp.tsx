@@ -190,9 +190,10 @@ function tierStyle(tier: "system" | "private"): React.CSSProperties {
 
 function eventColor(type: SystemEvent["type"]): string {
   switch (type) {
-    case "info":  return "#22c55e";
-    case "warn":  return "#eab308";
-    case "error": return "#ef4444";
+    case "info":     return "#22c55e";
+    case "warn":     return "#eab308";
+    case "error":    return "#ef4444";
+    case "critical": return "#ef4444";
   }
 }
 
@@ -360,6 +361,12 @@ function ActivityFeed({ events }: { events: SystemEvent[] }): React.ReactElement
             padding: "3px 0",
             borderBottom: "1px solid var(--color-border-subtle-strong)",
             fontSize: 11,
+            ...(ev.type === "critical" ? {
+              background: "rgba(239, 68, 68, 0.12)",
+              padding: "3px 4px",
+              borderRadius: 3,
+              fontWeight: 600,
+            } : {}),
           }}
         >
           <span

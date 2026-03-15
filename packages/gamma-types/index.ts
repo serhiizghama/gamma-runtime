@@ -210,7 +210,7 @@ export interface BackupFileEntry {
   modifiedAt: number;
 }
 
-export type SystemEventType = 'info' | 'warn' | 'error';
+export type SystemEventType = 'info' | 'warn' | 'error' | 'critical';
 
 export interface SystemEvent {
   ts: number;

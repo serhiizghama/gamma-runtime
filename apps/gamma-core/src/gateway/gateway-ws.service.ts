@@ -486,6 +486,11 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         // Cleanup run tracking + watchdog timers
         this.runStepCounters.delete(runId);
         this.toolWatchdog.clearWindow(windowId);
+
+        // Reset rollback cooldown on successful completion
+        if (sessionKey.startsWith('app-owner-')) {
+          this.toolWatchdog.resetRollbackCount(sessionKey.replace('app-owner-', ''));
+        }
         return;
       }
 
@@ -514,6 +519,15 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         this.runStepCounters.delete(runId);
         this.toolWatchdog.clearWindow(windowId);
+
+        // Automated rollback for app-owner sessions on lifecycle error
+        if (sessionKey.startsWith('app-owner-')) {
+          const appId = sessionKey.replace('app-owner-', '');
+          this.toolWatchdog.triggerRollback(appId).catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.logger.error(`[Lifecycle] Rollback failed for '${appId}': ${msg}`);
+          });
+        }
         return;
       }
 
@@ -662,6 +676,15 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
               'lastEventAt', String(Date.now()),
               'lastEventId', errEventId,
             );
+
+            // Automated rollback for app-owner sessions (spec §6.2 self-healing)
+            if (sessionKey.startsWith('app-owner-')) {
+              const appId = sessionKey.replace('app-owner-', '');
+              this.toolWatchdog.triggerRollback(appId).catch((err: unknown) => {
+                const msg = err instanceof Error ? err.message : String(err);
+                this.logger.error(`[Watchdog] Rollback failed for '${appId}': ${msg}`);
+              });
+            }
           });
         }
 
