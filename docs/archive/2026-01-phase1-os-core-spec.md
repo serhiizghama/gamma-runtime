@@ -1,4 +1,8 @@
-# Gamma OS — Phase 1 Technical Specification & PRD
+# [DONE] Gamma OS — Phase 1 Technical Specification & PRD
+
+**Status:** COMPLETE — Foundational specification, fully implemented.
+**Completion Date:** 2026-03-15
+**Archived from:** `docs/architecture/phase1-os-core.md`
 
 ---
 

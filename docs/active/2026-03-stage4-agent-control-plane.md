@@ -1,5 +1,8 @@
 # Stage 4 Implementation Plan: Agent Control Plane
 
+**Status:** IN PROGRESS — Phases 1-4 largely implemented (SessionRegistryService, telemetry, API endpoints, Agent Monitor UI).
+**Last audit:** 2026-03-15
+
 > **Goal:** Introduce an observability and task-management layer that exposes real-time session telemetry, token consumption, and lifecycle controls — surfaced as a new built-in "Agent Monitor" system application.
 
 ---

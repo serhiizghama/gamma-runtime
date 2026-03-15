@@ -1,6 +1,8 @@
-# Monorepo Migration & Rebranding Plan
+# [DONE] Monorepo Migration & Rebranding Plan
 
-**Status:** PENDING
+**Status:** COMPLETE
+**Completion Date:** 2026-03-15
+**Archived from:** `docs/plans/monorepo-migration.md`
 **Goal:** Safely migrate the flat `web/` + `kernel/` structure into a proper `apps/` monorepo layout and replace all "Gamma OS" references with "Gamma Agent Runtime" (or just "Gamma").
 
 > **Rule:** Do NOT skip milestones. Each milestone must pass its verification step before proceeding to the next. This prevents broken intermediate states.

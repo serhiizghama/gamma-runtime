@@ -1,6 +1,8 @@
-# Gamma OS — Phase 2: Backend Integration Specification
+# [DONE] Gamma OS — Phase 2: Backend Integration Specification
 **Version:** 1.6  
-**Status:** Ready for Implementation  
+**Status:** COMPLETE — All features implemented.
+**Completion Date:** 2026-03-15
+**Archived from:** `docs/architecture/phase2-backend.md`  
 **Audience:** Senior Backend Developer (NestJS + Redis)  
 **Changelog v1.6:** User Input endpoint (`POST /api/sessions/:windowId/send`) — the missing "browser → agent" path. Session Lifecycle & Garbage Collection — explicit Gateway session kill on `DELETE`, background GC cron (hourly, 24h TTL) to prevent orphaned sessions from leaking Gateway memory on F5/tab close.  
 **Changelog v1.5:** Smart Commit Architecture — nested Git workspace for generated apps (decoupled from main repo), branch-specific commits (`SCAFFOLD_GIT_BRANCH`), optional auto-push to private remote, updated ScaffoldService with isolated Git context.  

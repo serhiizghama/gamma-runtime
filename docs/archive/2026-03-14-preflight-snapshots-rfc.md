@@ -1,6 +1,8 @@
-# Mini-RFC: Pre-flight Directory Snapshots
+# [DONE] Mini-RFC: Pre-flight Directory Snapshots
 
-**Status:** Draft
+**Status:** COMPLETE — Implemented in `app-storage.service.ts` + `healing-loop.ts`.
+**Completion Date:** 2026-03-15
+**Archived from:** `docs/rfcs/preflight-snapshots.md`
 **Date:** 2026-03-14
 **Author:** System Architect
 

@@ -1,7 +1,7 @@
 # Gamma Agent Runtime — System Architecture
 
 > Single Source of Truth for all AI agents and human contributors.
-> Last updated: 2026-03-14
+> Last updated: 2026-03-15
 
 ---
 
@@ -15,6 +15,7 @@ Gamma Agent Runtime is a monorepo platform for long-lived LLM-agent orchestratio
 |---------|---------|------|
 | **gamma-core** | `@gamma/core` | NestJS 10 + Fastify backend. Manages agent sessions, WebSocket relay to OpenClaw Gateway, SSE streaming to browser, scaffold pipeline, file jail, and pre-flight snapshots. |
 | **gamma-ui** | `@gamma/ui` | Vite + React frontend. Desktop OS shell with window manager, launchpad, dock, and embedded agent chat panels. |
+| **gamma-watchdog** | `apps/gamma-watchdog` | Isolated Node.js daemon. Listens to `gamma:memory:bus` for `CRASH_REPORT` events. Executes FREEZE → ROLLBACK healing loop using `.bak_session` snapshots (preferred) or per-file `.bak` fallback. |
 
 ### Communication Channels
 
@@ -50,8 +51,16 @@ gamma-runtime/                          ← monorepo root (package.json: "gamma-
 │   │   └── src/
 │   │       ├── gateway/                ← WebSocket relay, session management
 │   │       ├── scaffold/               ← app generation, file jail, snapshots
+│   │       ├── sessions/               ← session lifecycle, registry, GC
+│   │       ├── system/                 ← health, backup inventory, event log
 │   │       ├── sse/                    ← SSE controller, stream batcher
 │   │       └── pty/                    ← terminal emulation (node-pty)
+│   ├── gamma-watchdog/                 ← crash detection & healing daemon
+│   │   └── src/
+│   │       ├── main.ts                 ← entry point
+│   │       ├── healing-loop.ts         ← FREEZE → ROLLBACK orchestrator
+│   │       ├── redis-listener.ts       ← CRASH_REPORT stream consumer
+│   │       └── types.ts               ← CrashReport, SessionAbort, AgentFeedback
 │   └── gamma-ui/                       ← frontend service
 │       ├── components/                 ← React components (AgentChat, MessageList, WindowNode, etc.)
 │       ├── hooks/                      ← useAgentStream, useThrottledValue, useSessionRegistry
@@ -63,7 +72,8 @@ gamma-runtime/                          ← monorepo root (package.json: "gamma-
 │           │   ├── browser/
 │           │   ├── notes/
 │           │   ├── kernel-monitor/
-│           │   └── agent-monitor/
+│           │   ├── agent-monitor/
+│           │   └── sentinel/
 │           └── private/                ← user-generated app bundles (the "jail")
 │               └── {app-id}/
 │                   ├── {AppName}.tsx
@@ -73,9 +83,10 @@ gamma-runtime/                          ← monorepo root (package.json: "gamma-
 │   └── gamma-types/                    ← shared TypeScript types (GammaSSEEvent, etc.)
 └── docs/
     ├── system/                         ← this document (Single Source of Truth)
-    ├── architecture/                   ← phase-specific design specs (historical)
-    ├── rfcs/                           ← approved RFCs
-    ├── plans/                          ← implementation plans
+    ├── architecture/                   ← active phase-specific design specs
+    ├── active/                         ← in-progress implementation plans
+    ├── archive/                        ← completed plans, specs, and RFCs
+    ├── backlog/                        ← paused/future work items
     └── agents/                         ← agent persona definitions
 ```
 
@@ -119,6 +130,23 @@ This provides atomic rollback capability for multi-file agent operations.
 ### 4.3 Tool Watchdog
 
 `ToolWatchdogService` enforces a 30-second timeout on individual tool calls. On timeout, it emits a `lifecycle_error` event. This is independent of the streaming relay and does not interfere with real-time event delivery.
+
+### 4.4 Gamma Watchdog (Sentinel)
+
+`gamma-watchdog` is an isolated Node.js daemon (`apps/gamma-watchdog/`) that subscribes to `gamma:memory:bus` for `CRASH_REPORT` events. On crash detection it executes:
+
+1. **FREEZE**: Publishes `SESSION_ABORT` to `gamma:watchdog:commands` Redis channel.
+2. **ROLLBACK**: Restores from `.bak_session` directory snapshot (preferred) or falls back to per-file `.bak` copies.
+
+The **Sentinel UI** (`apps/gamma-ui/apps/system/sentinel/SentinelApp.tsx`) provides real-time visibility into backup snapshots, per-file backups, and system events via the `GET /api/system/backups` endpoint.
+
+### 4.5 SystemEventLog
+
+`SystemEventLogService` (`apps/gamma-core/src/system/system-event-log.service.ts`) maintains an in-memory ring buffer (max 100 events) of system-level events (tool timeouts, watchdog actions, backup scans). Events are included in the backup inventory response and displayed in the Sentinel UI activity feed.
+
+### 4.6 SystemMonitorService
+
+`SystemMonitorService` (`apps/gamma-core/src/system/system-monitor.service.ts`) scans both system and private app directories for `.bak_session` snapshots and per-file `.bak` backups. Returns a `BackupInventory` with metadata (size, file count, timestamps) via `GET /api/system/backups` (guarded by `SystemAppGuard`).
 
 ---
 
@@ -231,6 +259,10 @@ This rule applies to all agents (System Architect, App Owners) and human contrib
 | `apps/gamma-core/src/sse/stream-batcher.ts` | 50ms SSE event debouncing |
 | `apps/gamma-core/src/sse/sse.controller.ts` | SSE endpoint, Redis XREAD |
 | `apps/gamma-core/src/gateway/tool-watchdog.service.ts` | 30s tool call timeout |
+| `apps/gamma-core/src/sessions/session-registry.service.ts` | Session telemetry (tokens, status, run count) |
+| `apps/gamma-core/src/system/system-monitor.service.ts` | Backup inventory scanner |
+| `apps/gamma-core/src/system/system-event-log.service.ts` | In-memory event ring buffer |
+| `apps/gamma-watchdog/src/healing-loop.ts` | FREEZE → ROLLBACK crash healer |
 | `apps/gamma-ui/hooks/useAgentStream.ts` | SSE consumer, 100ms throttled streaming state |
 | `apps/gamma-ui/hooks/useThrottledValue.ts` | Generic render throttle hook |
 | `apps/gamma-ui/components/MessageList.tsx` | Chat message rendering, streaming bubble |
