@@ -5,9 +5,11 @@
 
 ---
 
-## ~~1. App Owner Tool Scoping (from Phase 3, Task 9.4)~~ [DONE]
+## ~~1. App Owner Tool Scoping (from Phase 3, Task 9.4)~~ [DONE — HARDENED]
 
 Implemented in `gateway-ws.service.ts`: role-based `allowedTools` arrays passed on `sessions.create`. App Owners restricted to `shell_exec`, `fs_read`, `fs_write`, `fs_list`, `update_app`, `read_context`, `list_assets`, `add_asset`. System Architect gets full toolset.
+
+**Hardening (§9.5):** Backend path validation now enforced via `ToolJailGuardService`. All filesystem tool calls (`fs_read`, `fs_write`, `fs_list`) are validated against the app's jail directory before execution. `shell_exec` commands are scanned for escape patterns (traversal, absolute paths, command substitution, pipe-to-shell). System Architect is exempt. Violations are blocked, logged as critical events, and rejected back to the Gateway. `AppStorageService.validateJailPath(appId, targetPath)` provides reusable per-app jail validation.
 
 ---
 

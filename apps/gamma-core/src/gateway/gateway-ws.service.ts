@@ -22,6 +22,7 @@ import {
   isReasoningStream,
 } from './event-classifier';
 import { ToolWatchdogService } from './tool-watchdog.service';
+import { ToolJailGuardService } from './tool-jail-guard.service';
 import { SessionRegistryService } from '../sessions/session-registry.service';
 import { AppStorageService } from '../scaffold/app-storage.service';
 import { ContextInjectorService } from '../scaffold/context-injector.service';
@@ -196,6 +197,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly toolWatchdog: ToolWatchdogService,
+    private readonly toolJailGuard: ToolJailGuardService,
     private readonly sessionRegistry: SessionRegistryService,
     private readonly appStorage: AppStorageService,
     @Optional() private readonly contextInjector?: ContextInjectorService,
@@ -676,6 +678,48 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       const toolCallId = data?.toolCallId ?? '';
 
       if (phase !== 'result') {
+        // ── Jail Guard: validate tool arguments before execution ──────
+        const violation = this.toolJailGuard.validate(
+          sessionKey,
+          name,
+          (data?.arguments as Record<string, unknown>) ?? null,
+        );
+        if (violation) {
+          this.logger.error(
+            `[JailGuard] BLOCKED ${name} for ${sessionKey}: ${violation.reason}`,
+          );
+          this.eventLog?.push(
+            `Jail violation blocked: ${name} by ${sessionKey} — ${violation.reason}`,
+            'critical',
+          );
+
+          // Push a synthetic tool_result error to SSE so the UI sees the rejection
+          await this.pushSSE(sseKey, {
+            type: 'tool_result',
+            windowId,
+            runId,
+            name,
+            toolCallId,
+            result: `BLOCKED: ${violation.reason}`,
+            isError: true,
+          });
+
+          // Send rejection to the Gateway so the agent gets an error result
+          if (toolCallId) {
+            this.send({
+              type: 'req',
+              id: ulid(),
+              method: 'tools.reject',
+              params: {
+                sessionKey: this.toOpenClawKey(sessionKey),
+                toolCallId,
+                error: `Security: ${violation.reason}`,
+              },
+            });
+          }
+          return;
+        }
+
         // Tool call initiated
         const eventId = await this.pushSSE(sseKey, {
           type: 'tool_call',

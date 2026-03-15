@@ -108,6 +108,43 @@ export class AppStorageService implements OnModuleInit {
     return this.JAIL_ROOT;
   }
 
+  /**
+   * Validates that a target path stays within the app's bundle directory.
+   * Throws ForbiddenException if the path escapes the jail.
+   *
+   * Unlike jailPath() (which resolves relative paths against JAIL_ROOT),
+   * this validates against a specific app's subdirectory — ensuring one
+   * app-owner cannot access another app's files.
+   *
+   * @param appId — the app identifier (kebab-case)
+   * @param targetPath — relative path to validate
+   */
+  validateJailPath(appId: string, targetPath: string): string {
+    if (path.isAbsolute(targetPath)) {
+      throw new ForbiddenException(
+        `Jail violation: absolute path '${targetPath}' forbidden for app '${appId}'`,
+      );
+    }
+
+    const normalized = path.normalize(targetPath);
+    if (normalized.split(path.sep).some((segment) => segment.startsWith('.'))) {
+      throw new ForbiddenException(
+        `Jail violation: hidden file/directory access forbidden for app '${appId}': '${targetPath}'`,
+      );
+    }
+
+    const appRoot = path.resolve(this.JAIL_ROOT, appId);
+    const resolved = path.resolve(appRoot, normalized);
+
+    if (resolved !== appRoot && !resolved.startsWith(appRoot + path.sep)) {
+      throw new ForbiddenException(
+        `Jail violation: path '${targetPath}' resolves outside app '${appId}' bundle`,
+      );
+    }
+
+    return resolved;
+  }
+
   // ── File System Operations ────────────────────────────────────────────
 
   async ensureDir(absolutePath: string): Promise<void> {
