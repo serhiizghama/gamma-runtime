@@ -431,7 +431,13 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`handleAgentEvent: key=${sessionKey}, stream=${payload.stream}, data=${JSON.stringify(payload.data).slice(0, 200)}`);
     const windowId = this.sessionToWindow.get(sessionKey);
     if (!windowId) {
-      this.logger.warn(`agentEvent: no window mapping for sessionKey=${sessionKey}, known=[${[...this.sessionToWindow.keys()]}]`);
+      // External sessions (e.g. Discord agents) have no UI window — silently skip
+      const isExternal = /:(discord|telegram|slack|api):/.test(sessionKey);
+      if (isExternal) {
+        this.logger.debug(`agentEvent: ignoring external session ${sessionKey}`);
+      } else {
+        this.logger.warn(`agentEvent: no window mapping for sessionKey=${sessionKey}, known=[${[...this.sessionToWindow.keys()]}]`);
+      }
       return;
     }
 
@@ -512,19 +518,15 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
         );
         await this.redis.expire(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 14400); // 4h TTL
 
-        // Flip status to idle immediately — tokens will arrive via the RPC below
+        // Flip status to idle immediately
         await this.sessionRegistry.upsert({
           sessionKey,
           status: 'idle',
           lastActiveAt: nowMs,
         });
 
-        // Request authoritative token metrics via the official session-usage RPC.
-        // Fire-and-forget: errors are logged but must not block SSE delivery.
-        this.requestSessionUsage(sessionKey).catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.logger.warn(`[Telemetry] session-usage request error for ${sessionKey}: ${msg}`);
-        });
+        // NOTE: session-usage RPC was removed from the Gateway contract.
+        // Token metrics are now derived from streamed lifecycle events.
 
         // Cleanup run tracking + watchdog timers
         this.runStepCounters.delete(runId);
@@ -1253,39 +1255,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       }
     }, 10_000);
     return { accepted: true };
-  }
-
-  // ── Telemetry: authoritative token usage via session-usage RPC ────────
-
-  /**
-   * Request cumulative token usage from the Gateway using the official
-   * session-usage RPC method. Called fire-and-forget after lifecycle_end.
-   * On success, calls accumulateTokens() so the monitor reflects real data.
-   */
-  private async requestSessionUsage(sessionKey: string): Promise<void> {
-    if (!this.connected) return;
-
-    const frameId = ulid();
-    this.send({
-      type: 'req',
-      id: frameId,
-      method: 'session-usage',
-      params: { sessionKey: this.toOpenClawKey(sessionKey) },
-    });
-
-    try {
-      const res = await this.waitForResponse(frameId, 3000);
-      if (!res.ok) {
-        this.logger.warn(
-          `[Telemetry] session-usage returned not-ok for ${sessionKey}: ${JSON.stringify(res.error ?? {})}`,
-        );
-        return;
-      }
-      await this.applyUsageFromPayload(sessionKey, res.payload ?? {}, 'session-usage RPC');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`[Telemetry] session-usage timed out for ${sessionKey}: ${msg}`);
-    }
   }
 
   /**
