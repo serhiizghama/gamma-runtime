@@ -6,6 +6,8 @@ export interface SystemEvent {
   ts: number;
   type: SystemEventType;
   message: string;
+  /** Structured metadata from watchdog post-mortems (reason, appId, etc.) */
+  meta?: Record<string, unknown>;
 }
 
 const MAX_EVENTS = 100;
@@ -21,8 +23,8 @@ const MAX_EVENTS = 100;
 export class SystemEventLog {
   private readonly buffer: SystemEvent[] = [];
 
-  push(message: string, type: SystemEventType = 'info'): void {
-    this.buffer.push({ ts: Date.now(), type, message });
+  push(message: string, type: SystemEventType = 'info', meta?: Record<string, unknown>): void {
+    this.buffer.push({ ts: Date.now(), type, message, ...(meta ? { meta } : {}) });
     if (this.buffer.length > MAX_EVENTS) {
       this.buffer.splice(0, this.buffer.length - MAX_EVENTS);
     }

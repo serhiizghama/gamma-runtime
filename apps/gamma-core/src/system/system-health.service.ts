@@ -48,6 +48,9 @@ export class SystemHealthService {
       ? Math.round((ramUsedMb / ramTotalMb) * 100)
       : 0;
 
+    // Check watchdog heartbeat (only if Redis is up)
+    const watchdogOnline = redisOk ? await this.checkWatchdogHeartbeat() : false;
+
     // Determine overall status
     let status: SystemHealthReport['status'] = 'ok';
     if (!redisOk) {
@@ -56,15 +59,24 @@ export class SystemHealthService {
       status = 'degraded'; // Gateway down but Redis up
     }
 
+    // Watchdog offline is a warning, but doesn't override 'error'
+    let statusNote: string | undefined;
+    if (redisOk && !watchdogOnline) {
+      if (status === 'ok') status = 'degraded';
+      statusNote = 'WARNING: Watchdog Offline';
+    }
+
     return {
       ts: Date.now(),
       status,
+      ...(statusNote ? { statusNote } : {}),
       cpu: { usagePct: cpuPct },
       ram: { usedMb: ramUsedMb, totalMb: ramTotalMb, usedPct: ramUsedPct },
       redis: { connected: redisOk, latencyMs: redisLatencyMs },
       gateway: { connected: gwOk, latencyMs: gwLatencyMs },
       eventLag,
-    };
+      watchdog: { online: watchdogOnline },
+    } as SystemHealthReport;
   }
 
   // ── Redis ping ──────────────────────────────────────────────────────
@@ -160,6 +172,23 @@ export class SystemHealthService {
     } catch {
       // Fallback if commands fail
       return { cpuPct: -1, ramUsedMb: -1, ramTotalMb: -1 };
+    }
+  }
+
+  // ── Watchdog heartbeat (§4 Observability) ──────────────────────────
+
+  private static readonly WATCHDOG_HEARTBEAT_KEY = 'gamma:watchdog:heartbeat';
+  private static readonly WATCHDOG_STALE_MS = 30_000;
+
+  private async checkWatchdogHeartbeat(): Promise<boolean> {
+    try {
+      const raw = await this.redis.get(SystemHealthService.WATCHDOG_HEARTBEAT_KEY);
+      if (!raw) return false;
+      const lastBeat = parseInt(raw, 10);
+      if (isNaN(lastBeat)) return false;
+      return Date.now() - lastBeat < SystemHealthService.WATCHDOG_STALE_MS;
+    } catch {
+      return false;
     }
   }
 

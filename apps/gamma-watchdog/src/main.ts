@@ -1,6 +1,7 @@
 import pino from 'pino';
 import { RedisListener } from './redis-listener';
 import { HealingLoop } from './healing-loop';
+import { Heartbeat } from './heartbeat';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -15,7 +16,11 @@ const logger = pino({
 async function main() {
   logger.info('Gamma Watchdog daemon is starting...');
 
-  // ── Healing Loop (FREEZE → ROLLBACK → future: RESTART → FEEDBACK) ──
+  // ── Heartbeat (Observability §4) ──────────────────────────────────
+  const heartbeat = new Heartbeat(REDIS_URL, logger);
+  heartbeat.start();
+
+  // ── Healing Loop (FREEZE → ROLLBACK → FEEDBACK) ──────────────────
   const healer = new HealingLoop(REDIS_URL, logger);
 
   // ── Redis Listener (Detect phase) ──────────────────────────────────
@@ -31,6 +36,7 @@ async function main() {
     logger.info({ signal }, 'Received shutdown signal, exiting...');
     await listener.stop();
     await healer.stop();
+    await heartbeat.stop();
     process.exit(0);
   };
 

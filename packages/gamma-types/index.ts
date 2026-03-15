@@ -185,11 +185,15 @@ export interface ScaffoldResult {
 export interface SystemHealthReport {
   ts: number;
   status: 'ok' | 'degraded' | 'error';
+  /** Human-readable warning when a subsystem is degraded (e.g. 'WARNING: Watchdog Offline') */
+  statusNote?: string;
   cpu: { usagePct: number };
   ram: { usedMb: number; totalMb: number; usedPct: number };
   redis: { connected: boolean; latencyMs: number };
   gateway: { connected: boolean; latencyMs: number };
   eventLag: { avgMs: number; maxMs: number; samples: number } | null;
+  /** Watchdog daemon liveness — based on heartbeat key freshness */
+  watchdog?: { online: boolean };
 }
 
 // ── §17 Sentinel — Backup Inventory ─────────────────────────────────────
@@ -218,6 +222,8 @@ export interface SystemEvent {
   ts: number;
   type: SystemEventType;
   message: string;
+  /** Structured metadata from watchdog post-mortems (reason, appId, etc.) */
+  meta?: Record<string, unknown>;
 }
 
 export interface BackupInventory {

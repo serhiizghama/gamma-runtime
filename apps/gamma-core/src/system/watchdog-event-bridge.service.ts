@@ -86,7 +86,8 @@ export class WatchdogEventBridgeService implements OnModuleInit, OnModuleDestroy
           ? event.message.trim()
           : 'Watchdog: unstructured system event received';
 
-      this.eventLog.push(message, type);
+      const meta = event.meta && typeof event.meta === 'object' ? event.meta : undefined;
+      this.eventLog.push(message, type, meta);
 
       this.logger.log(
         { type, channel: SYSTEM_EVENTS_CHANNEL },

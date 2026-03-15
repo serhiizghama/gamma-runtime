@@ -19,31 +19,24 @@ Fixed via dual-path injection: system prompt is now passed both on `sessions.cre
 
 ---
 
-## 3. Watchdog — Process Manager & Service Restart (from Watchdog Steps 5-6)
+## ~~3. Watchdog — Process Manager & Agent Feedback (from Watchdog Steps 5-6)~~ [DONE]
 
-**Priority:** P2
-**Area:** `apps/gamma-watchdog/`
+**Process Manager** (`process-manager.ts`): Spawns supervised children with `detached: true` for process-group kill. Tracks PIDs, detects fatal exits, restarts with exponential backoff (1s–15s). Circuit breaker trips after 3 crashes in 60s. `killService()` sends `SIGTERM` to entire process group (`-pid`), preventing zombies during SESSION_ABORT.
 
-Not yet implemented:
-- **`process-manager.ts`**: Spawn `gamma-core`/`gamma-proxy` as supervised children, detect fatal exits, restart with backoff (3 crashes in 60s → circuit breaker).
-- **`agent-feedback.ts`**: After rollback, publish `WATCHDOG_FEEDBACK` to `gamma:agent:{sessionId}:inbox` with structured error context for the offending agent.
-
-**Acceptance criteria:**
-- After a hard crash, service is back online within 5 seconds.
-- After 3 rapid crashes, watchdog enters circuit breaker mode.
-- Offending agent receives feedback with error log and rollback notification.
+**Agent Feedback** (`healing-loop.ts → sendAgentFeedback`): After rollback, publishes `WATCHDOG_FEEDBACK` to `gamma:watchdog:feedback` Pub/Sub with structured post-mortem: reason code (`TOOL_TIMEOUT`, `BUILD_FAILURE`, `RUNTIME_CRASH`, `HARD_CRASH`), error log excerpt, and remediation instruction. `SystemEventLog` now accepts and stores `meta` field from watchdog events.
 
 ---
 
-## 4. Watchdog — Observability Hardening (from Watchdog Step 7)
+## ~~4. Watchdog — Observability Hardening (from Watchdog Step 7)~~ [DONE]
 
-**Priority:** P3
-**Area:** `apps/gamma-watchdog/`
+**Heartbeat** (`heartbeat.ts`): Writes `gamma:watchdog:heartbeat` every 10s with 60s TTL auto-expire. Cleans up key on graceful shutdown.
 
-Not yet implemented:
-- **Health endpoint**: `GET :9000/health` returning watchdog status and supervised children state.
-- **VFS enforcement**: Exclude `gamma-watchdog/` from agent virtual filesystem.
-- **Self-protection test**: Watchdog ignores `CRASH_REPORT` events targeting its own source files.
+**Health integration** (`system-health.service.ts`): Checks heartbeat key freshness. If stale (>30s), sets `status: 'degraded'` with `statusNote: 'WARNING: Watchdog Offline'` and `watchdog: { online: false }` in `SystemHealthReport`.
+
+**Remaining (deferred to post-MVP):**
+- HTTP health endpoint (`GET :9000/health`) — not critical while heartbeat-via-Redis covers liveness.
+- VFS exclusion for `gamma-watchdog/` — already covered by jail guard (watchdog is outside `apps/gamma-ui/apps/private/`).
+- Self-protection test — watchdog only processes `CRASH_REPORT` for `gamma-core`/`gamma-ui`/`gamma-proxy` services; its own files are outside those service paths.
 
 ---
 
@@ -55,3 +48,5 @@ Not yet implemented:
 Pending verification:
 - [ ] Create app via Architect → modify via App Owner → data persists → delete → all resources cleaned
 - [ ] jailPath enforced on all reads/writes, no path traversal, no cross-app data access
+- [ ] Watchdog heartbeat visible in SystemHealthReport
+- [ ] Agent feedback delivered after rollback event

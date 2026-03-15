@@ -2,10 +2,11 @@ import Redis from 'ioredis';
 import { existsSync, copyFileSync, rmSync, cpSync } from 'fs';
 import * as path from 'path';
 import type { Logger } from 'pino';
-import type { CrashReport, SessionAbort } from './types';
+import type { CrashReport, SessionAbort, AgentFeedback, FeedbackReason } from './types';
 
 const WATCHDOG_COMMANDS_CHANNEL = 'gamma:watchdog:commands';
 const SYSTEM_EVENTS_CHANNEL = 'gamma:system:events';
+const AGENT_FEEDBACK_CHANNEL = 'gamma:watchdog:feedback';
 
 /**
  * Orchestrates the healing sequence: FREEZE → ROLLBACK → (future: RESTART → FEEDBACK)
@@ -59,7 +60,10 @@ export class HealingLoop {
     // ── PHASE 2.5: PUBLISH SYSTEM EVENT (Sentinel visibility) ─────────
     await this.publishSystemEvent(report, rollbackOk);
 
-    // ── PHASE 3+4: RESTART & FEEDBACK (future milestones) ─────────────
+    // ── PHASE 3: AGENT FEEDBACK ──────────────────────────────────────
+    if (report.agentSessionId) {
+      await this.sendAgentFeedback(report, rollbackOk);
+    }
   }
 
   async stop(): Promise<void> {
@@ -123,6 +127,51 @@ export class HealingLoop {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error({ err: msg }, '[BRIDGE] Failed to publish system event');
     }
+  }
+
+  // ── AGENT FEEDBACK ─────────────────────────────────────────────────
+
+  private async sendAgentFeedback(report: CrashReport, rollbackOk: boolean): Promise<void> {
+    const reasonCode = this.deriveReasonCode(report);
+    const rollbackNote = rollbackOk
+      ? 'Your previous changes were rolled back.'
+      : 'Rollback failed — manual intervention may be needed.';
+
+    const instruction =
+      `[WATCHDOG POST-MORTEM] Your last action caused a ${report.crashType} in ${report.service}. ` +
+      `${rollbackNote} ` +
+      `Reason: ${reasonCode}. ` +
+      `Please review the error and avoid repeating the same mistake:\n\n` +
+      report.errorLog.slice(0, 2000);
+
+    const feedback: AgentFeedback = {
+      type: 'WATCHDOG_FEEDBACK',
+      targetAgentSessionId: report.agentSessionId!,
+      timestamp: new Date().toISOString(),
+      affectedFile: report.affectedFile,
+      errorLog: report.errorLog,
+      instruction,
+      reasonCode,
+    };
+
+    try {
+      await this.redis.publish(AGENT_FEEDBACK_CHANNEL, JSON.stringify(feedback));
+      this.logger.info(
+        { sessionId: report.agentSessionId, reasonCode },
+        `[FEEDBACK] Post-mortem sent to ${report.agentSessionId}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error({ err: msg }, '[FEEDBACK] Failed to publish agent feedback');
+    }
+  }
+
+  private deriveReasonCode(report: CrashReport): FeedbackReason {
+    if (report.crashType === 'HARD_CRASH') return 'HARD_CRASH';
+    if (report.crashType === 'BUILD_ERROR') return 'BUILD_FAILURE';
+    if (report.errorLog.toLowerCase().includes('timeout')) return 'TOOL_TIMEOUT';
+    if (report.crashType === 'SOFT_CRASH') return 'RUNTIME_CRASH';
+    return 'UNKNOWN';
   }
 
   // ── ROLLBACK ────────────────────────────────────────────────────────

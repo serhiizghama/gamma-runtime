@@ -45,7 +45,17 @@ export interface AgentFeedback {
   errorLog: string;
   /** Human-readable instruction injected as a system message for the agent */
   instruction: string;
+  /** Machine-readable reason code for structured processing */
+  reasonCode: FeedbackReason;
 }
+
+/** Enumerated post-mortem reason codes for structured feedback. */
+export type FeedbackReason =
+  | 'TOOL_TIMEOUT'
+  | 'BUILD_FAILURE'
+  | 'RUNTIME_CRASH'
+  | 'HARD_CRASH'
+  | 'UNKNOWN';
 
 export interface SessionAbort {
   type: 'SESSION_ABORT';
