@@ -18,42 +18,6 @@ import { useAppRegistry } from "../hooks/useAppRegistry";
  * before the first render, so by the time this effect runs, windows already
  * contains any saved state. An empty object means a genuine first boot.
  */
-import { API_BASE } from "../constants/api";
-
-// ── Boot: ensure System Architect session exists ─────────────────────────
-
-function useArchitectSession() {
-  useEffect(() => {
-    let cancelled = false;
-
-    const ensureSession = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/sessions`);
-        if (!res.ok) return;
-        const sessions: { windowId: string }[] = await res.json();
-        const exists = sessions.some((s) => s.windowId === "system-architect");
-        if (!exists && !cancelled) {
-          await fetch(`${API_BASE}/api/sessions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              windowId: "system-architect",
-              appId: "system-architect",
-              sessionKey: "system-architect",
-              agentId: "architect",
-            }),
-          });
-        }
-      } catch {
-        // Kernel not available yet — session will be created on next load
-      }
-    };
-
-    ensureSession();
-    return () => { cancelled = true; };
-  }, []);
-}
-
 // ── Fresh boot defaults ──────────────────────────────────────────────────
 
 function useFreshBootDefaults() {
@@ -74,7 +38,6 @@ export function GammaOS(): React.ReactElement {
   const toggleLaunchpad = useOSStore((s) => s.toggleLaunchpad);
 
   useFreshBootDefaults();
-  useArchitectSession();
   useAppRegistry(); // fetch registry + subscribe to component_ready/removed
   useSystemEvents(); // mock SSE → real EventSource in production
 

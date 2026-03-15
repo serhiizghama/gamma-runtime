@@ -405,45 +405,37 @@ export function MessageList({ messages, pendingToolLines, status }: MessageListP
           30%            { transform: translateY(-5px); opacity: 1; }
         }
 
-        /* Answer bubble — blue neon */
-        @keyframes neonAnswer {
-          0%, 100% {
-            box-shadow: 0 0 0px rgba(59,130,246,0), 0 0 0px rgba(96,165,250,0);
-            border-color: rgba(255,255,255,0.07);
-          }
-          50% {
-            box-shadow: 0 0 10px rgba(59,130,246,0.5), 0 0 22px rgba(59,130,246,0.22), 0 0 36px rgba(96,165,250,0.1);
-            border-color: rgba(59,130,246,0.5);
-          }
+        /* Answer bubble — blue wave (hot-spot travels L → T → R → B → L) */
+        @keyframes neonWaveAnswer {
+          0%   { box-shadow: -15px  0px  26px -3px rgba(59,130,246,0.68), -6px  0px  13px -3px rgba(59,130,246,0.32),  0px  0px  0px 0px rgba(59,130,246,0); }
+          20%  { box-shadow:  -5px -14px 22px -3px rgba(59,130,246,0.52), -2px -6px  10px -3px rgba(59,130,246,0.22),  5px  0px  5px -4px rgba(59,130,246,0.08); }
+          42%  { box-shadow:  14px  -4px 26px -3px rgba(59,130,246,0.68),  6px  0px  13px -3px rgba(59,130,246,0.32), -2px  0px  0px 0px rgba(59,130,246,0); }
+          63%  { box-shadow:   7px  13px 22px -3px rgba(59,130,246,0.52),  3px  6px  10px -3px rgba(59,130,246,0.22), -3px  0px  5px -4px rgba(59,130,246,0.08); }
+          84%  { box-shadow:  -9px   7px 20px -3px rgba(59,130,246,0.44), -4px  3px   8px -3px rgba(59,130,246,0.20),  2px -2px  4px -4px rgba(59,130,246,0.07); }
+          100% { box-shadow: -15px  0px  26px -3px rgba(59,130,246,0.68), -6px  0px  13px -3px rgba(59,130,246,0.32),  0px  0px  0px 0px rgba(59,130,246,0); }
         }
 
-        /* Thinking bubble — violet neon */
-        @keyframes neonThinkingPulse {
-          0%, 100% {
-            box-shadow: 0 0 0px rgba(139,92,246,0), 0 0 0px rgba(167,139,250,0);
-            border-color: rgba(139, 92, 246, 0.12);
-          }
-          50% {
-            box-shadow: 0 0 8px rgba(139,92,246,0.45), 0 0 18px rgba(139,92,246,0.2), 0 0 30px rgba(167,139,250,0.1);
-            border-color: rgba(139, 92, 246, 0.45);
-          }
+        /* Thinking bubble — violet wave (offset phase for variety) */
+        @keyframes neonWaveThinking {
+          0%   { box-shadow: -13px  0px  22px -3px rgba(139,92,246,0.62), -5px  0px  11px -3px rgba(139,92,246,0.28),  0px  0px  0px 0px rgba(139,92,246,0); }
+          25%  { box-shadow:   0px -13px 22px -3px rgba(139,92,246,0.57), -2px -5px  10px -3px rgba(139,92,246,0.22),  3px  0px  4px -4px rgba(139,92,246,0.09); }
+          50%  { box-shadow:  13px   0px 22px -3px rgba(139,92,246,0.62),  5px  0px  11px -3px rgba(139,92,246,0.28), -2px  0px  0px 0px rgba(139,92,246,0); }
+          75%  { box-shadow:   0px  13px 22px -3px rgba(139,92,246,0.57),  2px  5px  10px -3px rgba(139,92,246,0.22), -3px  0px  4px -4px rgba(139,92,246,0.09); }
+          100% { box-shadow: -13px  0px  22px -3px rgba(139,92,246,0.62), -5px  0px  11px -3px rgba(139,92,246,0.28),  0px  0px  0px 0px rgba(139,92,246,0); }
         }
 
-        /* Tool bubble — green neon */
-        @keyframes neonTool {
-          0%, 100% {
-            box-shadow: 0 0 0px rgba(34,197,94,0), 0 0 0px rgba(34,197,94,0);
-            border-color: rgba(34, 197, 94, 0.1);
-          }
-          50% {
-            box-shadow: 0 0 8px rgba(34,197,94,0.4), 0 0 18px rgba(34,197,94,0.18), 0 0 28px rgba(34,197,94,0.08);
-            border-color: rgba(34, 197, 94, 0.4);
-          }
+        /* Tool bubble — green wave (slightly faster, shifted phase) */
+        @keyframes neonWaveTool {
+          0%   { box-shadow: -12px  0px  20px -3px rgba(34,197,94,0.58), -4px  0px  10px -3px rgba(34,197,94,0.26),  0px  0px  0px 0px rgba(34,197,94,0); }
+          28%  { box-shadow:   3px -12px 20px -3px rgba(34,197,94,0.52), -1px -4px   9px -3px rgba(34,197,94,0.20),  3px  1px  4px -4px rgba(34,197,94,0.08); }
+          53%  { box-shadow:  12px   3px 20px -3px rgba(34,197,94,0.58),  4px  1px  10px -3px rgba(34,197,94,0.26), -2px  0px  0px 0px rgba(34,197,94,0); }
+          78%  { box-shadow:  -3px  12px 20px -3px rgba(34,197,94,0.52),  1px  4px   9px -3px rgba(34,197,94,0.20), -3px  0px  4px -4px rgba(34,197,94,0.08); }
+          100% { box-shadow: -12px  0px  20px -3px rgba(34,197,94,0.58), -4px  0px  10px -3px rgba(34,197,94,0.26),  0px  0px  0px 0px rgba(34,197,94,0); }
         }
 
-        .agent-chat-bubble--streaming-answer   { animation: neonAnswer          2.2s ease-in-out infinite; }
-        .agent-chat-bubble--streaming-thinking { animation: neonThinkingPulse   2s   ease-in-out infinite; }
-        .agent-chat-bubble--streaming-tool     { animation: neonTool            1.8s ease-in-out infinite; }
+        .agent-chat-bubble--streaming-answer   { animation: neonWaveAnswer   4.4s ease-in-out infinite; }
+        .agent-chat-bubble--streaming-thinking { animation: neonWaveThinking  4.0s ease-in-out infinite; }
+        .agent-chat-bubble--streaming-tool     { animation: neonWaveTool      3.6s ease-in-out infinite; }
 
         .agent-chat-message-list::-webkit-scrollbar { width: 4px; }
         .agent-chat-message-list::-webkit-scrollbar-track { background: transparent; }
