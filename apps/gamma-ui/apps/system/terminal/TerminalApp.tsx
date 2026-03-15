@@ -108,6 +108,7 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
 
       ws.onopen = () => {
         onStatusChange("connected");
+        term.write("\x1b[36m⬡ Gamma Agent Runtime\x1b[0m  \x1b[90mv2.0 · PTY Shell · macOS\x1b[0m\r\n");
         term.focus();
       };
 
