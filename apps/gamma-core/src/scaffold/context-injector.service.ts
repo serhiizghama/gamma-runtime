@@ -17,15 +17,19 @@ import type { AgentRegistryEntry, SessionRecord, SystemHealthReport } from '@gam
 export class ContextInjectorService {
   private readonly logger = new Logger(ContextInjectorService.name);
 
-  /** TTL for live context cache in milliseconds (default: 24h) */
-  private readonly CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  /**
+   * How often to actually inject live context into agent messages.
+   * Within this window, getLiveContext() returns '' to skip injection entirely.
+   * Default: 24h — context is injected once per day (or after clearCache()).
+   */
+  private readonly INJECT_TTL_MS = 24 * 60 * 60 * 1000;
 
   private cache: { content: string; ts: number } | null = null;
 
-  /** Force-invalidate the cache (e.g. on critical system events). */
+  /** Force-invalidate the cache — next message will get a fresh injection. */
   clearCache(): void {
     this.cache = null;
-    this.logger.debug('Live context cache cleared.');
+    this.logger.debug('Live context cache cleared — will re-inject on next message.');
   }
 
   constructor(
@@ -40,9 +44,9 @@ export class ContextInjectorService {
    * Best-effort: returns an empty string if aggregation fails entirely.
    */
   async getLiveContext(callerSessionKey?: string): Promise<string> {
-    // Return cached content if still within TTL
-    if (this.cache && Date.now() - this.cache.ts < this.CACHE_TTL_MS) {
-      return this.cache.content;
+    // Within TTL: skip injection entirely (return empty string)
+    if (this.cache && Date.now() - this.cache.ts < this.INJECT_TTL_MS) {
+      return '';
     }
 
     try {
