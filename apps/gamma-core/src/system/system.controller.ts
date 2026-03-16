@@ -23,13 +23,14 @@ import { SessionsService } from '../sessions/sessions.service';
 import { ActivityStreamService } from '../activity/activity-stream.service';
 import { SystemAppGuard } from '../sessions/system-guard';
 import { REDIS_KEYS } from '@gamma/types';
+import { parseStreamFields } from '../redis/redis-stream.util';
 import type {
   SystemHealthReport,
   BackupInventory,
   AgentRegistryEntry,
   ActivityEvent,
-  SpawnAgentDto,
 } from '@gamma/types';
+import { SpawnAgentBody } from '../dto/spawn-agent.dto';
 
 @Controller('api/system')
 export class SystemController {
@@ -135,7 +136,7 @@ export class SystemController {
   @Post('agents/spawn')
   @UseGuards(SystemAppGuard)
   async spawnAgent(
-    @Body() body: SpawnAgentDto,
+    @Body() body: SpawnAgentBody,
   ): Promise<{ ok: boolean; sessionKey?: string; windowId?: string; error?: string }> {
     return this.sessions.spawnAgent(body);
   }
@@ -250,36 +251,6 @@ export class SystemController {
       };
     });
   }
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────
-
-function parseStreamFields(fields: string[]): Record<string, unknown> {
-  const obj: Record<string, unknown> = {};
-  for (let i = 0; i < fields.length; i += 2) {
-    const key = fields[i];
-    const raw = fields[i + 1];
-    if (
-      raw.startsWith('{') ||
-      raw.startsWith('[') ||
-      raw === 'true' ||
-      raw === 'false' ||
-      raw === 'null'
-    ) {
-      try {
-        obj[key] = JSON.parse(raw);
-        continue;
-      } catch {
-        // fall through
-      }
-    }
-    if (/^-?\d+(\.\d+)?$/.test(raw)) {
-      obj[key] = Number(raw);
-      continue;
-    }
-    obj[key] = raw;
-  }
-  return obj;
 }
 
 function sleep(ms: number): Promise<void> {

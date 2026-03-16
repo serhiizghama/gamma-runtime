@@ -90,17 +90,7 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-/** Flatten an object to [key, value, key, value, ...] for XADD */
-function flattenEntry(obj: Record<string, unknown>): string[] {
-  const args: string[] = [];
-  for (const [k, v] of Object.entries(obj)) {
-    if (v === undefined || v === null) continue;
-    args.push(k, typeof v === 'string' ? v : JSON.stringify(v));
-  }
-  return args;
-}
+import { flattenEntry } from '../redis/redis-stream.util';
 
 @Injectable()
 export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
@@ -298,12 +288,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       });
 
       this.ws.on('message', (raw: WebSocket.RawData) => {
-        try {
-          const frame = JSON.parse(raw.toString()) as GWFrame;
-          this.handleFrame(frame);
-        } catch {
-          this.logger.warn('Failed to parse Gateway frame');
-        }
+        this.onWsMessage(raw);
       });
 
       this.ws.on('close', (code: number, reason: Buffer) => {
@@ -397,7 +382,23 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     this.broadcastGatewayStatus('connected');
   }
 
-  // ── Frame handling ────────────────────────────────────────────────────
+  // ── Frame parsing & handling ──────────────────────────────────────────
+
+  /** Parse raw WebSocket data into a GWFrame and dispatch it. */
+  private onWsMessage(raw: WebSocket.RawData): void {
+    let frame: GWFrame;
+    try {
+      frame = JSON.parse(raw.toString()) as GWFrame;
+    } catch {
+      this.logger.warn('Failed to parse Gateway frame');
+      return;
+    }
+    if (!frame.type) {
+      this.logger.warn('Received frame with no type field');
+      return;
+    }
+    this.handleFrame(frame);
+  }
 
   private handleFrame(frame: GWFrame): void {
     // Response to request
@@ -410,7 +411,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           this.pushChatSendError(chatInflight.windowId, frame);
         } else if (frame.payload) {
           // Secondary path: some gateway versions attach usage to the chat.send ack
-          this.applyUsageFromPayload(chatInflight.sessionKey, frame.payload, 'chat.send res').catch(() => {});
+          this.applyUsageFromPayload(chatInflight.sessionKey, frame.payload, 'chat.send res').catch((err: unknown) => {
+            this.logger.warn(`applyUsageFromPayload failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
         }
         return;
       }
@@ -480,7 +483,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     );
 
     // Update Agent Registry heartbeat on EVERY incoming event
-    this.agentRegistry.heartbeat(sessionKey, `${payload.stream}`).catch(() => {});
+    this.agentRegistry.heartbeat(sessionKey, `${payload.stream}`).catch((err: unknown) => {
+      this.logger.warn(`Agent registry heartbeat failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
 
     let windowId = this.sessionToWindow.get(sessionKey);
 
@@ -541,7 +546,10 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           .lpush(REDIS_KEYS.EVENT_LAG, lagMs)
           .ltrim(REDIS_KEYS.EVENT_LAG, 0, 99)
           .exec()
-          .catch(() => {}); // best-effort
+          .catch((err: unknown) => {
+            // best-effort: event lag tracking is non-critical
+            this.logger.debug(`Event lag tracking failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
       }
     }
 
@@ -1499,8 +1507,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     payload: Record<string, unknown>,
     source: string,
   ): Promise<void> {
-    // Temporary diagnostic: log the raw payload to identify the exact field structure
-    console.log('--- TOKEN DATA RECEIVED ---', source, payload);
+    this.logger.debug(`Token data received [${source}]: ${JSON.stringify(payload).slice(0, 200)}`);
 
     // Probe flat layout first, then common nested keys
     const candidate =

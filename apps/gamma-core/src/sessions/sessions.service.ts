@@ -42,22 +42,8 @@ function parseAppIdFromKey(sessionKey: string): string | null {
   return appId || null;
 }
 
-/** Convert kebab-case / snake_case id to PascalCase (matches scaffold.service) */
-function pascal(id: string): string {
-  return id
-    .replace(/[-_]+(.)/g, (_, c: string) => c.toUpperCase())
-    .replace(/^(.)/, (_, c: string) => c.toUpperCase());
-}
-
-/** Flatten an object to [key, value, key, value, ...] for XADD */
-function flattenEntry(obj: Record<string, unknown>): string[] {
-  const args: string[] = [];
-  for (const [k, v] of Object.entries(obj)) {
-    if (v === undefined || v === null) continue;
-    args.push(k, typeof v === 'string' ? v : JSON.stringify(v));
-  }
-  return args;
-}
+// Shared Redis stream helpers
+import { flattenEntry, pascal } from '../redis/redis-stream.util';
 
 export interface SendMessageResult {
   ok: boolean;

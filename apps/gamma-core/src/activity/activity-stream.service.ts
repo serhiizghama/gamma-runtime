@@ -4,19 +4,10 @@ import { ulid } from 'ulid';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { REDIS_KEYS } from '@gamma/types';
 import type { ActivityEvent } from '@gamma/types';
+import { flattenEntry, parseStreamFields } from '../redis/redis-stream.util';
 
 const ACTIVITY_MAXLEN = '5000';
 const FLUSH_INTERVAL_MS = 50;
-
-/** Flatten an object to [key, value, key, value, ...] for XADD */
-function flattenEntry(obj: Record<string, unknown>): string[] {
-  const args: string[] = [];
-  for (const [k, v] of Object.entries(obj)) {
-    if (v === undefined || v === null) continue;
-    args.push(k, typeof v === 'string' ? v : JSON.stringify(v));
-  }
-  return args;
-}
 
 /**
  * Global Activity Stream — publishes structured events to `gamma:system:activity`.
@@ -117,32 +108,3 @@ export class ActivityStreamService {
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────
-
-function parseStreamFields(fields: string[]): Record<string, unknown> {
-  const obj: Record<string, unknown> = {};
-  for (let i = 0; i < fields.length; i += 2) {
-    const key = fields[i];
-    const raw = fields[i + 1];
-    if (
-      raw.startsWith('{') ||
-      raw.startsWith('[') ||
-      raw === 'true' ||
-      raw === 'false' ||
-      raw === 'null'
-    ) {
-      try {
-        obj[key] = JSON.parse(raw);
-        continue;
-      } catch {
-        // fall through
-      }
-    }
-    if (/^-?\d+(\.\d+)?$/.test(raw)) {
-      obj[key] = Number(raw);
-      continue;
-    }
-    obj[key] = raw;
-  }
-  return obj;
-}

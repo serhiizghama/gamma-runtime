@@ -3,6 +3,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import fastifyCors from '@fastify/cors';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -52,6 +53,10 @@ async function bootstrap(): Promise<void> {
     credentials: false,
   });
 
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+  );
+
   const port = parseInt(process.env['PORT'] ?? '3001', 10);
   await app.listen(port, '0.0.0.0');
 
@@ -59,4 +64,8 @@ async function bootstrap(): Promise<void> {
   console.log(`Gamma Core listening on ${url} (HTTP/${hasCerts ? '2' : '1.1'})`);
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  const logger = new Logger('Bootstrap');
+  logger.error('Failed to start Gamma Core', err);
+  process.exit(1);
+});

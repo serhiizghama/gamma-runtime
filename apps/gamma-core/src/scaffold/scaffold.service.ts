@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, BadRequestException } from '@nestjs/common';
 import * as path from 'path';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
@@ -8,25 +8,7 @@ import { GitWorkspaceService } from './git-workspace.service';
 import { ValidationService } from './validation.service';
 import type { ScaffoldRequest, ScaffoldResult } from '@gamma/types';
 import { REDIS_KEYS } from '@gamma/types';
-
-// ── Helpers ──────────────────────────────────────────────────────────────
-
-/** Convert kebab-case / snake_case id to PascalCase */
-function pascal(id: string): string {
-  return id
-    .replace(/[-_]+(.)/g, (_, c: string) => c.toUpperCase())
-    .replace(/^(.)/, (_, c: string) => c.toUpperCase());
-}
-
-/** Flatten an object into key-value string pairs for Redis XADD */
-function flattenEntry(obj: Record<string, unknown>): string[] {
-  const args: string[] = [];
-  for (const [k, v] of Object.entries(obj)) {
-    if (v === undefined || v === null) continue;
-    args.push(k, typeof v === 'string' ? v : JSON.stringify(v));
-  }
-  return args;
-}
+import { flattenEntry, pascal } from '../redis/redis-stream.util';
 
 // Re-export shared types so existing imports from this file keep working
 export type { ScaffoldAsset, ScaffoldRequest, ScaffoldResult } from '@gamma/types';
@@ -94,6 +76,9 @@ export class ScaffoldService {
 
   async scaffold(req: ScaffoldRequest): Promise<ScaffoldResult> {
     const safeId = req.appId.replace(/[^a-z0-9-]/gi, '');
+    if (!safeId) {
+      throw new BadRequestException('Invalid appId');
+    }
     const pascalName = pascal(safeId);
     // Avoid double "App" suffix: smoke-test-app → SmokeTestApp (already ends in App)
     const componentName = pascalName.endsWith('App') ? pascalName : `${pascalName}App`;
@@ -318,6 +303,9 @@ export class ScaffoldService {
 
   async remove(appId: string): Promise<{ ok: boolean }> {
     const safeId = appId.replace(/[^a-z0-9-]/gi, '');
+    if (!safeId) {
+      throw new BadRequestException('Invalid appId');
+    }
 
     // Remove entire bundle directory
     await this.storage.removeDir(this.storage.jailPath(safeId));

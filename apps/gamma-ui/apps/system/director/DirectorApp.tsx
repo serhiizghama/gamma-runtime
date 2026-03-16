@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { create } from "zustand";
 import type { ActivityEvent, AgentRegistryEntry, GammaSSEEvent, SpawnAgentDto, AgentRole } from "@gamma/types";
-import { systemAuthHeaders, fetchSseTicket } from "../../../lib/auth";
+import { systemAuthHeaders } from "../../../lib/auth";
 import { API_BASE } from "../../../constants/api";
+import { useSecureSse } from "../../../hooks/useSecureSse";
 
 // ─── Event color coding ───────────────────────────────────────────────────────
 
@@ -432,53 +433,26 @@ function EventRow({
 }
 
 // ─── Agent Monitor SSE hook ───────────────────────────────────────────────────
-// FIX: Extracted to a hook with proper reconnect logic (was silently dying on disconnect).
 
 function useAgentMonitor(onUpdate: (agents: AgentRegistryEntry[]) => void) {
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
 
-  useEffect(() => {
-    let destroyed = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const connect = async () => {
-      if (destroyed) return undefined;
-
-      const ticketQs = await fetchSseTicket("/api/stream/agent-monitor");
-      if (destroyed) return undefined;
-      const url = `${API_BASE}/api/stream/agent-monitor${ticketQs}`;
-
-      const es = new EventSource(url);
-
-      es.onmessage = (ev) => {
-        try {
-          const event = JSON.parse(ev.data as string) as GammaSSEEvent;
-          if (event.type === "agent_registry_update") {
-            onUpdateRef.current(event.agents);
-          }
-        } catch { /* ignore */ }
-      };
-
-      es.onerror = () => {
-        es.close();
-        if (!destroyed) {
-          reconnectTimer = setTimeout(() => void connect(), 4000);
-        }
-      };
-
-      return es;
-    };
-
-    let esInstance: EventSource | undefined;
-    void connect().then((es) => { esInstance = es; });
-
-    return () => {
-      destroyed = true;
-      esInstance?.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-    };
+  const handleMessage = useCallback((ev: MessageEvent) => {
+    try {
+      const event = JSON.parse(ev.data as string) as GammaSSEEvent;
+      if (event.type === "agent_registry_update") {
+        onUpdateRef.current(event.agents);
+      }
+    } catch { /* ignore */ }
   }, []);
+
+  useSecureSse({
+    path: "/api/stream/agent-monitor",
+    onMessage: handleMessage,
+    reconnectMs: 4000,
+    label: "AgentMonitor",
+  });
 }
 
 // ─── Agent Hierarchy Panel ────────────────────────────────────────────────────
@@ -1040,74 +1014,36 @@ const INPUT_STYLE: React.CSSProperties = {
 function useActivityStream(): { connected: boolean; eventCount: number } {
   const push = useActivityStore((s) => s.push);
   const eventCount = useActivityStore((s) => s.events.length);
-  const [connected, setConnected] = useState(false);
-  const esRef = useRef<EventSource | null>(null);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    let destroyed = false;
+  const handleMessage = useCallback(
+    (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data as string) as Record<string, unknown>;
 
-    const connect = async (): Promise<void> => {
-      if (destroyed) return;
+        // Filter out keep_alive and malformed events
+        if (data.type === "keep_alive" || !data.kind) return;
 
-      // Exchange system token for a short-lived, single-use SSE ticket
-      const ticketQs = await fetchSseTicket("/api/system/activity/stream");
-      if (destroyed) return;
-      const url = `${API_BASE}/api/system/activity/stream${ticketQs}`;
-      console.log("[Director] SSE connecting:", url.replace(/ticket=[^&]+/, "ticket=***"));
+        // Validate & apply fallbacks for missing fields
+        const event = data as unknown as ActivityEvent;
+        if (!event.id) event.id = `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        if (!event.ts || typeof event.ts !== "number" || event.ts <= 0) event.ts = Date.now();
+        if (!event.agentId) event.agentId = "unknown";
+        if (!event.severity) event.severity = "info";
 
-      const es = new EventSource(url);
-      esRef.current = es;
-
-      es.onopen = () => {
-        console.log("[Director] SSE connected");
-        setConnected(true);
-      };
-
-      es.onmessage = (ev) => {
-        try {
-          const data = JSON.parse(ev.data as string) as Record<string, unknown>;
-
-          // Filter out keep_alive and malformed events
-          if (data.type === "keep_alive" || !data.kind) return;
-
-          // Validate & apply fallbacks for missing fields
-          const event = data as unknown as ActivityEvent;
-          if (!event.id) event.id = `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          if (!event.ts || typeof event.ts !== "number" || event.ts <= 0) event.ts = Date.now();
-          if (!event.agentId) event.agentId = "unknown";
-          if (!event.severity) event.severity = "info";
-
-          push(event);
-        } catch {
-          console.warn("[Director] SSE parse error:", ev.data);
-        }
-      };
-
-      es.onerror = () => {
-        console.warn("[Director] SSE error — will reconnect");
-        setConnected(false);
-        es.close();
-        esRef.current = null;
-
-        if (!destroyed) {
-          reconnectTimerRef.current = setTimeout(connect, 3000);
-        }
-      };
-    };
-
-    void connect();
-
-    return () => {
-      destroyed = true;
-      esRef.current?.close();
-      esRef.current = null;
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
+        push(event);
+      } catch {
+        console.warn("[Director] SSE parse error:", ev.data);
       }
-    };
-  }, [push]);
+    },
+    [push],
+  );
+
+  const { connected } = useSecureSse({
+    path: "/api/system/activity/stream",
+    onMessage: handleMessage,
+    reconnectMs: 3000,
+    label: "Director",
+  });
 
   return { connected, eventCount };
 }

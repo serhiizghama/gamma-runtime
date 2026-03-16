@@ -5,6 +5,7 @@ import {
   Res,
   ForbiddenException,
   NotFoundException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { FastifyReply } from 'fastify';
@@ -64,6 +65,9 @@ export class ScaffoldAssetsController {
   ): Promise<void> {
     // Sanitize appId — alphanumeric + hyphens only
     const safeAppId = appId.replace(/[^a-z0-9-]/gi, '');
+    if (!safeAppId) {
+      throw new BadRequestException('Invalid appId');
+    }
 
     // Normalize and block hidden files/traversal
     const safeRelPath = path.normalize(assetPath);

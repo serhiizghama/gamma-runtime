@@ -16,10 +16,11 @@ import { SessionRegistryService } from './session-registry.service';
 import { SystemAppGuard } from './system-guard';
 import type {
   WindowSession,
-  CreateSessionDto,
   WindowStateSyncSnapshot,
   SessionRecord,
 } from '@gamma/types';
+import { CreateSessionBody } from '../dto/create-session.dto';
+import { SendMessageBody } from '../dto/send-message.dto';
 
 @Controller('api/sessions')
 export class SessionsController {
@@ -31,7 +32,7 @@ export class SessionsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(
-    @Body() dto: CreateSessionDto,
+    @Body() dto: CreateSessionBody,
   ): Promise<{ ok: true; session: WindowSession }> {
     const session = await this.sessions.create(dto);
     return { ok: true, session };
@@ -112,7 +113,7 @@ export class SessionsController {
   @HttpCode(HttpStatus.OK)
   async send(
     @Param('windowId') windowId: string,
-    @Body() body: { message: string },
+    @Body() body: SendMessageBody,
   ): Promise<SendMessageResult> {
     const result = await this.sessions.sendMessage(windowId, body.message);
     if (!result) {

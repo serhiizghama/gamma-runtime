@@ -27,6 +27,8 @@ export class AppDataController {
   ): Promise<{ value: unknown }> {
     const safeAppId = appId.replace(/[^a-z0-9-]/gi, '');
     const safeKey = key.replace(/[^a-z0-9_-]/gi, '');
+    if (!safeAppId) throw new BadRequestException('Invalid appId');
+    if (!safeKey) throw new BadRequestException('Invalid key');
 
     const raw = await this.redis.get(`${KEY_PREFIX}:${safeAppId}:${safeKey}`);
     return { value: raw ? (JSON.parse(raw) as unknown) : null };
@@ -40,6 +42,8 @@ export class AppDataController {
   ): Promise<{ ok: true }> {
     const safeAppId = appId.replace(/[^a-z0-9-]/gi, '');
     const safeKey = key.replace(/[^a-z0-9_-]/gi, '');
+    if (!safeAppId) throw new BadRequestException('Invalid appId');
+    if (!safeKey) throw new BadRequestException('Invalid key');
     const redisKey = `${KEY_PREFIX}:${safeAppId}:${safeKey}`;
 
     // Enforce size limit
