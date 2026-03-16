@@ -1,6 +1,5 @@
-import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import React, { useEffect, useRef, useCallback, useState, useMemo, memo } from "react";
 import { create } from "zustand";
-import { List as VirtualList } from "react-window";
 import type { ActivityEvent, AgentRegistryEntry, GammaSSEEvent, SpawnAgentDto, AgentRole } from "@gamma/types";
 import { systemAuthHeaders } from "../../../lib/auth";
 import { API_BASE } from "../../../constants/api";
@@ -10,20 +9,21 @@ import { fmtTime, truncate, relativeTime } from "../../../lib/format";
 // ─── Event color coding ───────────────────────────────────────────────────────
 
 const KIND_COLORS: Record<string, string> = {
-  tool_call_start: "#ffd787",
-  tool_call_end:   "#ffd787",
-  message_sent:    "#5fd7ff",
-  message_completed: "#87d7ff",
-  context_injected:  "#d7afff",
-  lifecycle_start: "#5fff87",
-  lifecycle_end:   "#888",
-  lifecycle_error: "#ff5f5f",
-  emergency_stop:  "#ff5f5f",
-  agent_registered:   "#87ffd7",
-  agent_deregistered: "#d787ff",
+  tool_call_start:     "#ffd787",
+  tool_call_end:       "#ffd787",
+  message_sent:        "#5fd7ff",
+  message_completed:   "#87d7ff",
+  context_injected:    "#d7afff",
+  lifecycle_start:     "#5fff87",
+  lifecycle_end:       "#888",
+  lifecycle_error:     "#ff5f5f",
+  emergency_stop:      "#ff5f5f",
+  agent_registered:    "#87ffd7",
+  agent_deregistered:  "#d787ff",
   agent_status_change: "#888",
-  hierarchy_change: "#d7afff",
-  system_event:    "#d787ff",
+  hierarchy_change:    "#d7afff",
+  system_event:        "#d787ff",
+  file_change:         "#87ffd7",
 };
 
 function getEventColor(kind: string, severity: string): string {
@@ -32,53 +32,257 @@ function getEventColor(kind: string, severity: string): string {
 }
 
 const KIND_ICONS: Record<string, string> = {
-  tool_call_start: "⚙",
-  tool_call_end:   "⚙",
-  message_sent:    "→",
-  message_completed: "✦",
-  context_injected:  "↯",
-  lifecycle_start: "▶",
-  lifecycle_end:   "■",
-  lifecycle_error: "✕",
-  emergency_stop:  "☠",
-  agent_registered:   "+",
-  agent_deregistered: "−",
+  tool_call_start:     "⚙",
+  tool_call_end:       "⚙",
+  message_sent:        "→",
+  message_completed:   "✦",
+  context_injected:    "↯",
+  lifecycle_start:     "▶",
+  lifecycle_end:       "■",
+  lifecycle_error:     "✕",
+  emergency_stop:      "☠",
+  agent_registered:    "+",
+  agent_deregistered:  "−",
   agent_status_change: "◦",
-  hierarchy_change: "⇅",
-  system_event:    "⚡",
+  hierarchy_change:    "⇅",
+  system_event:        "⚡",
+  file_change:         "✎",
 };
 
 function formatKind(kind: string): string {
   return kind.replace(/_/g, " ").toUpperCase();
 }
 
-function buildDetail(ev: ActivityEvent): string {
+// ─── Payload smart-rendering helpers ─────────────────────────────────────────
+
+/** Status colors for agent_status_change payloads */
+const STATUS_PAYLOAD_COLORS: Record<string, string> = {
+  running: "#5fff87",
+  idle:    "#ffd787",
+  paused:  "#ff9f43",
+  resumed: "#5fd7ff",
+  error:   "#ff5f5f",
+};
+
+/**
+ * Render a concise, human-readable detail string for a given event kind.
+ * Falls back to truncated raw payload when parsing isn't meaningful.
+ */
+function renderPayloadDetail(ev: ActivityEvent): React.ReactNode {
+  const { kind, payload, toolName, targetAgentId, appId, severity } = ev;
+
+  // ── tool_call_start: show tool name + key args ──────────────────────────
+  if (kind === "tool_call_start" && payload) {
+    const color = severity === "error" ? "#ff5f5f" : "#ffd787";
+    const args = tryParseJson(payload);
+    if (args && typeof args === "object" && !Array.isArray(args)) {
+      // Pick 2 most meaningful keys to show inline
+      const entries = Object.entries(args as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined && v !== null && v !== "")
+        .slice(0, 2)
+        .map(([k, v]) => {
+          const vs = typeof v === "string" ? v : JSON.stringify(v);
+          return `${k}=${truncate(vs, 40)}`;
+        });
+      if (entries.length > 0) {
+        return <span style={{ color }}>{entries.join(" · ")}</span>;
+      }
+    }
+    return payload ? <span style={{ color }}>{truncate(payload, 100)}</span> : null;
+  }
+
+  // ── tool_call_end: show ✅/❌ + truncated result ────────────────────────
+  if (kind === "tool_call_end" && payload) {
+    const ok = severity !== "error";
+    const icon = ok ? "✓" : "✕";
+    const iconColor = ok ? "#5fff87" : "#ff5f5f";
+    const textColor = ok ? "var(--color-text-secondary)" : "#ff9f9f";
+    // payload is JSON result — unwrap if it's a simple value
+    const parsed = tryParseJson(payload);
+    let display: string;
+    if (parsed === null || parsed === undefined) {
+      display = "—";
+    } else if (typeof parsed === "string") {
+      display = truncate(parsed, 80);
+    } else if (typeof parsed === "object") {
+      display = truncate(JSON.stringify(parsed), 80);
+    } else {
+      display = String(parsed);
+    }
+    return (
+      <span>
+        <span style={{ color: iconColor, fontWeight: 700, marginRight: 5 }}>{icon}</span>
+        <span style={{ color: textColor }}>{display}</span>
+      </span>
+    );
+  }
+
+  // ── agent_status_change: colored status badge ───────────────────────────
+  if (kind === "agent_status_change" && payload) {
+    const color = STATUS_PAYLOAD_COLORS[payload.toLowerCase()] ?? "#aaa";
+    return (
+      <span
+        style={{
+          color,
+          fontWeight: 700,
+          fontSize: 9,
+          letterSpacing: "0.06em",
+          padding: "1px 5px",
+          borderRadius: 3,
+          background: `${color}18`,
+          border: `1px solid ${color}40`,
+        }}
+      >
+        {payload.toUpperCase()}
+      </span>
+    );
+  }
+
+  // ── context_injected: show size as a subtle badge ───────────────────────
+  if (kind === "context_injected" && payload) {
+    return <span style={{ color: "#d7afff", opacity: 0.75 }}>{payload}</span>;
+  }
+
+  // ── message_completed: show text snippet ───────────────────────────────
+  if (kind === "message_completed" && payload) {
+    return <span style={{ color: "var(--color-text-secondary)", fontStyle: "italic" }}>"{truncate(payload, 90)}"</span>;
+  }
+
+  // ── hierarchy_change ────────────────────────────────────────────────────
+  if (kind === "hierarchy_change") {
+    const parts: string[] = [];
+    if (targetAgentId) parts.push(`→ ${targetAgentId}`);
+    if (payload) parts.push(payload);
+    return parts.length > 0 ? <span style={{ color: "#d7afff" }}>{parts.join(" ")}</span> : null;
+  }
+
+  // ── fallback: toolName + targetAgentId + appId + raw payload ───────────
   const parts: string[] = [];
-  if (ev.toolName) parts.push(ev.toolName);
-  if (ev.targetAgentId) parts.push(`→ ${ev.targetAgentId}`);
-  if (ev.payload) parts.push(ev.payload);
-  if (ev.appId) parts.push(`[${ev.appId}]`);
-  return parts.join(" ");
+  if (toolName) parts.push(toolName);
+  if (targetAgentId) parts.push(`→ ${targetAgentId}`);
+  if (payload) parts.push(payload);
+  if (appId) parts.push(`[${appId}]`);
+  if (parts.length === 0) return null;
+  return <span style={{ color: "var(--color-text-secondary)" }}>{truncate(parts.join(" "), 140)}</span>;
+}
+
+function tryParseJson(s: string): unknown {
+  try { return JSON.parse(s); } catch { return undefined; }
 }
 
 // ─── Zustand store ────────────────────────────────────────────────────────────
 
 interface ActivityStore {
   events: ActivityEvent[];
+  // Maintained O(1) per push — no full-array scan on each new event.
+  waitingAgents: ReadonlySet<string>;
+  // Track tool_call_start ts by toolCallId for duration computation.
+  toolStartTs: Map<string, number>;
+  // Computed durations: toolCallId → ms
+  toolDurations: Map<string, number>;
   push: (e: ActivityEvent) => void;
+  pushMany: (events: ActivityEvent[]) => void;
   clear: () => void;
 }
 
 const MAX_EVENTS = 500;
 
-const useActivityStore = create<ActivityStore>((set) => ({
+const useActivityStore = create<ActivityStore>((set, get) => ({
   events: [],
+  waitingAgents: new Set<string>(),
+  toolStartTs: new Map(),
+  toolDurations: new Map(),
+
   push: (e) =>
-    set((s) => ({
-      events: [e, ...s.events].slice(0, MAX_EVENTS),
-    })),
-  clear: () => set({ events: [] }),
+    set((s) => {
+      const events = [e, ...s.events].slice(0, MAX_EVENTS);
+
+      // waitingAgents — O(1) incremental update
+      let waitingAgents = s.waitingAgents as Set<string>;
+      if (e.kind === "message_sent" && e.agentId && !waitingAgents.has(e.agentId)) {
+        waitingAgents = new Set(waitingAgents);
+        waitingAgents.add(e.agentId);
+      } else if (
+        (e.kind === "message_completed" || e.kind === "lifecycle_end") &&
+        e.agentId && waitingAgents.has(e.agentId)
+      ) {
+        waitingAgents = new Set(waitingAgents);
+        waitingAgents.delete(e.agentId);
+      }
+
+      // tool durations — track start ts, compute on end
+      let { toolStartTs, toolDurations } = s;
+      if (e.kind === "tool_call_start" && e.toolCallId) {
+        toolStartTs = new Map(toolStartTs);
+        toolStartTs.set(e.toolCallId, e.ts);
+      } else if (e.kind === "tool_call_end" && e.toolCallId && toolStartTs.has(e.toolCallId)) {
+        const startTs = toolStartTs.get(e.toolCallId)!;
+        const dur = e.ts - startTs;
+        toolDurations = new Map(toolDurations);
+        toolDurations.set(e.toolCallId, dur);
+        toolStartTs = new Map(toolStartTs);
+        toolStartTs.delete(e.toolCallId);
+      }
+
+      return { events, waitingAgents, toolStartTs, toolDurations };
+    }),
+
+  // Bulk-load historical events (backfill on mount).
+  // Events come oldest-first from the API; store is newest-first.
+  pushMany: (incoming) =>
+    set((s) => {
+      // De-dup against already-stored ids (SSE may have arrived first)
+      const existingIds = new Set(s.events.map((e) => e.id));
+      const fresh = incoming.filter((e) => !existingIds.has(e.id));
+      if (fresh.length === 0) return s;
+
+      // Rebuild toolStartTs + toolDurations from historical batch
+      const toolStartTs = new Map(s.toolStartTs);
+      const toolDurations = new Map(s.toolDurations);
+      for (const e of fresh) {
+        if (e.kind === "tool_call_start" && e.toolCallId) {
+          toolStartTs.set(e.toolCallId, e.ts);
+        } else if (e.kind === "tool_call_end" && e.toolCallId && toolStartTs.has(e.toolCallId)) {
+          toolDurations.set(e.toolCallId, e.ts - toolStartTs.get(e.toolCallId)!);
+          toolStartTs.delete(e.toolCallId);
+        }
+      }
+
+      // Merge: existing (newer) + fresh (older), cap at MAX_EVENTS
+      const merged = [...s.events, ...fresh]
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, MAX_EVENTS);
+
+      return { events: merged, toolStartTs, toolDurations };
+    }),
+
+  clear: () =>
+    set({
+      events: [],
+      waitingAgents: new Set(),
+      toolStartTs: new Map(),
+      toolDurations: new Map(),
+    }),
 }));
+
+// ─── History backfill ─────────────────────────────────────────────────────────
+// Fetches the last 200 events from REST on mount so the feed isn't empty
+// when Director opens. SSE then continues from the latest event id.
+
+async function fetchHistoricalActivity(): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE}/api/system/activity?limit=200`, {
+      headers: systemAuthHeaders(),
+    });
+    if (!res.ok) return;
+    const data = (await res.json()) as ActivityEvent[];
+    if (Array.isArray(data) && data.length > 0) {
+      useActivityStore.getState().pushMany(data);
+    }
+  } catch {
+    // Non-critical: SSE will populate the feed anyway
+  }
+}
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -118,11 +322,13 @@ const FEED_PANE: React.CSSProperties = {
   borderRight: "1px solid var(--color-border-subtle)",
 };
 
+// position: relative anchors SpawnModal's inset: 0 to this pane.
 const AGENTS_PANE: React.CSSProperties = {
   flex: "0 0 240px",
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
+  position: "relative",
 };
 
 const PANE_HEADER: React.CSSProperties = {
@@ -175,23 +381,31 @@ const STATUS_BAR: React.CSSProperties = {
   flexShrink: 0,
 };
 
-// ─── Activity Feed ────────────────────────────────────────────────────────────
+const AGENT_CTRL_BTN: React.CSSProperties = {
+  border: "1px solid var(--color-border-subtle)",
+  borderRadius: 4,
+  padding: "3px 10px",
+  fontSize: 10,
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
 
-const EVENT_ROW_HEIGHT = 26;
+const EMPTY_CHILDREN: AgentRegistryEntry[] = [];
+
+// ─── Activity Feed ────────────────────────────────────────────────────────────
 
 function ActivityFeed() {
   const events = useActivityStore((s) => s.events);
   const clear = useActivityStore((s) => s.clear);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const listRef = useRef<any>(null);
+  const feedRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Auto-scroll to top (newest first) unless paused
+  // Auto-scroll to top (newest first) unless paused.
   useEffect(() => {
-    if (!paused && listRef.current) {
-      listRef.current.scrollToRow({ index: 0, align: "start" });
+    if (!paused && feedRef.current) {
+      feedRef.current.scrollTop = 0;
     }
   }, [events.length, paused]);
 
@@ -204,30 +418,10 @@ function ActivityFeed() {
     return events;
   }, [events, filter]);
 
-  // Build row component with stable ref to current filtered/expanded state
-  const stateRef = useRef({ filtered, expandedId, setExpandedId });
-  stateRef.current = { filtered, expandedId, setExpandedId };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const RowComponent = useMemo((): any => {
-    return function EventRowVirtual({ index, style }: { index: number; style: React.CSSProperties }) {
-      const { filtered: f, expandedId: eid, setExpandedId: setEid } = stateRef.current;
-      const ev = f[index];
-      if (!ev) return null;
-      return (
-        <div style={style}>
-          <EventRow
-            event={ev}
-            isExpanded={false}
-            onToggle={() => setEid(eid === ev.id ? null : ev.id)}
-          />
-        </div>
-      );
-    };
+  // Stable toggle callback — avoids defeating React.memo on EventRow.
+  const handleToggle = useCallback((id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
   }, []);
-
-  // Expanded event detail panel
-  const expandedEvent = expandedId ? filtered.find((e) => e.id === expandedId) : null;
 
   return (
     <div style={FEED_PANE}>
@@ -262,8 +456,8 @@ function ActivityFeed() {
           </button>
         </div>
       </div>
-      <div style={{ ...SCROLL, display: "flex", flexDirection: "column" }}>
-        {filtered.length === 0 ? (
+      <div ref={feedRef} style={SCROLL}>
+        {filtered.length === 0 && (
           <div
             style={{
               padding: "40px 12px",
@@ -276,61 +470,15 @@ function ActivityFeed() {
               ? "Awaiting events… Activity will appear here as agents work."
               : "No events match the current filter."}
           </div>
-        ) : (
-          <VirtualList
-            listRef={listRef}
-            rowComponent={RowComponent}
-            rowCount={filtered.length}
-            rowHeight={EVENT_ROW_HEIGHT}
-            rowProps={{} as never}
-            overscanCount={10}
-            style={{ flex: 1 }}
-          >
-            {/* Expanded detail overlay */}
-            {expandedEvent && (
-              <div
-                style={{
-                  position: "sticky",
-                  bottom: 0,
-                  background: "rgba(0,0,0,0.85)",
-                  borderTop: "1px solid rgba(255,255,255,0.08)",
-                  padding: "8px 12px",
-                  fontSize: 10,
-                  maxHeight: 200,
-                  overflow: "auto",
-                  zIndex: 10,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ color: getEventColor(expandedEvent.kind, expandedEvent.severity), fontWeight: 600 }}>
-                    {KIND_ICONS[expandedEvent.kind] ?? "·"} {formatKind(expandedEvent.kind)} — {expandedEvent.agentId}
-                  </span>
-                  <button onClick={() => setExpandedId(null)} style={{ ...FEED_BTN, fontSize: 9 }}>CLOSE</button>
-                </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    fontFamily: "var(--font-system)",
-                    fontSize: 10,
-                    color: "var(--color-text-secondary)",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  {JSON.stringify(expandedEvent, null, 2)}
-                </pre>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(JSON.stringify(expandedEvent, null, 2)).catch(() => {});
-                  }}
-                  style={{ ...FEED_BTN, marginTop: 6, fontSize: 9 }}
-                >
-                  Copy JSON
-                </button>
-              </div>
-            )}
-          </VirtualList>
         )}
+        {filtered.map((ev) => (
+          <EventRow
+            key={ev.id}
+            event={ev}
+            isExpanded={expandedId === ev.id}
+            onToggle={handleToggle}
+          />
+        ))}
       </div>
     </div>
   );
@@ -338,18 +486,27 @@ function ActivityFeed() {
 
 // ─── Expandable Event Row ─────────────────────────────────────────────────────
 
-function EventRow({
+const EventRow = memo(function EventRow({
   event: ev,
   isExpanded,
   onToggle,
 }: {
   event: ActivityEvent;
   isExpanded: boolean;
-  onToggle: () => void;
+  onToggle: (id: string) => void;
 }) {
+  const toolDurations = useActivityStore((s) => s.toolDurations);
   const color = getEventColor(ev.kind, ev.severity);
   const icon = KIND_ICONS[ev.kind] ?? "·";
-  const detail = buildDetail(ev);
+  const payloadNode = renderPayloadDetail(ev);
+
+  // Duration badge for tool events
+  const durMs = ev.toolCallId ? toolDurations.get(ev.toolCallId) : undefined;
+
+  const handleClick = useCallback(() => onToggle(ev.id), [onToggle, ev.id]);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(JSON.stringify(ev, null, 2)).catch(() => {});
+  }, [ev]);
 
   return (
     <div
@@ -359,15 +516,15 @@ function EventRow({
         background: isExpanded ? "rgba(255,255,255,0.02)" : "transparent",
         transition: "background 0.1s",
       }}
-      onClick={onToggle}
+      onClick={handleClick}
     >
       {/* Summary row */}
       <div
         style={{
           display: "flex",
-          gap: 8,
+          gap: 6,
           padding: "3px 12px",
-          alignItems: "baseline",
+          alignItems: "center",
           lineHeight: 1.5,
         }}
       >
@@ -397,8 +554,8 @@ function EventRow({
           style={{
             color: "#87ffd7",
             flexShrink: 0,
-            minWidth: 100,
-            maxWidth: 140,
+            minWidth: 90,
+            maxWidth: 130,
             fontSize: 10,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -413,7 +570,7 @@ function EventRow({
           style={{
             color,
             flexShrink: 0,
-            minWidth: 110,
+            minWidth: 105,
             fontSize: 9,
             fontWeight: 600,
             letterSpacing: "0.04em",
@@ -421,21 +578,35 @@ function EventRow({
         >
           {formatKind(ev.kind)}
         </span>
-        {/* Detail */}
-        {detail && (
+        {/* Smart payload detail */}
+        {payloadNode && (
           <span
             style={{
-              color: "var(--color-text-secondary)",
+              flex: 1,
+              minWidth: 0,
               fontSize: 10,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              flex: 1,
-              minWidth: 0,
             }}
-            title={detail}
           >
-            {truncate(detail, 140)}
+            {payloadNode}
+          </span>
+        )}
+        {/* Duration badge for tool events */}
+        {durMs !== undefined && (
+          <span
+            style={{
+              flexShrink: 0,
+              fontSize: 9,
+              color: durMs > 5000 ? "#ff9f43" : durMs > 1000 ? "#ffd787" : "#87ffd7",
+              fontVariantNumeric: "tabular-nums",
+              opacity: 0.85,
+              marginLeft: 4,
+            }}
+            title={`Tool execution: ${durMs}ms`}
+          >
+            {durMs >= 1000 ? `${(durMs / 1000).toFixed(1)}s` : `${durMs}ms`}
           </span>
         )}
       </div>
@@ -452,34 +623,77 @@ function EventRow({
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Structured fields before raw JSON */}
+          <ExpandedEventDetail event={ev} durMs={durMs} />
           <pre
             style={{
-              margin: 0,
+              margin: "8px 0 0",
               fontFamily: "var(--font-system)",
               fontSize: 10,
               color: "var(--color-text-secondary)",
               whiteSpace: "pre-wrap",
               wordBreak: "break-all",
-              maxHeight: 200,
+              maxHeight: 220,
               overflow: "auto",
+              borderTop: "1px solid rgba(255,255,255,0.04)",
+              paddingTop: 6,
             }}
           >
             {JSON.stringify(ev, null, 2)}
           </pre>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(JSON.stringify(ev, null, 2)).catch(() => {});
-            }}
-            style={{
-              ...FEED_BTN,
-              marginTop: 6,
-              fontSize: 9,
-            }}
-          >
+          <button onClick={handleCopy} style={{ ...FEED_BTN, marginTop: 6, fontSize: 9 }}>
             Copy JSON
           </button>
         </div>
       )}
+    </div>
+  );
+});
+
+// ─── Expanded Event Detail (structured view) ──────────────────────────────────
+
+function ExpandedEventDetail({ event: ev, durMs }: { event: ActivityEvent; durMs?: number }) {
+  const rows: { label: string; value: React.ReactNode; color?: string }[] = [];
+
+  if (ev.runId) rows.push({ label: "Run", value: ev.runId, color: "var(--color-text-muted)" });
+  if (ev.windowId) rows.push({ label: "Window", value: ev.windowId, color: "var(--color-text-muted)" });
+  if (ev.appId) rows.push({ label: "App", value: ev.appId });
+  if (ev.toolName) rows.push({ label: "Tool", value: ev.toolName, color: "#ffd787" });
+  if (ev.toolCallId) rows.push({ label: "Call ID", value: ev.toolCallId, color: "var(--color-text-muted)" });
+  if (durMs !== undefined) {
+    const col = durMs > 5000 ? "#ff9f43" : durMs > 1000 ? "#ffd787" : "#87ffd7";
+    rows.push({ label: "Duration", value: durMs >= 1000 ? `${(durMs / 1000).toFixed(2)}s` : `${durMs}ms`, color: col });
+  }
+
+  // For tool events, try to pretty-print JSON payload
+  if ((ev.kind === "tool_call_start" || ev.kind === "tool_call_end") && ev.payload) {
+    const parsed = tryParseJson(ev.payload);
+    if (parsed && typeof parsed === "object") {
+      rows.push({
+        label: ev.kind === "tool_call_start" ? "Args" : "Result",
+        value: (
+          <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all", fontSize: 9, color: ev.severity === "error" ? "#ff9f9f" : "#87ffd7" }}>
+            {JSON.stringify(parsed, null, 2).slice(0, 500)}
+          </pre>
+        ),
+      });
+    } else if (ev.payload) {
+      rows.push({ label: ev.kind === "tool_call_start" ? "Args" : "Result", value: ev.payload });
+    }
+  } else if (ev.payload && !["agent_status_change", "context_injected", "message_completed"].includes(ev.kind)) {
+    rows.push({ label: "Payload", value: ev.payload });
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "72px 1fr", rowGap: 2, columnGap: 8, fontSize: 10 }}>
+      {rows.map(({ label, value, color }) => (
+        <React.Fragment key={label}>
+          <span style={{ color: "var(--color-text-muted)", fontWeight: 600, alignSelf: "start" }}>{label}</span>
+          <span style={{ color: color ?? "var(--color-text-secondary)", wordBreak: "break-all" }}>{value}</span>
+        </React.Fragment>
+      ))}
     </div>
   );
 }
@@ -513,7 +727,7 @@ function AgentHierarchy() {
   const [agents, setAgents] = useState<AgentRegistryEntry[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [showSpawn, setShowSpawn] = useState(false);
-  const events = useActivityStore((s) => s.events);
+  const waitingAgents = useActivityStore((s) => s.waitingAgents);
 
   const fetchAgents = useCallback(() => {
     fetch(`${API_BASE}/api/system/agents`, { headers: systemAuthHeaders() })
@@ -531,47 +745,38 @@ function AgentHierarchy() {
     return () => clearInterval(t);
   }, [fetchAgents]);
 
-  // FIX: Replaced inline EventSource (no reconnect, no auth) with dedicated hook.
   useAgentMonitor(setAgents);
 
-  // Build tree: find agents waiting for IPC responses
-  // Events are stored newest-first, so iterate in reverse for chronological order
-  const waitingAgents = useMemo(() => {
-    const waiting = new Set<string>();
-    for (let i = events.length - 1; i >= 0; i--) {
-      const ev = events[i];
-      if (ev.kind === "message_sent" && ev.agentId) waiting.add(ev.agentId);
-      if (ev.kind === "message_completed" && ev.agentId) waiting.delete(ev.agentId);
-      if (ev.kind === "lifecycle_end" && ev.agentId) waiting.delete(ev.agentId);
-    }
-    return waiting;
-  }, [events]);
-
-  // Build tree structure: roots are agents with no supervisor or supervisor not in list
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.agentId, a])), [agents]);
-  const roots = useMemo(() => {
-    return agents.filter(
-      (a) => !a.supervisorId || !agentMap.has(a.supervisorId),
-    );
-  }, [agents, agentMap]);
 
-  const childrenOf = useCallback(
-    (parentId: string) => agents.filter((a) => a.supervisorId === parentId),
-    [agents],
+  const roots = useMemo(
+    () => agents.filter((a) => !a.supervisorId || !agentMap.has(a.supervisorId)),
+    [agents, agentMap],
   );
 
-  // FIX: Deselect agent if it disappears from the registry (e.g. after kill).
-  useEffect(() => {
-    if (selected && !agentMap.has(selected)) {
-      setSelected(null);
+  const childrenMap = useMemo(() => {
+    const map = new Map<string, AgentRegistryEntry[]>();
+    for (const agent of agents) {
+      if (agent.supervisorId) {
+        const arr = map.get(agent.supervisorId) ?? [];
+        arr.push(agent);
+        map.set(agent.supervisorId, arr);
+      }
     }
+    return map;
+  }, [agents]);
+
+  useEffect(() => {
+    if (selected && !agentMap.has(selected)) setSelected(null);
   }, [agentMap, selected]);
 
   const selectedAgent = agents.find((a) => a.agentId === selected) ?? null;
 
-  // FIX: Added error handling + user feedback for failed reassignment.
   const [reassignError, setReassignError] = useState<string | null>(null);
-  const handleReassign = async (agentId: string, supervisorId: string | null) => {
+  const reassignErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleReassign = useCallback(async (agentId: string, supervisorId: string | null) => {
+    if (reassignErrorTimerRef.current) clearTimeout(reassignErrorTimerRef.current);
     setReassignError(null);
     try {
       const res = await fetch(`${API_BASE}/api/system/agents/${encodeURIComponent(agentId)}/hierarchy`, {
@@ -581,14 +786,26 @@ function AgentHierarchy() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
-        setReassignError(body.error ?? `HTTP ${res.status}`);
+        const msg = body.error ?? `HTTP ${res.status}`;
+        setReassignError(msg);
+        reassignErrorTimerRef.current = setTimeout(() => setReassignError(null), 4000);
         return;
       }
       fetchAgents();
     } catch (err: unknown) {
-      setReassignError(err instanceof Error ? err.message : "Network error");
+      const msg = err instanceof Error ? err.message : "Network error";
+      setReassignError(msg);
+      reassignErrorTimerRef.current = setTimeout(() => setReassignError(null), 4000);
     }
-  };
+  }, [fetchAgents]);
+
+  const handleKilled = useCallback(() => setSelected(null), []);
+
+  useEffect(() => {
+    return () => {
+      if (reassignErrorTimerRef.current) clearTimeout(reassignErrorTimerRef.current);
+    };
+  }, []);
 
   return (
     <div style={AGENTS_PANE}>
@@ -596,11 +813,7 @@ function AgentHierarchy() {
         <span>Hierarchy ({agents.length})</span>
         <button
           onClick={() => setShowSpawn(true)}
-          style={{
-            ...FEED_BTN,
-            color: "#87ffd7",
-            borderColor: "rgba(135,255,215,0.3)",
-          }}
+          style={{ ...FEED_BTN, color: "#87ffd7", borderColor: "rgba(135,255,215,0.3)" }}
         >
           + SPAWN
         </button>
@@ -618,27 +831,25 @@ function AgentHierarchy() {
             depth={0}
             selected={selected}
             onSelect={setSelected}
-            childrenOf={childrenOf}
+            childrenMap={childrenMap}
             waitingAgents={waitingAgents}
             visitedIds={new Set([root.agentId])}
           />
         ))}
 
-        {/* Reassign error toast */}
         {reassignError && (
           <div style={{ padding: "6px 12px", color: "#ff5f5f", fontSize: 10 }}>
             Reassign failed: {reassignError}
           </div>
         )}
 
-        {/* Selected agent detail */}
         {selectedAgent && (
           <AgentDetail
             agent={selectedAgent}
             agents={agents}
             onReassign={handleReassign}
             onRefresh={fetchAgents}
-            onKilled={() => setSelected(null)}
+            onKilled={handleKilled}
           />
         )}
       </div>
@@ -661,7 +872,7 @@ function AgentTreeNode({
   depth,
   selected,
   onSelect,
-  childrenOf,
+  childrenMap,
   waitingAgents,
   visitedIds,
 }: {
@@ -669,12 +880,11 @@ function AgentTreeNode({
   depth: number;
   selected: string | null;
   onSelect: (id: string | null) => void;
-  childrenOf: (id: string) => AgentRegistryEntry[];
-  waitingAgents: Set<string>;
-  // FIX: visitedIds prevents infinite recursion on circular supervisor references.
+  childrenMap: Map<string, AgentRegistryEntry[]>;
+  waitingAgents: ReadonlySet<string>;
   visitedIds: Set<string>;
 }) {
-  const children = childrenOf(agent.agentId);
+  const children = childrenMap.get(agent.agentId) ?? EMPTY_CHILDREN;
   const dotColor = STATUS_COLORS[agent.status] ?? "#666";
   const isSelected = agent.agentId === selected;
   const isWaiting = waitingAgents.has(agent.agentId);
@@ -693,11 +903,9 @@ function AgentTreeNode({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {/* Hierarchy connector */}
           {depth > 0 && (
             <span style={{ color: "var(--color-text-muted)", fontSize: 9, opacity: 0.4, marginRight: -2 }}>└</span>
           )}
-          {/* Glowing status dot with pulse for waiting */}
           <span
             style={{
               width: 7,
@@ -748,7 +956,6 @@ function AgentTreeNode({
         </div>
       </div>
       {children.map((child) => {
-        // FIX: Skip nodes already rendered in this branch to prevent infinite recursion.
         if (visitedIds.has(child.agentId)) return null;
         const nextVisited = new Set(visitedIds);
         nextVisited.add(child.agentId);
@@ -759,7 +966,7 @@ function AgentTreeNode({
             depth={depth + 1}
             selected={selected}
             onSelect={onSelect}
-            childrenOf={childrenOf}
+            childrenMap={childrenMap}
             waitingAgents={waitingAgents}
             visitedIds={nextVisited}
           />
@@ -788,15 +995,14 @@ function AgentDetail({
   const [killing, setKilling] = useState(false);
   const [toggling, setToggling] = useState(false);
 
-  // FIX: Controlled supervisor select — syncs when a different agent is selected.
   const [supervisorValue, setSupervisorValue] = useState(agent.supervisorId ?? "");
   useEffect(() => {
     setSupervisorValue(agent.supervisorId ?? "");
   }, [agent.agentId, agent.supervisorId]);
 
-  const isPaused = !agent.acceptsMessages;
+  const isPaused = agent.acceptsMessages === false;
 
-  const handlePauseResume = async () => {
+  const handlePauseResume = useCallback(async () => {
     setToggling(true);
     try {
       const action = isPaused ? "resume" : "pause";
@@ -807,9 +1013,9 @@ function AgentDetail({
       onRefresh();
     } catch { /* best-effort */ }
     setToggling(false);
-  };
+  }, [agent.agentId, isPaused, onRefresh]);
 
-  const handleKill = async () => {
+  const handleKill = useCallback(async () => {
     if (!confirm(`Terminate agent "${agent.agentId}"?`)) return;
     setKilling(true);
     try {
@@ -817,25 +1023,16 @@ function AgentDetail({
         method: "POST",
         headers: systemAuthHeaders(),
       });
-      // FIX: Notify parent to deselect before refreshing, avoiding stale detail panel.
       onKilled();
       onRefresh();
     } catch { /* best-effort */ }
     setKilling(false);
-  };
+  }, [agent.agentId, agent.sessionKey, onKilled, onRefresh]);
 
-  const supervisorOptions = agents
-    .filter((a) => a.agentId !== agent.agentId)
-    .map((a) => a.agentId);
-
-  const controlBtn: React.CSSProperties = {
-    border: "1px solid var(--color-border-subtle)",
-    borderRadius: 4,
-    padding: "3px 10px",
-    fontSize: 10,
-    cursor: "pointer",
-    fontFamily: "inherit",
-  };
+  const supervisorOptions = useMemo(
+    () => agents.filter((a) => a.agentId !== agent.agentId).map((a) => a.agentId),
+    [agents, agent.agentId],
+  );
 
   return (
     <div
@@ -849,15 +1046,15 @@ function AgentDetail({
       <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6 }}>{agent.agentId}</div>
       <DetailRow label="Role" value={agent.role} />
       <DetailRow label="Status" value={agent.status} />
-      <DetailRow label="IPC" value={agent.acceptsMessages ? "active" : "paused"} />
+      {agent.acceptsMessages !== undefined && (
+        <DetailRow label="IPC" value={agent.acceptsMessages ? "active" : "paused"} />
+      )}
       <DetailRow label="App" value={agent.appId || "—"} />
       <DetailRow label="Supervisor" value={agent.supervisorId || "(root)"} />
       <DetailRow label="Heartbeat" value={agent.lastHeartbeat ? relativeTime(agent.lastHeartbeat) : "—"} />
       {agent.lastActivity && <DetailRow label="Activity" value={agent.lastActivity} />}
 
-      {/* Reassign supervisor */}
       <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}>
-        {/* FIX: Use controlled value instead of defaultValue so it resets when agent changes. */}
         <select
           style={{
             background: "var(--color-surface-muted)",
@@ -885,13 +1082,12 @@ function AgentDetail({
         </select>
       </div>
 
-      {/* Pause / Resume / Terminate controls */}
       <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
         <button
           onClick={() => void handlePauseResume()}
           disabled={toggling}
           style={{
-            ...controlBtn,
+            ...AGENT_CTRL_BTN,
             background: isPaused ? "rgba(95,255,135,0.12)" : "rgba(255,215,135,0.12)",
             color: isPaused ? "#5fff87" : "#ffd787",
             cursor: toggling ? "not-allowed" : "pointer",
@@ -903,7 +1099,7 @@ function AgentDetail({
           onClick={() => void handleKill()}
           disabled={killing}
           style={{
-            ...controlBtn,
+            ...AGENT_CTRL_BTN,
             background: "var(--button-danger-bg, #7a2020)",
             borderColor: "var(--button-danger-border, rgba(255,80,80,0.4))",
             color: "var(--button-danger-fg, #fff)",
@@ -944,13 +1140,10 @@ function SpawnModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  // FIX: Store auto-close timeout ref for proper cleanup on unmount.
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    };
+    return () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); };
   }, []);
 
   const handleSpawn = async () => {
@@ -1004,8 +1197,8 @@ function SpawnModal({
           border: "1px solid var(--color-border-subtle)",
           borderRadius: 8,
           padding: "20px 24px",
-          minWidth: 320,
-          maxWidth: 400,
+          minWidth: 300,
+          maxWidth: 380,
           backdropFilter: "var(--glass-blur)",
         }}
       >
@@ -1013,27 +1206,14 @@ function SpawnModal({
 
         <label style={LABEL_STYLE}>
           App ID
-          <input
-            style={INPUT_STYLE}
-            value={appId}
-            onChange={(e) => setAppId(e.target.value)}
-            placeholder="my-app"
-            disabled={loading}
-          />
+          <input style={INPUT_STYLE} value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="my-app" disabled={loading} />
         </label>
 
         <label style={LABEL_STYLE}>
           Supervisor
-          <select
-            style={INPUT_STYLE}
-            value={supervisorId}
-            onChange={(e) => setSupervisorId(e.target.value)}
-            disabled={loading}
-          >
+          <select style={INPUT_STYLE} value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)} disabled={loading}>
             <option value="">(root — no supervisor)</option>
-            {agents.map((a) => (
-              <option key={a.agentId} value={a.agentId}>{a.agentId}</option>
-            ))}
+            {agents.map((a) => <option key={a.agentId} value={a.agentId}>{a.agentId}</option>)}
           </select>
         </label>
 
@@ -1048,24 +1228,15 @@ function SpawnModal({
           />
         </label>
 
-        {error && (
-          <div style={{ color: "#ff5f5f", fontSize: 10, marginBottom: 8 }}>{error}</div>
-        )}
-        {success && (
-          <div style={{ color: "#5fff87", fontSize: 10, marginBottom: 8 }}>Agent spawned successfully</div>
-        )}
+        {error && <div style={{ color: "#ff5f5f", fontSize: 10, marginBottom: 8 }}>{error}</div>}
+        {success && <div style={{ color: "#5fff87", fontSize: 10, marginBottom: 8 }}>Agent spawned successfully</div>}
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
           <button onClick={onClose} style={FEED_BTN} disabled={loading}>Cancel</button>
           <button
             onClick={() => void handleSpawn()}
             disabled={loading || success}
-            style={{
-              ...FEED_BTN,
-              color: "#5fff87",
-              borderColor: "rgba(95,255,135,0.3)",
-              fontWeight: 600,
-            }}
+            style={{ ...FEED_BTN, color: "#5fff87", borderColor: "rgba(95,255,135,0.3)", fontWeight: 600 }}
           >
             {loading ? "Spawning…" : "Spawn"}
           </button>
@@ -1106,11 +1277,8 @@ function useActivityStream(): { connected: boolean; eventCount: number } {
     (ev: MessageEvent) => {
       try {
         const data = JSON.parse(ev.data as string) as Record<string, unknown>;
-
-        // Filter out keep_alive and malformed events
         if (data.type === "keep_alive" || !data.kind) return;
 
-        // Validate & apply fallbacks for missing fields
         const event = data as unknown as ActivityEvent;
         if (!event.id) event.id = `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         if (!event.ts || typeof event.ts !== "number" || event.ts <= 0) event.ts = Date.now();
@@ -1140,13 +1308,10 @@ function useActivityStream(): { connected: boolean; eventCount: number } {
 function PanicButton() {
   const [loading, setLoading] = useState(false);
   const [last, setLast] = useState<{ ok: boolean; killed?: number } | null>(null);
-  // FIX: Store dismiss timer ref to clean up on unmount (prevents setState on unmounted component).
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    };
+    return () => { if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current); };
   }, []);
 
   const handlePanic = async () => {
@@ -1155,10 +1320,7 @@ function PanicButton() {
     setLast(null);
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     try {
-      const res = await fetch(`${API_BASE}/api/system/panic`, {
-        method: "POST",
-        headers: systemAuthHeaders(),
-      });
+      const res = await fetch(`${API_BASE}/api/system/panic`, { method: "POST", headers: systemAuthHeaders() });
       const body = (await res.json()) as { ok: boolean; killedCount: number };
       setLast({ ok: body.ok, killed: body.killedCount });
       dismissTimerRef.current = setTimeout(() => setLast(null), 5000);
@@ -1212,33 +1374,33 @@ function PanicButton() {
 export default function DirectorApp() {
   const { connected, eventCount } = useActivityStream();
 
+  // Backfill historical events on first mount so the feed isn't empty.
+  // Runs once; SSE picks up from there.
+  useEffect(() => {
+    void fetchHistoricalActivity();
+  }, []);
+
   return (
     <div style={{ ...ROOT, position: "relative" }}>
-      {/* Pulse animation for waiting agents */}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
         }
       `}</style>
-      {/* Header */}
       <div style={HEADER}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.02em" }}>
-            Director
-          </span>
+          <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.02em" }}>Director</span>
           <ConnectionBadge connected={connected} />
         </div>
         <PanicButton />
       </div>
 
-      {/* Body */}
       <div style={BODY}>
         <ActivityFeed />
         <AgentHierarchy />
       </div>
 
-      {/* Status bar */}
       <div style={STATUS_BAR}>
         <span>{eventCount} event{eventCount !== 1 ? "s" : ""} buffered</span>
         <span style={{ opacity: 0.4 }}>max {MAX_EVENTS}</span>
@@ -1280,7 +1442,5 @@ function ConnectionBadge({ connected }: { connected: boolean }) {
     </span>
   );
 }
-
-// ─── Named export for app registry ────────────────────────────────────────────
 
 export { DirectorApp };
