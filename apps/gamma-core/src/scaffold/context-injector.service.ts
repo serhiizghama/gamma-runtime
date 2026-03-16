@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SessionRegistryService } from '../sessions/session-registry.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { SystemEventLog } from '../system/system-event-log.service';
 import { SystemHealthService } from '../system/system-health.service';
-import type { AgentRegistryEntry, SessionRecord, SystemHealthReport } from '@gamma/types';
+import { ToolRegistryService } from '../tools/tool-registry.service';
+import type { AgentRegistryEntry, AgentRole, SessionRecord, SystemHealthReport } from '@gamma/types';
 
 /**
  * Dynamic Context Injector — aggregates real-time system state into a compact
@@ -37,13 +38,14 @@ export class ContextInjectorService {
     private readonly agentRegistry: AgentRegistryService,
     private readonly eventLog: SystemEventLog,
     private readonly healthService: SystemHealthService,
+    @Optional() private readonly toolRegistry?: ToolRegistryService,
   ) {}
 
   /**
    * Build a compact live-context block suitable for injection into agent prompts.
    * Best-effort: returns an empty string if aggregation fails entirely.
    */
-  async getLiveContext(callerSessionKey?: string): Promise<string> {
+  async getLiveContext(callerSessionKey?: string, callerRole?: AgentRole): Promise<string> {
     // Within TTL: skip injection entirely (return empty string)
     if (this.cache && Date.now() - this.cache.ts < this.INJECT_TTL_MS) {
       return '';
@@ -140,6 +142,22 @@ export class ContextInjectorService {
           lines.push(`  - ${a.agentId} | ${a.role} | ${a.status} | ${ipc}${sup}`);
         }
         lines.push('Use send_message tool with target agentId to communicate.');
+      }
+
+      // ── Available Tools (Phase 6 — ACA) ──
+      if (this.toolRegistry && callerRole) {
+        const manifest = this.toolRegistry.getManifest(callerRole);
+        if (manifest.length > 0) {
+          lines.push('');
+          lines.push('[AVAILABLE TOOLS]');
+          for (const tool of manifest) {
+            const params = Object.entries(tool.schema.parameters)
+              .map(([k, v]) => `${k}${v.required ? '*' : ''}: ${v.type}`)
+              .join(', ');
+            lines.push(`  - ${tool.name}(${params}) — ${tool.description}`);
+          }
+          lines.push('[/AVAILABLE TOOLS]');
+        }
       }
 
       lines.push('[/LIVE SYSTEM STATE]');

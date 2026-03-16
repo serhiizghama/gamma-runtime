@@ -16,6 +16,7 @@ import type {
 import type { IToolExecutor, ToolExecutionContext } from './interfaces';
 import { TOOL_EXECUTORS, EXTERNAL_TOOL_DEFINITIONS } from './constants';
 import { ToolExecutorService } from './tool-executor.service';
+import { ActivityStreamService } from '../activity/activity-stream.service';
 
 // ── Ajv Schema Compiler ─────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ export class ToolRegistryService implements OnModuleInit {
 
   constructor(
     private readonly toolExecutor: ToolExecutorService,
+    @Optional() private readonly activityStream: ActivityStreamService | null,
     @Optional()
     @Inject(TOOL_EXECUTORS)
     private readonly injectedExecutors: IToolExecutor[] | null,
@@ -201,38 +203,62 @@ export class ToolRegistryService implements OnModuleInit {
       };
     }
 
-    // 4. Route
+    // 4. Activity Stream — tool_call_start
+    this.activityStream?.emit({
+      kind: 'tool_call_start',
+      agentId: context.agentId,
+      windowId: context.windowId || undefined,
+      toolName: name,
+      payload: JSON.stringify(args).slice(0, 200),
+      severity: 'info',
+    });
+
+    // 5. Route
+    let result: ToolResult;
+
     if (tool.type === 'internal') {
       const executor = this.executors.get(name);
       if (!executor) {
-        return {
+        result = {
           ok: false,
           toolName: name,
           error: `Internal tool "${name}" has no registered executor`,
           durationMs: performance.now() - start,
         };
+      } else {
+        try {
+          const execResult = await executor.execute(args, context);
+          result = {
+            ...execResult,
+            durationMs: performance.now() - start,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(`Internal tool "${name}" threw: ${message}`);
+          result = {
+            ok: false,
+            toolName: name,
+            error: `Internal execution error: ${message}`,
+            durationMs: performance.now() - start,
+          };
+        }
       }
-
-      try {
-        const result = await executor.execute(args, context);
-        return {
-          ...result,
-          durationMs: performance.now() - start,
-        };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(`Internal tool "${name}" threw: ${message}`);
-        return {
-          ok: false,
-          toolName: name,
-          error: `Internal execution error: ${message}`,
-          durationMs: performance.now() - start,
-        };
-      }
+    } else {
+      // External tool — proxy to OpenClaw Gateway
+      result = await this.toolExecutor.invokeExternal(tool, args, context);
     }
 
-    // External tool — proxy to OpenClaw Gateway
-    return this.toolExecutor.invokeExternal(tool, args, context);
+    // 6. Activity Stream — tool_call_end
+    this.activityStream?.emit({
+      kind: 'tool_call_end',
+      agentId: context.agentId,
+      windowId: context.windowId || undefined,
+      toolName: name,
+      payload: JSON.stringify(result.data ?? result.error ?? '').slice(0, 200),
+      severity: result.ok ? 'info' : 'error',
+    });
+
+    return result;
   }
 
   // ── Query ─────────────────────────────────────────────────────────────

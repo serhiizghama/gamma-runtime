@@ -29,47 +29,39 @@ import { ContextInjectorService } from '../scaffold/context-injector.service';
 import { MessageBusService } from '../messaging/message-bus.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { ActivityStreamService } from '../activity/activity-stream.service';
+import { ToolRegistryService } from '../tools/tool-registry.service';
 import { safeJsonParse } from '../common/safe-json.util';
-import type { GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
+import type { AgentRole, GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
-// ── Tool Scoping ──────────────────────────────────────────────────────────
-// Role-based tool allowlists. App Owners are restricted to their jail;
-// System Architect gets full access.
+// ── Feature Flag ──────────────────────────────────────────────────────────
+// When true, tool scoping and internal tool dispatch flow through the
+// ToolRegistryService. When false, the legacy hardcoded arrays are used.
+const TOOL_REGISTRY_ENABLED = true;
 
-/** Tools available to App Owner agents — limited to their own app bundle. */
-const APP_OWNER_TOOLS = [
-  'shell_exec',   // Sandboxed shell within jail
-  'fs_read',      // Read files within jail
-  'fs_write',     // Write files within jail
-  'fs_list',      // List directory within jail
-  'update_app',   // Scaffold update (PATCH semantics)
-  'read_context', // Read own context.md
-  'list_assets',  // List own assets
-  'add_asset',    // Upload asset to own bundle
+// ── Legacy Tool Scoping (fallback when TOOL_REGISTRY_ENABLED = false) ────
+
+const LEGACY_APP_OWNER_TOOLS = [
+  'shell_exec', 'fs_read', 'fs_write', 'fs_list',
+  'update_app', 'read_context', 'list_assets', 'add_asset',
 ] as const;
 
-/** Tools available to System Architect — full system access. */
-const SYSTEM_ARCHITECT_TOOLS = [
-  'shell_exec',
-  'fs_read',
-  'fs_write',
-  'fs_list',
-  'scaffold',
-  'unscaffold',
-  'system_health',
-  'list_apps',
-  'read_file',
-  'send_message',
+const LEGACY_SYSTEM_ARCHITECT_TOOLS = [
+  'shell_exec', 'fs_read', 'fs_write', 'fs_list',
+  'scaffold', 'unscaffold', 'system_health', 'list_apps',
+  'read_file', 'send_message',
 ] as const;
 
-/**
- * Resolve the tool allowlist for a given session key.
- * Returns undefined for sessions without explicit scoping (fallback to gateway defaults).
- */
-function resolveAllowedTools(sessionKey: string): readonly string[] | undefined {
-  if (sessionKey.startsWith('app-owner-')) return APP_OWNER_TOOLS;
-  if (sessionKey === 'system-architect') return SYSTEM_ARCHITECT_TOOLS;
+function legacyResolveAllowedTools(sessionKey: string): readonly string[] | undefined {
+  if (sessionKey.startsWith('app-owner-')) return LEGACY_APP_OWNER_TOOLS;
+  if (sessionKey === 'system-architect') return LEGACY_SYSTEM_ARCHITECT_TOOLS;
   return undefined;
+}
+
+/** Derive AgentRole from session key. */
+function resolveRole(sessionKey: string): AgentRole {
+  if (sessionKey === 'system-architect') return 'architect';
+  if (sessionKey.startsWith('app-owner-')) return 'app-owner';
+  return 'daemon';
 }
 
 // ── Local types ───────────────────────────────────────────────────────────
@@ -235,6 +227,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly contextInjector?: ContextInjectorService,
     @Optional() private readonly eventLog?: SystemEventLog,
     @Optional() private readonly activityStream?: ActivityStreamService,
+    @Optional() private readonly toolRegistry?: ToolRegistryService,
   ) {
     this.gatewayUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
     this.gatewayToken = this.config.get('OPENCLAW_GATEWAY_TOKEN', '');
@@ -890,8 +883,24 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
-        // ── IPC: intercept send_message and handle locally ──────────
-        if (name === 'send_message' && toolCallId) {
+        // ── Registry-driven internal tool intercept ─────────────────
+        if (TOOL_REGISTRY_ENABLED && this.toolRegistry && toolCallId) {
+          const toolDef = this.toolRegistry.get(name);
+          if (toolDef?.type === 'internal') {
+            this.logger.log(
+              `[TOOL-REGISTRY] INTERCEPT ${name} | session=${sessionKey} | toolCallId=${toolCallId}`,
+            );
+            await this.handleInternalToolViaRegistry(
+              sessionKey, windowId, runId, toolCallId, name,
+              (data?.arguments as Record<string, unknown>) ?? {},
+              sseKey, nowMs,
+            );
+            return;
+          }
+        }
+
+        // Legacy fallback: intercept send_message when registry is disabled
+        if (!TOOL_REGISTRY_ENABLED && name === 'send_message' && toolCallId) {
           this.logger.log(
             `[DIRECTOR-DEBUG] IPC INTERCEPT send_message | session=${sessionKey} | toolCallId=${toolCallId} | ` +
             `args=${JSON.stringify(data?.arguments ?? {}).slice(0, 200)}`,
@@ -1339,14 +1348,22 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
 
-    const allowedTools = resolveAllowedTools(sessionKey);
+    let allowedTools: string[] | undefined;
+    if (TOOL_REGISTRY_ENABLED && this.toolRegistry) {
+      const role = resolveRole(sessionKey);
+      const manifest = this.toolRegistry.getManifest(role);
+      allowedTools = manifest.map((t) => t.name);
+    } else {
+      const legacy = legacyResolveAllowedTools(sessionKey);
+      allowedTools = legacy ? [...legacy] : undefined;
+    }
 
     const frameId = ulid();
     const params: Record<string, unknown> = {
       sessionKey: this.toOpenClawKey(sessionKey),
       ...(systemPrompt ? { systemPrompt } : {}),
       ...(agentId ? { agentId } : {}),
-      ...(allowedTools ? { allowedTools: [...allowedTools] } : {}),
+      ...(allowedTools ? { allowedTools } : {}),
     };
 
     this.logger.log(
@@ -1421,7 +1438,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     // message so agents have situational awareness of the runtime environment.
     if (this.contextInjector) {
       try {
-        const liveContext = await this.contextInjector.getLiveContext(sessionKey);
+        const liveContext = await this.contextInjector.getLiveContext(sessionKey, resolveRole(sessionKey));
         if (liveContext) {
           outgoingMessage = outgoingMessage + '\n\n' + liveContext;
         }
@@ -1544,6 +1561,82 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
    * Handle the `send_message` tool call locally: deliver the message via
    * MessageBusService and return a synthetic tool_result to the agent.
    */
+  /**
+   * Dispatch an internal tool via the ToolRegistryService.
+   * Pushes tool_call + tool_result SSE events and sends the result
+   * back to the Gateway so the agent receives it.
+   */
+  private async handleInternalToolViaRegistry(
+    sessionKey: string,
+    windowId: string,
+    runId: string,
+    toolCallId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    sseKey: string,
+    nowMs: number,
+  ): Promise<void> {
+    // Push tool_call event to SSE (so the UI sees it)
+    await this.pushSSE(sseKey, {
+      type: 'tool_call',
+      windowId,
+      runId,
+      name: toolName,
+      toolCallId,
+      arguments: args,
+    });
+
+    const role = resolveRole(sessionKey);
+    const appId = sessionKey.startsWith('app-owner-')
+      ? sessionKey.replace('app-owner-', '')
+      : sessionKey;
+
+    const result = await this.toolRegistry!.invoke(toolName, args, {
+      agentId: sessionKey,
+      sessionKey,
+      windowId,
+      appId,
+      role,
+    });
+
+    const resultPayload = JSON.stringify(result.data ?? result.error ?? null);
+    const isError = !result.ok;
+
+    // Push synthetic tool_result to SSE
+    await this.pushSSE(sseKey, {
+      type: 'tool_result',
+      windowId,
+      runId,
+      name: toolName,
+      toolCallId,
+      result: resultPayload,
+      isError,
+    });
+
+    // Send the result back to the Gateway so the agent receives it
+    this.send({
+      type: 'req',
+      id: ulid(),
+      method: 'tools.reject',
+      params: {
+        sessionKey: this.toOpenClawKey(sessionKey),
+        toolCallId,
+        error: resultPayload,
+      },
+    });
+
+    // Update live state
+    const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
+    const lines: string[] = raw ? safeJsonParse<string[]>(raw, []) : [];
+    const status = isError ? '❌' : '✅';
+    lines.push(`${status} \`${toolName}\` → ${resultPayload.slice(0, 100)}`);
+    await this.redis.hset(
+      `${REDIS_KEYS.STATE_PREFIX}${windowId}`,
+      'pendingToolLines', JSON.stringify(lines),
+      'lastEventAt', String(nowMs),
+    );
+  }
+
   private async handleSendMessageTool(
     sessionKey: string,
     windowId: string,
