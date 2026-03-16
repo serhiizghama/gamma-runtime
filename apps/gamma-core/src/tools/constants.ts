@@ -254,4 +254,76 @@ export const EXTERNAL_TOOL_DEFINITIONS: ITool[] = [
       },
     },
   },
+
+  // ── Memory ─────────────────────────────────────────────────────────
+  {
+    name: 'vector_store',
+    description:
+      'Omnichannel Knowledge Hub. Store and retrieve long-term semantic memory ' +
+      '(vectors + FTS5 keyword match). Use "upsert" to save important architectural ' +
+      'decisions, facts, or context for the future. Use "search" to retrieve past ' +
+      'context when your short-term memory is insufficient.',
+    type: 'external',
+    category: 'memory',
+    allowedRoles: ['architect', 'app-owner', 'daemon'],
+    schema: {
+      parameters: {
+        action: {
+          type: 'string',
+          description: 'The operation to perform on the knowledge store.',
+          enum: ['upsert', 'search', 'delete'],
+          required: true,
+        },
+        payload: {
+          type: 'object',
+          description: 'Action-specific arguments.',
+          required: true,
+          properties: {
+            id: {
+              type: 'string',
+              description:
+                'Chunk ID. Required for delete. Optional for upsert (auto-generated if omitted).',
+            },
+            namespace: {
+              type: 'string',
+              description: 'Logical partition key. Defaults to "default".',
+              default: 'default',
+            },
+            content: {
+              type: 'string',
+              description: 'The text to embed and store. Required for upsert.',
+            },
+            metadata: {
+              type: 'object',
+              description: 'Arbitrary JSON metadata attached to the chunk.',
+            },
+            query: {
+              type: 'string',
+              description: 'Natural-language search query. Required for search.',
+            },
+            limit: {
+              type: 'number',
+              description: 'Max results to return (1–100). Defaults to 10.',
+              default: 10,
+            },
+            mode: {
+              type: 'string',
+              description: 'Search strategy: hybrid (vector + FTS5), vector-only, or FTS-only.',
+              enum: ['hybrid', 'vector', 'fts'],
+              default: 'hybrid',
+            },
+            shared: {
+              type: 'boolean',
+              description:
+                'If true, search across all agents\' knowledge (omnichannel). ' +
+                'If false (default), restrict to the calling agent\'s entries.',
+              default: false,
+            },
+          },
+        },
+      },
+      outputDescription:
+        'Upsert: { id, status }. Search: { results: [{ id, namespace, content, metadata, score }] }. Delete: { status }.',
+    },
+  },
 ];
