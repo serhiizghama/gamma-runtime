@@ -14,8 +14,8 @@ import type {
   AgentRole,
 } from '@gamma/types';
 import type { IToolExecutor, ToolExecutionContext } from './interfaces';
-import { TOOL_EXECUTORS } from './constants';
-import { EXTERNAL_TOOL_DEFINITIONS } from './constants';
+import { TOOL_EXECUTORS, EXTERNAL_TOOL_DEFINITIONS } from './constants';
+import { ToolExecutorService } from './tool-executor.service';
 
 // ── Ajv Schema Compiler ─────────────────────────────────────────────────
 
@@ -84,6 +84,7 @@ export class ToolRegistryService implements OnModuleInit {
   private readonly ajv = new Ajv({ allErrors: true, strict: false });
 
   constructor(
+    private readonly toolExecutor: ToolExecutorService,
     @Optional()
     @Inject(TOOL_EXECUTORS)
     private readonly injectedExecutors: IToolExecutor[] | null,
@@ -230,14 +231,8 @@ export class ToolRegistryService implements OnModuleInit {
       }
     }
 
-    // External tool — stub for PR 3
-    // TODO: PR 3 - Proxy to ToolExecutorService
-    return {
-      ok: false,
-      toolName: name,
-      error: `External tool dispatch not yet implemented (tool: "${name}")`,
-      durationMs: performance.now() - start,
-    };
+    // External tool — proxy to OpenClaw Gateway
+    return this.toolExecutor.invokeExternal(tool, args, context);
   }
 
   // ── Query ─────────────────────────────────────────────────────────────
