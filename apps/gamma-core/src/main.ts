@@ -34,21 +34,21 @@ async function bootstrap(): Promise<void> {
     new FastifyAdapter(adapterOpts),
   );
 
-  // ── CORS — explicit origin allowlist (spec §11) ───────────────────────
+  // ── CORS — origin allowlist from ALLOWED_ORIGINS env (spec §11) ────────
   const protocol = hasCerts ? 'https' : 'http';
+  const envOrigins = process.env['ALLOWED_ORIGINS'];
+  const origins: string[] = envOrigins
+    ? envOrigins.split(',').map((o) => o.trim()).filter(Boolean)
+    : [
+        `${protocol}://localhost:5173`,
+        `${protocol}://127.0.0.1:5173`,
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+      ];
   await app.register(fastifyCors as any, {
-    origin: [
-      `${protocol}://localhost:5173`,
-      `${protocol}://127.0.0.1:5173`,
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      'http://100.123.78.76:5173',
-      'http://sputniks-mac-mini.tailcde006.ts.net:5173',
-      'https://sputniks-mac-mini.tailcde006.ts.net:5173',
-      'https://sputniks-mac-mini.tailcde006.ts.net',
-    ],
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control'],
+    origin: origins,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Gamma-System-Token'],
     credentials: false,
   });
 

@@ -56,10 +56,26 @@ export class ToolJailGuardService {
     // System Architect is exempt — full system access
     if (sessionKey === 'system-architect') return null;
 
-    // Only enforce on app-owner sessions
+    // Only enforce on app-owner sessions (including sub-agent variants like
+    // app-owner-notes:subagent:abc123). Extract the root appId by taking only
+    // the segment between 'app-owner-' and the first colon (if any), preventing
+    // sub-agent keys from escaping to a different jail directory.
     if (!sessionKey.startsWith('app-owner-')) return null;
 
-    const appId = sessionKey.replace('app-owner-', '');
+    const rawAppId = sessionKey.slice('app-owner-'.length);
+    const appId = rawAppId.split(':')[0];
+
+    if (!appId || /[\/\\.]/.test(appId)) {
+      this.logger.error(
+        `[JAIL VIOLATION] Invalid appId extracted from sessionKey '${sessionKey}'`,
+      );
+      return {
+        tool: toolName,
+        sessionKey,
+        argument: '',
+        reason: `Invalid appId '${appId}' derived from session key`,
+      };
+    }
 
     // ── Filesystem tools: validate the path argument ───────────────────
     if ((FS_TOOLS as readonly string[]).includes(toolName)) {

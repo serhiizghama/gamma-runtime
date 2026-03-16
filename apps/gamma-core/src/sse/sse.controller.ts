@@ -1,4 +1,4 @@
-import { Controller, Param, Query, Sse, MessageEvent, Inject } from '@nestjs/common';
+import { Controller, Param, Query, Sse, MessageEvent, Inject, Logger } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
@@ -17,14 +17,25 @@ import type { GammaSSEEvent } from '@gamma/types';
  */
 @Controller('api/stream')
 export class SseController {
+  private readonly logger = new Logger(SseController.name);
+
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
   @Sse(':windowId')
   stream(
     @Param('windowId') windowId: string,
+    @Query('ticket') ticket?: string,
     @Query('lastEventId') lastEventId?: string,
   ): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
+      // Validate single-use SSE ticket before allowing the stream
+      const validateTicket = async (): Promise<boolean> => {
+        if (!ticket) return false;
+        const key = `${REDIS_KEYS.SSE_TICKET_PREFIX}${ticket}`;
+        const deleted = await this.redis.del(key);
+        return deleted === 1;
+      };
+
       // Dedicated Redis connection for blocking reads —
       // XREAD BLOCK monopolizes the connection, so we duplicate it.
       const blockingRedis = this.redis.duplicate();
@@ -104,8 +115,22 @@ export class SseController {
         }
       }, 15_000);
 
-      // Start polling loop (fire-and-forget — runs until closed)
-      poll().catch(() => {});
+      // Validate ticket before starting the poll loop
+      validateTicket()
+        .then((valid) => {
+          if (!valid) {
+            this.logger.warn(`SSE rejected for ${windowId}: invalid or expired ticket`);
+            subscriber.next({
+              data: JSON.stringify({ type: 'error', message: 'invalid or expired ticket' }),
+            } as MessageEvent);
+            subscriber.complete();
+            return;
+          }
+          poll().catch(() => {});
+        })
+        .catch(() => {
+          subscriber.complete();
+        });
 
       // Cleanup on client disconnect
       return () => {

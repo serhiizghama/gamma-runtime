@@ -1,38 +1,8 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { create } from "zustand";
-import type { AgentRegistryEntry, GammaSSEEvent, SpawnAgentDto, AgentRole } from "@gamma/types";
-import { systemAuthHeaders } from "../../../hooks/useSessionRegistry";
+import type { ActivityEvent, AgentRegistryEntry, GammaSSEEvent, SpawnAgentDto, AgentRole } from "@gamma/types";
+import { systemAuthHeaders, fetchSseTicket } from "../../../lib/auth";
 import { API_BASE } from "../../../constants/api";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface ActivityEvent {
-  id: string;
-  ts: number;
-  kind: string;
-  agentId: string;
-  targetAgentId?: string;
-  windowId?: string;
-  appId?: string;
-  toolName?: string;
-  toolCallId?: string;
-  runId?: string;
-  payload?: string;
-  severity: "info" | "warn" | "error";
-}
-
-// ─── Auth helper for SSE ──────────────────────────────────────────────────────
-// EventSource doesn't support custom headers — token must be passed as query param.
-
-function buildSSEUrl(path: string): string {
-  const headers = systemAuthHeaders() as Record<string, string>;
-  const token = headers["X-Gamma-System-Token"];
-  const url = `${API_BASE}${path}`;
-  if (token) {
-    return `${url}?token=${encodeURIComponent(token)}`;
-  }
-  return url;
-}
 
 // ─── Event color coding ───────────────────────────────────────────────────────
 
@@ -472,11 +442,14 @@ function useAgentMonitor(onUpdate: (agents: AgentRegistryEntry[]) => void) {
     let destroyed = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const connect = () => {
-      if (destroyed) return;
+    const connect = async () => {
+      if (destroyed) return undefined;
 
-      // FIX: Pass auth token as query param (EventSource doesn't support custom headers).
-      const es = new EventSource(buildSSEUrl("/api/stream/agent-monitor"));
+      const ticketQs = await fetchSseTicket("/api/stream/agent-monitor");
+      if (destroyed) return undefined;
+      const url = `${API_BASE}/api/stream/agent-monitor${ticketQs}`;
+
+      const es = new EventSource(url);
 
       es.onmessage = (ev) => {
         try {
@@ -490,18 +463,19 @@ function useAgentMonitor(onUpdate: (agents: AgentRegistryEntry[]) => void) {
       es.onerror = () => {
         es.close();
         if (!destroyed) {
-          reconnectTimer = setTimeout(connect, 4000);
+          reconnectTimer = setTimeout(() => void connect(), 4000);
         }
       };
 
       return es;
     };
 
-    const es = connect();
+    let esInstance: EventSource | undefined;
+    void connect().then((es) => { esInstance = es; });
 
     return () => {
       destroyed = true;
-      es?.close();
+      esInstance?.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
     };
   }, []);
@@ -1073,12 +1047,14 @@ function useActivityStream(): { connected: boolean; eventCount: number } {
   useEffect(() => {
     let destroyed = false;
 
-    const connect = (): void => {
+    const connect = async (): Promise<void> => {
       if (destroyed) return;
 
-      // FIX: Pass auth token as query param (EventSource doesn't support custom headers).
-      const url = buildSSEUrl("/api/system/activity/stream");
-      console.log("[Director] SSE connecting:", url);
+      // Exchange system token for a short-lived, single-use SSE ticket
+      const ticketQs = await fetchSseTicket("/api/system/activity/stream");
+      if (destroyed) return;
+      const url = `${API_BASE}/api/system/activity/stream${ticketQs}`;
+      console.log("[Director] SSE connecting:", url.replace(/ticket=[^&]+/, "ticket=***"));
 
       const es = new EventSource(url);
       esRef.current = es;
@@ -1120,7 +1096,7 @@ function useActivityStream(): { connected: boolean; eventCount: number } {
       };
     };
 
-    connect();
+    void connect();
 
     return () => {
       destroyed = true;

@@ -12,6 +12,7 @@ import {
   UseGuards,
   Logger,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { Observable } from 'rxjs';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
@@ -46,6 +47,22 @@ export class SystemController {
   @Get('health')
   async getHealth(): Promise<SystemHealthReport> {
     return this.health.getHealth();
+  }
+
+  // ── SSE Ticket (Phase 5.5 — Security Hardening) ─────────────────────────
+
+  /**
+   * Exchange a system token for a short-lived, single-use SSE ticket.
+   * The ticket is stored in Redis with a 30s TTL and returned to the caller.
+   * SSE endpoints validate the ticket instead of the long-lived system token.
+   */
+  @Post('sse-ticket')
+  @UseGuards(SystemAppGuard)
+  async createSseTicket(): Promise<{ ticket: string }> {
+    const ticket = randomBytes(32).toString('hex');
+    const key = `${REDIS_KEYS.SSE_TICKET_PREFIX}${ticket}`;
+    await this.redis.set(key, '1', 'EX', 30);
+    return { ticket };
   }
 
   @Get('backups')
@@ -146,9 +163,18 @@ export class SystemController {
    */
   @Sse('activity/stream')
   streamActivity(
+    @Query('ticket') ticket?: string,
     @Query('lastEventId') lastEventId?: string,
   ): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
+      // Validate single-use SSE ticket before allowing the stream
+      const validateTicket = async (): Promise<boolean> => {
+        if (!ticket) return false;
+        const key = `${REDIS_KEYS.SSE_TICKET_PREFIX}${ticket}`;
+        const deleted = await this.redis.del(key);
+        return deleted === 1;
+      };
+
       const blockingRedis = this.redis.duplicate();
       let closed = false;
       let lastId = lastEventId || '$';
@@ -201,7 +227,21 @@ export class SystemController {
         }
       }, 15_000);
 
-      poll().catch(() => {});
+      // Validate ticket before starting the poll loop
+      validateTicket()
+        .then((valid) => {
+          if (!valid) {
+            subscriber.next({
+              data: JSON.stringify({ type: 'error', message: 'invalid or expired ticket' }),
+            } as MessageEvent);
+            subscriber.complete();
+            return;
+          }
+          poll().catch(() => {});
+        })
+        .catch(() => {
+          subscriber.complete();
+        });
 
       return () => {
         closed = true;
