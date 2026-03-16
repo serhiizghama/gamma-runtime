@@ -95,10 +95,16 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
 
       let token: string;
       try {
-        // Abort fetch after TOKEN_FETCH_TIMEOUT_MS even if server never responds
+        // Abort fetch after TOKEN_FETCH_TIMEOUT_MS even if server never responds.
+        // AbortSignal.any is a static method — its truthiness check is always reliable
+        // when present. Fallback: AbortSignal.timeout() gives an independent deadline
+        // on older browsers (Safari <16.4, older Chromium) that lack AbortSignal.any,
+        // ensuring TOKEN_FETCH_TIMEOUT_MS is never silently dropped.
         const fetchAbort = AbortSignal.any
           ? AbortSignal.any([abortCtrl.signal, AbortSignal.timeout(TOKEN_FETCH_TIMEOUT_MS)])
-          : abortCtrl.signal;
+          : AbortSignal.timeout
+            ? AbortSignal.timeout(TOKEN_FETCH_TIMEOUT_MS)
+            : abortCtrl.signal;
 
         term.write("\x1b[90m  Requesting PTY token…\x1b[0m\r\n");
         const res = await fetch(`${API_BASE}/api/pty/token`, {
@@ -129,10 +135,16 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
-      // Timeout if WS never opens — stored in ref so cleanup can cancel it
+      // Timeout if WS never opens — stored in ref so cleanup can cancel it.
+      // timedOut flag suppresses the subsequent onclose status update: when the
+      // timeout fires and calls ws.close(), the browser emits onclose with a
+      // generated code (1006) that would otherwise overwrite "error" with
+      // "disconnected", producing a visible status flicker.
+      let timedOut = false;
       wsTimeoutRef.current = setTimeout(() => {
         wsTimeoutRef.current = null;
         if (ws.readyState !== WebSocket.OPEN) {
+          timedOut = true;
           const msg = `WebSocket did not connect within ${WS_CONNECT_TIMEOUT_MS / 1000}s`;
           onStatusChange("error", msg);
           term.write(`\r\n\x1b[31m✗ ${msg}\x1b[0m\r\n`);
@@ -144,8 +156,11 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
       ws.onopen = () => {
         clearTimeout(wsTimeoutRef.current ?? undefined);
         wsTimeoutRef.current = null;
-        // DEF-1 fix: send auth token as first message (out-of-band, not in URL)
+        // DEF-1 fix: send auth token as first message (out-of-band, not in URL).
+        // Null the closure variable immediately after send to minimise the
+        // in-memory window — the token has no further use after authentication.
         ws.send(JSON.stringify({ type: "auth", token }));
+        (token as unknown) = null; // eslint-disable-line prefer-const
         console.log("[TerminalApp] WebSocket connected to PTY shell");
         onStatusChange("connected");
         term.write("\x1b[36m⬡ Gamma Agent Runtime\x1b[0m  \x1b[90mv2.0 · PTY Shell · macOS\x1b[0m\r\n");
@@ -179,6 +194,9 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
         // Cancel connect-timeout — socket is already closed, no point firing it
         clearTimeout(wsTimeoutRef.current ?? undefined);
         wsTimeoutRef.current = null;
+        // If the timeout handler already set "error" and triggered this close,
+        // suppress further status updates to prevent error→disconnected flicker.
+        if (timedOut) return;
         // 4500 = PTY spawn failed (our custom code)
         if (ev.code === 4500) {
           onStatusChange("error", "PTY spawn failed on server");
@@ -324,10 +342,10 @@ export function TerminalApp(): React.ReactElement {
                 transition: "background 0.15s",
               }}
               onMouseEnter={(e) =>
-                ((e.target as HTMLButtonElement).style.background = "#21262d")
+                ((e.currentTarget as HTMLButtonElement).style.background = "#21262d")
               }
               onMouseLeave={(e) =>
-                ((e.target as HTMLButtonElement).style.background = "#161b22")
+                ((e.currentTarget as HTMLButtonElement).style.background = "#161b22")
               }
             >
               ↺ Reconnect
