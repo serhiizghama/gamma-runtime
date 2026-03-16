@@ -223,7 +223,6 @@ export class SessionRegistryService {
       return { ...r, appId, windowId };
     });
 
-    console.log('[REGISTRY DUMP]', enriched);
     return enriched;
   }
 

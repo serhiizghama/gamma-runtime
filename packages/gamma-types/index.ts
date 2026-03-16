@@ -104,16 +104,6 @@ export interface WindowAgentState {
   pendingToolLines: string[];
 }
 
-export const INITIAL_WINDOW_AGENT_STATE: WindowAgentState = {
-  status: 'idle',
-  streamText: null,
-  thinkingTrace: null,
-  outputLines: [],
-  runId: null,
-  runStartedAt: null,
-  pendingToolLines: [],
-};
-
 // ── §3.6 Memory Bus Entry ────────────────────────────────────────────────
 
 export interface MemoryBusEntry {
@@ -239,8 +229,6 @@ export interface BackupInventory {
 }
 
 // ── Gateway WS Frame Types (§3.2) ───────────────────────────────────────
-
-export type GWFrameType = 'res' | 'event';
 
 export interface GWFrame {
   type: string;
@@ -401,9 +389,6 @@ export const REDIS_KEYS = {
   SYSTEM_ACTIVITY: 'gamma:system:activity',
   SSE_TICKET_PREFIX: 'gamma:sse-ticket:',
 } as const;
-
-/** Stream ID is always a string — never parse as number (precision loss) */
-export type StreamID = string;
 
 // ── §20 Tool Registry (Phase 6 — ACA) ───────────────────────────────────
 

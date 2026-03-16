@@ -22,6 +22,7 @@ import type {
 import { CreateSessionBody } from '../dto/create-session.dto';
 import { SendMessageBody } from '../dto/send-message.dto';
 
+@UseGuards(SystemAppGuard)
 @Controller('api/sessions')
 export class SessionsController {
   constructor(
@@ -44,14 +45,12 @@ export class SessionsController {
 
   /** Returns the full session registry — all active agent telemetry records. */
   @Get('active')
-  @UseGuards(SystemAppGuard)
   async getActiveRegistry(): Promise<SessionRecord[]> {
     return this.registry.getAll();
   }
 
   /** Returns the full system prompt stored for the given session key. */
   @Get(':sessionKey/context')
-  @UseGuards(SystemAppGuard)
   async getContext(
     @Param('sessionKey') sessionKey: string,
   ): Promise<{ context: string }> {
@@ -69,7 +68,6 @@ export class SessionsController {
    */
   @Delete('registry/flush')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(SystemAppGuard)
   async flushRegistry(): Promise<{ ok: boolean; deleted: number }> {
     const killed = await this.sessions.killAll();
     // Flush any orphaned registry/context keys not covered by killAll
@@ -80,7 +78,6 @@ export class SessionsController {
   /** Force-kill a session by its sessionKey — aborts the run and marks registry as aborted. */
   @Post(':sessionKey/kill')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(SystemAppGuard)
   async kill(
     @Param('sessionKey') sessionKey: string,
   ): Promise<{ ok: boolean }> {

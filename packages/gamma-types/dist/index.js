@@ -6,16 +6,7 @@
  * Single source of truth for both frontend (React) and backend (NestJS).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.REDIS_KEYS = exports.INITIAL_WINDOW_AGENT_STATE = void 0;
-exports.INITIAL_WINDOW_AGENT_STATE = {
-    status: 'idle',
-    streamText: null,
-    thinkingTrace: null,
-    outputLines: [],
-    runId: null,
-    runStartedAt: null,
-    pendingToolLines: [],
-};
+exports.REDIS_KEYS = void 0;
 // ── Redis Key Constants ──────────────────────────────────────────────────
 exports.REDIS_KEYS = {
     SESSIONS: 'gamma:sessions',

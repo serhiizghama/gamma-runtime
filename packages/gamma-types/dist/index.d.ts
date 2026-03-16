@@ -117,7 +117,6 @@ export interface WindowAgentState {
     runStartedAt: number | null;
     pendingToolLines: string[];
 }
-export declare const INITIAL_WINDOW_AGENT_STATE: WindowAgentState;
 export interface MemoryBusEntry {
     id: string;
     sessionKey: string;
@@ -238,7 +237,6 @@ export interface BackupInventory {
     totalSizeBytes: number;
     events: SystemEvent[];
 }
-export type GWFrameType = 'res' | 'event';
 export interface GWFrame {
     type: string;
     id?: string;
@@ -358,8 +356,6 @@ export declare const REDIS_KEYS: {
     readonly SYSTEM_ACTIVITY: "gamma:system:activity";
     readonly SSE_TICKET_PREFIX: "gamma:sse-ticket:";
 };
-/** Stream ID is always a string — never parse as number (precision loss) */
-export type StreamID = string;
 /** Routing type: where the tool executes. */
 export type ToolType = 'internal' | 'external';
 /** JSON-Schema-like descriptor for a single tool parameter. */

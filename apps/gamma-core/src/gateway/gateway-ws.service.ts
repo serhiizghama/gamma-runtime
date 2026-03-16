@@ -13,7 +13,7 @@ import { readFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 import { ulid } from 'ulid';
-import { GWFrame, REDIS_KEYS } from '@gamma/types';
+import { REDIS_KEYS } from '@gamma/types';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { SystemEventLog } from '../system/system-event-log.service';
