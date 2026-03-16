@@ -12,6 +12,7 @@ import { AppDataModule } from './app-data/app-data.module';
 import { PtyModule } from './pty/pty.module';
 import { SystemEventLogModule } from './system/system-event-log.module';
 import { ContextInjectorModule } from './scaffold/context-injector.module';
+import { ToolsModule } from './tools/tools.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ContextInjectorModule } from './scaffold/context-injector.module';
     ScaffoldModule,
     AppDataModule,
     PtyModule,
+    ToolsModule,
   ],
   controllers: [AppController],
 })

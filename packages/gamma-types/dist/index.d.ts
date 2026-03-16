@@ -350,6 +350,59 @@ export declare const REDIS_KEYS: {
 };
 /** Stream ID is always a string — never parse as number (precision loss) */
 export type StreamID = string;
+/** Routing type: where the tool executes. */
+export type ToolType = 'internal' | 'external';
+/** JSON-Schema-like descriptor for a single tool parameter. */
+export interface ToolParameterSchema {
+    type: 'string' | 'number' | 'boolean' | 'object' | 'array';
+    description: string;
+    required?: boolean;
+    /** Nested properties — only when type is 'object'. */
+    properties?: Record<string, ToolParameterSchema>;
+    /** Item schema — only when type is 'array'. */
+    items?: ToolParameterSchema;
+    /** Allowed values constraint. */
+    enum?: (string | number)[];
+    /** Default value when parameter is omitted. */
+    default?: unknown;
+}
+/** Input/output schema for a tool. */
+export interface ToolSchema {
+    /** Parameter definitions keyed by parameter name. */
+    parameters: Record<string, ToolParameterSchema>;
+    /** Human-readable description of the output shape. */
+    outputDescription?: string;
+}
+/**
+ * First-class tool definition.
+ * Every tool in the system (internal or external) MUST have an ITool entry.
+ */
+export interface ITool {
+    /** Unique tool name — snake_case (e.g. 'fs_read', 'spawn_sub_agent'). */
+    name: string;
+    /** Human-readable description injected into the LLM prompt. */
+    description: string;
+    /** Where this tool executes. */
+    type: ToolType;
+    /** Input/output schema for argument validation and prompt generation. */
+    schema: ToolSchema;
+    /** Which agent roles may invoke this tool. */
+    allowedRoles: AgentRole[];
+    /** Optional grouping category (e.g. 'filesystem', 'agent', 'system'). */
+    category?: string;
+}
+/** Standardized result envelope returned by every tool invocation. */
+export interface ToolResult {
+    ok: boolean;
+    /** Name of the tool that was invoked. */
+    toolName: string;
+    /** Arbitrary result payload — shape is tool-specific. */
+    data?: unknown;
+    /** Error message when ok === false. */
+    error?: string;
+    /** Wall-clock execution duration in milliseconds. */
+    durationMs: number;
+}
 export interface WindowCoordinates {
     x: number;
     y: number;
