@@ -131,6 +131,70 @@ export class SystemController {
     await this.sessions.sendMessage(agent.windowId, message);
   }
 
+  // ── Agent Pause / Resume (Phase 5) ───────────────────────────────────
+
+  /**
+   * Pause an agent — sets acceptsMessages to false and status to 'idle'.
+   * The agent's session remains alive but stops processing new messages.
+   */
+  @Post('agents/:id/pause')
+  @UseGuards(SystemAppGuard)
+  async pauseAgent(
+    @Param('id') agentId: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const agent = await this.agentRegistry.getOne(agentId);
+    if (!agent) return { ok: false, error: `Agent '${agentId}' not found` };
+    if (agent.status === 'idle' && !agent.acceptsMessages) {
+      return { ok: false, error: `Agent '${agentId}' is already paused` };
+    }
+
+    await this.agentRegistry.update(agentId, {
+      acceptsMessages: false,
+      status: 'idle',
+      lastActivity: 'paused by Director',
+    });
+
+    this.activityStream.emit({
+      kind: 'agent_status_change',
+      agentId,
+      payload: 'paused',
+      severity: 'warn',
+    });
+
+    this.logger.log(`Agent '${agentId}' paused by Director`);
+    return { ok: true };
+  }
+
+  /**
+   * Resume a paused agent — sets acceptsMessages to true.
+   */
+  @Post('agents/:id/resume')
+  @UseGuards(SystemAppGuard)
+  async resumeAgent(
+    @Param('id') agentId: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const agent = await this.agentRegistry.getOne(agentId);
+    if (!agent) return { ok: false, error: `Agent '${agentId}' not found` };
+    if (agent.acceptsMessages) {
+      return { ok: false, error: `Agent '${agentId}' is not paused` };
+    }
+
+    await this.agentRegistry.update(agentId, {
+      acceptsMessages: true,
+      lastActivity: 'resumed by Director',
+    });
+
+    this.activityStream.emit({
+      kind: 'agent_status_change',
+      agentId,
+      payload: 'resumed',
+      severity: 'info',
+    });
+
+    this.logger.log(`Agent '${agentId}' resumed by Director`);
+    return { ok: true };
+  }
+
   // ── Agent Spawning (Phase 5.3) ──────────────────────────────────────
 
   @Post('agents/spawn')

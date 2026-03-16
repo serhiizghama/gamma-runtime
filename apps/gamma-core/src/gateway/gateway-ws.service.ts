@@ -13,7 +13,7 @@ import { readFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 import { ulid } from 'ulid';
-import { REDIS_KEYS } from '@gamma/types';
+import { GWFrame, REDIS_KEYS } from '@gamma/types';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { SystemEventLog } from '../system/system-event-log.service';
@@ -31,7 +31,7 @@ import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { ActivityStreamService } from '../activity/activity-stream.service';
 import { ToolRegistryService } from '../tools/tool-registry.service';
 import { safeJsonParse } from '../common/safe-json.util';
-import type { AgentRole, GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
+import type { AgentRole, GWAgentEventPayload, GWFrame, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
 // ── Feature Flag ──────────────────────────────────────────────────────────
 // When true, tool scoping and internal tool dispatch flow through the
@@ -62,19 +62,6 @@ function resolveRole(sessionKey: string): AgentRole {
   if (sessionKey === 'system-architect') return 'architect';
   if (sessionKey.startsWith('app-owner-')) return 'app-owner';
   return 'daemon';
-}
-
-// ── Local types ───────────────────────────────────────────────────────────
-
-interface GWFrame {
-  type: string;
-  id?: string;
-  ok?: boolean;
-  event?: string;
-  method?: string;
-  payload?: Record<string, unknown>;
-  error?: Record<string, unknown> | string;
-  seq?: number;
 }
 
 interface PendingRequest {

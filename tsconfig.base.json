@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@gamma/types": ["./packages/gamma-types/dist"],
+      "@gamma/types/*": ["./packages/gamma-types/dist/*"]
+    }
+  }
+}

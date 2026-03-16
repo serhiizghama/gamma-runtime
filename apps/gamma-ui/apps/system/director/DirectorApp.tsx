@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { create } from "zustand";
+import { List as VirtualList } from "react-window";
 import type { ActivityEvent, AgentRegistryEntry, GammaSSEEvent, SpawnAgentDto, AgentRole } from "@gamma/types";
 import { systemAuthHeaders } from "../../../lib/auth";
 import { API_BASE } from "../../../constants/api";
@@ -199,18 +200,21 @@ const STATUS_BAR: React.CSSProperties = {
 
 // ─── Activity Feed ────────────────────────────────────────────────────────────
 
+const EVENT_ROW_HEIGHT = 26;
+
 function ActivityFeed() {
   const events = useActivityStore((s) => s.events);
   const clear = useActivityStore((s) => s.clear);
-  const feedRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const listRef = useRef<any>(null);
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Auto-scroll to top (newest first) unless paused
   useEffect(() => {
-    if (!paused && feedRef.current) {
-      feedRef.current.scrollTop = 0;
+    if (!paused && listRef.current) {
+      listRef.current.scrollToRow({ index: 0, align: "start" });
     }
   }, [events.length, paused]);
 
@@ -222,6 +226,31 @@ function ActivityFeed() {
     if (filter === "lifecycle") return events.filter((e) => e.kind.startsWith("lifecycle_"));
     return events;
   }, [events, filter]);
+
+  // Build row component with stable ref to current filtered/expanded state
+  const stateRef = useRef({ filtered, expandedId, setExpandedId });
+  stateRef.current = { filtered, expandedId, setExpandedId };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const RowComponent = useMemo((): any => {
+    return function EventRowVirtual({ index, style }: { index: number; style: React.CSSProperties }) {
+      const { filtered: f, expandedId: eid, setExpandedId: setEid } = stateRef.current;
+      const ev = f[index];
+      if (!ev) return null;
+      return (
+        <div style={style}>
+          <EventRow
+            event={ev}
+            isExpanded={false}
+            onToggle={() => setEid(eid === ev.id ? null : ev.id)}
+          />
+        </div>
+      );
+    };
+  }, []);
+
+  // Expanded event detail panel
+  const expandedEvent = expandedId ? filtered.find((e) => e.id === expandedId) : null;
 
   return (
     <div style={FEED_PANE}>
@@ -256,8 +285,8 @@ function ActivityFeed() {
           </button>
         </div>
       </div>
-      <div ref={feedRef} style={SCROLL}>
-        {filtered.length === 0 && (
+      <div style={{ ...SCROLL, display: "flex", flexDirection: "column" }}>
+        {filtered.length === 0 ? (
           <div
             style={{
               padding: "40px 12px",
@@ -270,15 +299,61 @@ function ActivityFeed() {
               ? "Awaiting events… Activity will appear here as agents work."
               : "No events match the current filter."}
           </div>
+        ) : (
+          <VirtualList
+            listRef={listRef}
+            rowComponent={RowComponent}
+            rowCount={filtered.length}
+            rowHeight={EVENT_ROW_HEIGHT}
+            rowProps={{} as never}
+            overscanCount={10}
+            style={{ flex: 1 }}
+          >
+            {/* Expanded detail overlay */}
+            {expandedEvent && (
+              <div
+                style={{
+                  position: "sticky",
+                  bottom: 0,
+                  background: "rgba(0,0,0,0.85)",
+                  borderTop: "1px solid rgba(255,255,255,0.08)",
+                  padding: "8px 12px",
+                  fontSize: 10,
+                  maxHeight: 200,
+                  overflow: "auto",
+                  zIndex: 10,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ color: getEventColor(expandedEvent.kind, expandedEvent.severity), fontWeight: 600 }}>
+                    {KIND_ICONS[expandedEvent.kind] ?? "·"} {formatKind(expandedEvent.kind)} — {expandedEvent.agentId}
+                  </span>
+                  <button onClick={() => setExpandedId(null)} style={{ ...FEED_BTN, fontSize: 9 }}>CLOSE</button>
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    fontFamily: "var(--font-system)",
+                    fontSize: 10,
+                    color: "var(--color-text-secondary)",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  {JSON.stringify(expandedEvent, null, 2)}
+                </pre>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(expandedEvent, null, 2)).catch(() => {});
+                  }}
+                  style={{ ...FEED_BTN, marginTop: 6, fontSize: 9 }}
+                >
+                  Copy JSON
+                </button>
+              </div>
+            )}
+          </VirtualList>
         )}
-        {filtered.map((ev) => (
-          <EventRow
-            key={ev.id}
-            event={ev}
-            isExpanded={expandedId === ev.id}
-            onToggle={() => setExpandedId(expandedId === ev.id ? null : ev.id)}
-          />
-        ))}
       </div>
     </div>
   );
@@ -734,12 +809,28 @@ function AgentDetail({
 }) {
   const [reassigning, setReassigning] = useState(false);
   const [killing, setKilling] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
   // FIX: Controlled supervisor select — syncs when a different agent is selected.
   const [supervisorValue, setSupervisorValue] = useState(agent.supervisorId ?? "");
   useEffect(() => {
     setSupervisorValue(agent.supervisorId ?? "");
   }, [agent.agentId, agent.supervisorId]);
+
+  const isPaused = !agent.acceptsMessages;
+
+  const handlePauseResume = async () => {
+    setToggling(true);
+    try {
+      const action = isPaused ? "resume" : "pause";
+      await fetch(`${API_BASE}/api/system/agents/${encodeURIComponent(agent.agentId)}/${action}`, {
+        method: "POST",
+        headers: systemAuthHeaders(),
+      });
+      onRefresh();
+    } catch { /* best-effort */ }
+    setToggling(false);
+  };
 
   const handleKill = async () => {
     if (!confirm(`Terminate agent "${agent.agentId}"?`)) return;
@@ -760,6 +851,15 @@ function AgentDetail({
     .filter((a) => a.agentId !== agent.agentId)
     .map((a) => a.agentId);
 
+  const controlBtn: React.CSSProperties = {
+    border: "1px solid var(--color-border-subtle)",
+    borderRadius: 4,
+    padding: "3px 10px",
+    fontSize: 10,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  };
+
   return (
     <div
       style={{
@@ -772,6 +872,7 @@ function AgentDetail({
       <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6 }}>{agent.agentId}</div>
       <DetailRow label="Role" value={agent.role} />
       <DetailRow label="Status" value={agent.status} />
+      <DetailRow label="IPC" value={agent.acceptsMessages ? "active" : "paused"} />
       <DetailRow label="App" value={agent.appId || "—"} />
       <DetailRow label="Supervisor" value={agent.supervisorId || "(root)"} />
       <DetailRow label="Heartbeat" value={agent.lastHeartbeat ? relativeTime(agent.lastHeartbeat) : "—"} />
@@ -807,20 +908,29 @@ function AgentDetail({
         </select>
       </div>
 
-      {/* Kill button */}
-      <div style={{ marginTop: 8 }}>
+      {/* Pause / Resume / Terminate controls */}
+      <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+        <button
+          onClick={() => void handlePauseResume()}
+          disabled={toggling}
+          style={{
+            ...controlBtn,
+            background: isPaused ? "rgba(95,255,135,0.12)" : "rgba(255,215,135,0.12)",
+            color: isPaused ? "#5fff87" : "#ffd787",
+            cursor: toggling ? "not-allowed" : "pointer",
+          }}
+        >
+          {toggling ? "…" : isPaused ? "▶ Resume" : "⏸ Pause"}
+        </button>
         <button
           onClick={() => void handleKill()}
           disabled={killing}
           style={{
+            ...controlBtn,
             background: "var(--button-danger-bg, #7a2020)",
-            border: "1px solid var(--button-danger-border, rgba(255,80,80,0.4))",
+            borderColor: "var(--button-danger-border, rgba(255,80,80,0.4))",
             color: "var(--button-danger-fg, #fff)",
-            borderRadius: 4,
-            padding: "3px 10px",
-            fontSize: 10,
             cursor: killing ? "not-allowed" : "pointer",
-            fontFamily: "inherit",
           }}
         >
           {killing ? "Killing…" : "Terminate"}

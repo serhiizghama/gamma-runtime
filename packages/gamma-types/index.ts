@@ -242,6 +242,17 @@ export interface BackupInventory {
 
 export type GWFrameType = 'res' | 'event';
 
+export interface GWFrame {
+  type: string;
+  id?: string;
+  ok?: boolean;
+  event?: string;
+  method?: string;
+  payload?: Record<string, unknown>;
+  error?: Record<string, unknown> | string;
+  seq?: number;
+}
+
 export interface GWAgentEventPayload {
   runId: string;
   sessionKey: string;
