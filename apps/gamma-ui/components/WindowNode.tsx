@@ -12,6 +12,7 @@ import { DynamicAppRenderer } from "./DynamicAppRenderer";
 import { AgentChat } from "./AgentChat";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { API_BASE } from "../constants/api";
+import { systemAuthHeaders } from "../lib/auth";
 import { getSystemApp } from "../registry/systemApps";
 
 function EmbeddedAgentChat({
@@ -32,14 +33,14 @@ function EmbeddedAgentChat({
   // session was never created this restart).
   useEffect(() => {
     const windowId = `app-owner-${appId}`;
-    fetch(`${API_BASE}/api/sessions`)
+    fetch(`${API_BASE}/api/sessions`, { headers: systemAuthHeaders() })
       .then((r) => r.ok ? r.json() as Promise<{ windowId: string }[]> : [])
       .then((sessions) => {
         const exists = sessions.some((s) => s.windowId === windowId);
         if (!exists) {
           return fetch(`${API_BASE}/api/sessions`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
             body: JSON.stringify({
               windowId,
               appId,
@@ -288,14 +289,14 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
     const sessionWindowId = `app-owner-${win.appId}`;
     if (!agentPanelOpen) {
       try {
-        const res = await fetch(`${API_BASE}/api/sessions`);
+        const res = await fetch(`${API_BASE}/api/sessions`, { headers: systemAuthHeaders() });
         if (!res.ok) return;
         const sessions: { windowId: string }[] = await res.json();
         const exists = sessions.some((s) => s.windowId === sessionWindowId);
         if (!exists) {
           const postRes = await fetch(`${API_BASE}/api/sessions`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
             body: JSON.stringify({
               windowId: sessionWindowId,
               appId: win.appId,

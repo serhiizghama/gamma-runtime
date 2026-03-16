@@ -273,14 +273,31 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
         if (res.status === 404 && opts?.onSessionMissing) {
           opts.onSessionMissing();
         }
-        throw new Error(`${res.status}`);
+        // Try to extract a meaningful error from the response body
+        let detail = "";
+        try {
+          const body = await res.clone().json() as Record<string, unknown>;
+          detail = (body.message as string) ?? (body.error as string) ?? "";
+        } catch { /* ignore */ }
+        throw new Error(`${res.status}${detail ? `: ${detail}` : ""}`);
       }
-    } catch {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isNetworkErr = msg === "Failed to fetch" || msg.includes("NetworkError");
+      const friendlyMsg = isNetworkErr
+        ? "⚠️ Cannot reach the server. Is the backend running?"
+        : msg.startsWith("403")
+        ? "⚠️ 403 Forbidden — authentication token missing or invalid."
+        : msg.startsWith("404")
+        ? "⚠️ 404 Session not found — try refreshing the page."
+        : msg.startsWith("5")
+        ? `⚠️ Server error (${msg}). Check backend logs.`
+        : `⚠️ Send failed: ${msg}`;
       setMessages((prev) => [...prev, {
         id: `err-${Date.now()}`,
         role: "assistant",
         kind: "answer",
-        text: "⚠️ Failed to send message. Check your connection.",
+        text: friendlyMsg,
         ts: Date.now(),
       }]);
     }

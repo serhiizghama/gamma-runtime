@@ -4,6 +4,7 @@ import { useAgentStream } from "../hooks/useAgentStream";
 import { AgentChat } from "./AgentChat";
 import { MENU_HEIGHT } from "./MenuBar";
 import { API_BASE } from "../constants/api";
+import { systemAuthHeaders } from "../lib/auth";
 
 const ARCHITECT_WINDOW_ID = "system-architect";
 
@@ -20,14 +21,14 @@ function useArchitectSession(): { reInit: () => void } {
     if (busyRef.current) return;
     busyRef.current = true;
     try {
-      const res = await fetch(`${API_BASE}/api/sessions`);
+      const res = await fetch(`${API_BASE}/api/sessions`, { headers: systemAuthHeaders() });
       if (!res.ok) return; // backend not ready yet — caller can retry
       const sessions: { windowId: string }[] = await res.json();
       const exists = sessions.some((s) => s.windowId === ARCHITECT_WINDOW_ID);
       if (!exists) {
         const postRes = await fetch(`${API_BASE}/api/sessions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
           body: JSON.stringify({
             windowId: ARCHITECT_WINDOW_ID,
             appId: "system-architect",
