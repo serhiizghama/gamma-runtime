@@ -1,55 +1,36 @@
 import React, { useState } from "react";
-
-interface Note {
-  id: string;
-  title: string;
-  body: string;
-  createdAt: number;
-}
-
-function createNote(): Note {
-  const now = Date.now();
-  return {
-    id: `note-${now}-${Math.random().toString(36).slice(2, 8)}`,
-    title: "Untitled note",
-    body: "",
-    createdAt: now,
-  };
-}
+import { useNotesStore, type Note } from "../../../store/useNotesStore";
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleString();
 }
 
 export function NotesApp(): React.ReactElement {
-  const [notes, setNotes] = useState<Note[]>([createNote()]);
-  const [activeId, setActiveId] = useState<string>(notes[0].id);
+  const notes = useNotesStore((s) => s.notes);
+  const activeId = useNotesStore((s) => s.activeId);
+  const addNote = useNotesStore((s) => s.addNote);
+  const deleteNote = useNotesStore((s) => s.deleteNote);
+  const updateNote = useNotesStore((s) => s.updateNote);
+  const setActiveId = useNotesStore((s) => s.setActiveId);
 
-  const activeNote = notes.find((n) => n.id === activeId) ?? notes[0];
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  const updateActive = (patch: Partial<Pick<Note, "title" | "body">>) => {
-    setNotes((prev) =>
-      prev.map((n) => (n.id === activeId ? { ...n, ...patch } : n)),
-    );
+  const activeNote: Note | undefined =
+    notes.find((n) => n.id === activeId) ?? notes[0];
+
+  const handleDeleteClick = (id: string) => {
+    setPendingDeleteId(id);
   };
 
-  const addNote = () => {
-    const next = createNote();
-    console.log("[NotesApp] New note created:", next.id);
-    setNotes((prev) => [next, ...prev]);
-    setActiveId(next.id);
+  const confirmDelete = () => {
+    if (pendingDeleteId) {
+      deleteNote(pendingDeleteId);
+      setPendingDeleteId(null);
+    }
   };
 
-  const deleteNote = (id: string) => {
-    console.log("[NotesApp] Note deleted:", id);
-    setNotes((prev) => {
-      const remaining = prev.filter((n) => n.id !== id);
-      // Derive next activeId from the same snapshot to avoid stale closure
-      if (activeId === id) {
-        setActiveId(remaining[0]?.id ?? "");
-      }
-      return remaining;
-    });
+  const cancelDelete = () => {
+    setPendingDeleteId(null);
   };
 
   return (
@@ -195,7 +176,9 @@ export function NotesApp(): React.ReactElement {
             >
               <input
                 value={activeNote.title}
-                onChange={(e) => updateActive({ title: e.target.value })}
+                onChange={(e) =>
+                  updateNote(activeNote.id, { title: e.target.value })
+                }
                 placeholder="Note title"
                 style={{
                   flex: 1,
@@ -209,25 +192,62 @@ export function NotesApp(): React.ReactElement {
                   color: "var(--color-text-primary)",
                 }}
               />
-              <button
-                type="button"
-                onClick={() => deleteNote(activeNote.id)}
-                style={{
-                  borderRadius: 999,
-                  border: "1px solid var(--button-danger-border)",
-                  padding: "6px 10px",
-                  fontSize: 11,
-                  cursor: "pointer",
-                  background: "var(--button-danger-bg)",
-                  color: "var(--button-danger-fg)",
-                }}
-              >
-                Delete
-              </button>
+              {pendingDeleteId === activeNote.id ? (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={confirmDelete}
+                    style={{
+                      borderRadius: 999,
+                      border: "1px solid var(--button-danger-border)",
+                      padding: "6px 10px",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      background: "var(--button-danger-bg)",
+                      color: "var(--button-danger-fg)",
+                    }}
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelDelete}
+                    style={{
+                      borderRadius: 999,
+                      border: "1px solid var(--color-border-subtle-strong)",
+                      padding: "6px 10px",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      background: "var(--color-surface)",
+                      color: "var(--color-text-primary)",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteClick(activeNote.id)}
+                  style={{
+                    borderRadius: 999,
+                    border: "1px solid var(--button-danger-border)",
+                    padding: "6px 10px",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    background: "var(--button-danger-bg)",
+                    color: "var(--button-danger-fg)",
+                  }}
+                >
+                  Delete
+                </button>
+              )}
             </div>
             <textarea
               value={activeNote.body}
-              onChange={(e) => updateActive({ body: e.target.value })}
+              onChange={(e) =>
+                updateNote(activeNote.id, { body: e.target.value })
+              }
               placeholder="Write your thoughts…"
               spellCheck={true}
               style={{
@@ -262,4 +282,3 @@ export function NotesApp(): React.ReactElement {
     </div>
   );
 }
-
