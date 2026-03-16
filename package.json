@@ -2,6 +2,12 @@
   "name": "gamma-runtime",
   "private": true,
   "version": "0.1.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "better-sqlite3"
+    ]
+  },
   "scripts": {
     "dev": "pnpm --filter @gamma/ui dev",
     "dev:core": "pnpm --filter @gamma/core start:dev",
