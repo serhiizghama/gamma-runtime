@@ -24,8 +24,9 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
 
 // ─── Timeouts ─────────────────────────────────────────────────────────────────
 
-const TOKEN_FETCH_TIMEOUT_MS = 8_000;   // max wait for /api/pty/token
+const TOKEN_FETCH_TIMEOUT_MS = 8_000;    // max wait for /api/pty/token
 const WS_CONNECT_TIMEOUT_MS  = 10_000;  // max wait for WebSocket onopen
+const MAX_FRAME_BYTES        = 256 * 1024; // discard server frames larger than 256 KB
 
 // ─── WS URL helper ────────────────────────────────────────────────────────────
 // DEF-1 fix: token is NO LONGER passed in the URL query string (leaks to logs).
@@ -40,14 +41,22 @@ function getPtyWsUrl(cols: number, rows: number): string {
 
 interface TerminalSessionProps {
   onStatusChange: (s: ConnStatus, msg?: string) => void;
+  /** Shell/OS identifier sourced from server handshake, e.g. "zsh · macOS" */
+  onHandshake?: (info: { shell: string; os: string }) => void;
 }
 
-function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactElement {
-  const containerRef  = useRef<HTMLDivElement>(null);
-  const termRef       = useRef<Terminal | null>(null);
-  const fitAddonRef   = useRef<FitAddon | null>(null);
-  const wsRef         = useRef<WebSocket | null>(null);
-  const wsTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+function TerminalSession({ onStatusChange, onHandshake }: TerminalSessionProps): React.ReactElement {
+  const containerRef      = useRef<HTMLDivElement>(null);
+  const termRef           = useRef<Terminal | null>(null);
+  const fitAddonRef       = useRef<FitAddon | null>(null);
+  const wsRef             = useRef<WebSocket | null>(null);
+  const wsTimeoutRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Store prop callbacks in refs so the effect closure is never stale even if
+  // the parent passes a new reference — makes the empty dep-array contract explicit.
+  const onStatusChangeRef = useRef(onStatusChange);
+  const onHandshakeRef    = useRef(onHandshake);
+  onStatusChangeRef.current = onStatusChange;
+  onHandshakeRef.current    = onHandshake;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -91,7 +100,7 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
     const abortCtrl = new AbortController();
 
     (async () => {
-      onStatusChange("connecting");
+      onStatusChangeRef.current("connecting");
 
       let token: string;
       try {
@@ -123,7 +132,7 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
         const msg = isTimeout
           ? `Token request timed out after ${TOKEN_FETCH_TIMEOUT_MS / 1000}s — is the server running?`
           : err instanceof Error ? err.message : String(err);
-        onStatusChange("error", msg);
+        onStatusChangeRef.current("error", msg);
         term.write(`\r\n\x1b[31m✗ ${msg}\x1b[0m\r\n`);
         console.error("[TerminalApp] Token fetch failed:", msg);
         return;
@@ -146,7 +155,7 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
         if (ws.readyState !== WebSocket.OPEN) {
           timedOut = true;
           const msg = `WebSocket did not connect within ${WS_CONNECT_TIMEOUT_MS / 1000}s`;
-          onStatusChange("error", msg);
+          onStatusChangeRef.current("error", msg);
           term.write(`\r\n\x1b[31m✗ ${msg}\x1b[0m\r\n`);
           console.error("[TerminalApp] WS connect timeout");
           ws.close();
@@ -157,36 +166,56 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
         clearTimeout(wsTimeoutRef.current ?? undefined);
         wsTimeoutRef.current = null;
         // DEF-1 fix: send auth token as first message (out-of-band, not in URL).
-        // Null the closure variable immediately after send to minimise the
-        // in-memory window — the token has no further use after authentication.
+        // NOTE: token nulling was removed — rebinding a JS closure variable does
+        // not zero heap memory and provides no actual security benefit.
         ws.send(JSON.stringify({ type: "auth", token }));
-        (token as unknown) = null; // eslint-disable-line prefer-const
         console.log("[TerminalApp] WebSocket connected to PTY shell");
-        onStatusChange("connected");
-        term.write("\x1b[36m⬡ Gamma Agent Runtime\x1b[0m  \x1b[90mv2.0 · PTY Shell · macOS\x1b[0m\r\n");
-        term.focus();
+        // Status stays "connecting" until server confirms auth via "ready" message.
+        // If auth is rejected, the server closes with code 4401 (handled in onclose).
       };
 
       ws.onmessage = (ev) => {
         try {
-          const msg = JSON.parse(
-            typeof ev.data === "string"
-              ? ev.data
-              : new TextDecoder().decode(ev.data as ArrayBuffer)
-          ) as { type: string; data?: string; code?: number };
-          if (msg.type === "data" && msg.data) {
+          // Guard against oversized frames before any allocation/parsing.
+          // A malicious or buggy server could otherwise cause memory pressure or
+          // UI lockup by sending arbitrarily large payloads.
+          const raw = typeof ev.data === "string"
+            ? ev.data
+            : new TextDecoder().decode(ev.data as ArrayBuffer);
+          if (raw.length > MAX_FRAME_BYTES) {
+            console.warn(`[TerminalApp] Dropping oversized frame (${raw.length} bytes)`);
+            return;
+          }
+
+          const msg = JSON.parse(raw) as {
+            type: string;
+            data?: string;
+            code?: number;
+            shell?: string;
+            os?: string;
+          };
+
+          if (msg.type === "ready") {
+            // Server confirms auth and reports shell/OS identity.
+            onStatusChangeRef.current("connected");
+            const shell = msg.shell ?? "shell";
+            const os    = msg.os    ?? "unknown";
+            onHandshakeRef.current?.({ shell, os });
+            term.write(`\x1b[36m⬡ Gamma Agent Runtime\x1b[0m  \x1b[90mv2.0 · ${shell} · ${os}\x1b[0m\r\n`);
+            term.focus();
+          } else if (msg.type === "data" && msg.data) {
             term.write(msg.data);
           } else if (msg.type === "exit") {
-            onStatusChange("disconnected");
+            onStatusChangeRef.current("disconnected");
             term.write(`\r\n\x1b[33m[Shell exited with code ${msg.code ?? 0}]\x1b[0m\r\n`);
           }
-        } catch { /* malformed — ignore */ }
+        } catch { /* malformed frame — ignore */ }
       };
 
       ws.onerror = () => {
         clearTimeout(wsTimeoutRef.current ?? undefined);
         wsTimeoutRef.current = null;
-        onStatusChange("error", "WebSocket error");
+        onStatusChangeRef.current("error", "WebSocket error");
         term.write("\r\n\x1b[31m[Connection error]\x1b[0m\r\n");
       };
 
@@ -197,12 +226,17 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
         // If the timeout handler already set "error" and triggered this close,
         // suppress further status updates to prevent error→disconnected flicker.
         if (timedOut) return;
-        // 4500 = PTY spawn failed (our custom code)
-        if (ev.code === 4500) {
-          onStatusChange("error", "PTY spawn failed on server");
+        // Custom close codes:
+        //   4401 = auth rejected (invalid/expired token)
+        //   4500 = PTY spawn failed
+        if (ev.code === 4401) {
+          onStatusChangeRef.current("error", "Authentication rejected by server");
+          term.write("\r\n\x1b[31m[Auth rejected — token invalid or expired]\x1b[0m\r\n");
+        } else if (ev.code === 4500) {
+          onStatusChangeRef.current("error", "PTY spawn failed on server");
           term.write("\r\n\x1b[31m[PTY spawn failed — check server logs]\x1b[0m\r\n");
         } else if (ev.code !== 1000 && ev.code !== 1001) {
-          onStatusChange("disconnected");
+          onStatusChangeRef.current("disconnected");
           term.write(`\r\n\x1b[33m[Disconnected (code ${ev.code})]\x1b[0m\r\n`);
         }
       };
@@ -260,19 +294,25 @@ function TerminalSession({ onStatusChange }: TerminalSessionProps): React.ReactE
 // ─── TerminalApp (wrapper — manages reconnect via key) ────────────────────────
 
 export function TerminalApp(): React.ReactElement {
-  const [sessionKey, setSessionKey] = useState(0);
-  const [status, setStatus]         = useState<ConnStatus>("connecting");
-  const [errorMsg, setErrorMsg]     = useState("");
+  const [sessionKey, setSessionKey]   = useState(0);
+  const [status, setStatus]           = useState<ConnStatus>("connecting");
+  const [errorMsg, setErrorMsg]       = useState("");
+  const [shellLabel, setShellLabel]   = useState("…");
 
   const handleStatusChange = useCallback((s: ConnStatus, msg?: string) => {
     setStatus(s);
     setErrorMsg(msg ?? "");
   }, []);
 
+  const handleHandshake = useCallback(({ shell, os }: { shell: string; os: string }) => {
+    setShellLabel(`${shell} · ${os}`);
+  }, []);
+
   // Reconnect: bump key → TerminalSession unmounts + remounts fresh
   const reconnect = useCallback(() => {
     setStatus("connecting");
     setErrorMsg("");
+    setShellLabel("…");
     setSessionKey((k) => k + 1);
   }, []);
 
@@ -327,7 +367,7 @@ export function TerminalApp(): React.ReactElement {
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ color: "#333" }}>zsh · macOS</span>
+          <span style={{ color: "#333" }}>{shellLabel}</span>
           {(status === "disconnected" || status === "error") && (
             <button
               onClick={reconnect}
@@ -358,6 +398,7 @@ export function TerminalApp(): React.ReactElement {
       <TerminalSession
         key={sessionKey}
         onStatusChange={handleStatusChange}
+        onHandshake={handleHandshake}
       />
     </div>
   );
