@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { AgentStatus, GammaSSEEvent } from "@gamma/types";
 import type { ChatMessage, ToolCallEntry } from "../components/MessageList";
 import { API_BASE } from "../constants/api";
-import { fetchSseTicket } from "../lib/auth";
+import { fetchSseTicket, systemAuthHeaders } from "../lib/auth";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -265,7 +265,7 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
     try {
       const res = await fetch(`${API_BASE}/api/sessions/${windowId}/send`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
       });
       if (!res.ok) {
