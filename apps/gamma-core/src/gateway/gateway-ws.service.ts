@@ -29,6 +29,7 @@ import { ContextInjectorService } from '../scaffold/context-injector.service';
 import { MessageBusService } from '../messaging/message-bus.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { ActivityStreamService } from '../activity/activity-stream.service';
+import { safeJsonParse } from '../common/safe-json.util';
 import type { GWAgentEventPayload, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
 
 // ── Tool Scoping ──────────────────────────────────────────────────────────
@@ -934,7 +935,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         // Update pending tool lines in live state
         const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
-        const lines: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+        const lines: string[] = raw ? safeJsonParse<string[]>(raw, []) : [];
         lines.push(`🔧 \`${name}\`(${JSON.stringify(data?.arguments ?? {})})`);
         await this.redis.hset(
           `${REDIS_KEYS.STATE_PREFIX}${windowId}`,
@@ -1032,7 +1033,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         // Update pending tool lines
         const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
-        const lines: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+        const lines: string[] = raw ? safeJsonParse<string[]>(raw, []) : [];
         const status = data?.isError ? '❌' : '✅';
         lines.push(`${status} \`${name}\` → ${JSON.stringify(data?.result ?? null)}`);
         await this.redis.hset(
@@ -1655,7 +1656,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
     // Update live state
     const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
-    const lines: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+    const lines: string[] = raw ? safeJsonParse<string[]>(raw, []) : [];
     const status = isError ? '❌' : '✅';
     lines.push(`${status} \`send_message\` → ${to}: "${subject}"`);
     await this.redis.hset(

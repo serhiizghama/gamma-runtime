@@ -19,6 +19,7 @@ import { REDIS_KEYS } from '@gamma/types';
 import { SessionRegistryService } from './session-registry.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { ScaffoldService } from '../scaffold/scaffold.service';
+import { safeJsonParse } from '../common/safe-json.util';
 const APP_OWNER_PREFIX = 'app-owner-';
 const APP_OWNER_INIT_FIELD = 'appOwnerInitialized';
 
@@ -161,16 +162,20 @@ export class SessionsService {
   /** List all active sessions */
   async findAll(): Promise<WindowSession[]> {
     const raw = await this.redis.hgetall(REDIS_KEYS.SESSIONS);
-    return Object.values(raw).map(
-      (json) => JSON.parse(json) as WindowSession,
-    );
+    return Object.values(raw)
+      .map((json) => {
+        const parsed = safeJsonParse<WindowSession>(json);
+        if (!parsed && json) this.logger.warn(`Dropping malformed session entry: ${json.slice(0, 100)}`);
+        return parsed;
+      })
+      .filter((s): s is WindowSession => s !== null);
   }
 
   /** Get a session by windowId */
   async findByWindowId(windowId: string): Promise<WindowSession | null> {
     const raw = await this.redis.hget(REDIS_KEYS.SESSIONS, windowId);
     if (!raw) return null;
-    return JSON.parse(raw) as WindowSession;
+    return safeJsonParse<WindowSession>(raw);
   }
 
   /** Find a session by OpenClaw sessionKey */
@@ -432,7 +437,7 @@ export class SessionsService {
       runId: raw.runId || null,
       streamText: raw.streamText || null,
       thinkingTrace: raw.thinkingTrace || null,
-      pendingToolLines: raw.pendingToolLines ? (JSON.parse(raw.pendingToolLines) as string[]) : [],
+      pendingToolLines: raw.pendingToolLines ? safeJsonParse<string[]>(raw.pendingToolLines, []) : [],
       lastEventAt: raw.lastEventAt ? Number(raw.lastEventAt) : null,
       lastEventId: raw.lastEventId || null,
     };

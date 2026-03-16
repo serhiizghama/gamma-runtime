@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { Gamma } from "../components/Gamma";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 // Default window spawning is handled inside Gamma after hydration.
 // Do NOT call openWindow here — persist middleware reads localStorage
@@ -9,6 +10,8 @@ import { Gamma } from "../components/Gamma";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <Gamma />
+    <ErrorBoundary>
+      <Gamma />
+    </ErrorBoundary>
   </React.StrictMode>
 );

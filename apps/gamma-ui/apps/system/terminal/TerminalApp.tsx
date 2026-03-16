@@ -187,13 +187,19 @@ function TerminalSession({ onStatusChange, onHandshake }: TerminalSessionProps):
             return;
           }
 
-          const msg = JSON.parse(raw) as {
+          let msg: {
             type: string;
             data?: string;
             code?: number;
             shell?: string;
             os?: string;
           };
+          try {
+            msg = JSON.parse(raw);
+          } catch {
+            console.warn("[TerminalApp] Dropping malformed JSON frame");
+            return;
+          }
 
           if (msg.type === "ready") {
             // Server confirms auth and reports shell/OS identity.

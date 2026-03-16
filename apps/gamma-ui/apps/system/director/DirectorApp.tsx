@@ -470,7 +470,7 @@ function AgentHierarchy() {
         return r.json() as Promise<AgentRegistryEntry[]>;
       })
       .then((data) => setAgents(data))
-      .catch(() => {});
+      .catch(() => { /* polled every 5s — transient failures expected */ });
   }, []);
 
   useEffect(() => {

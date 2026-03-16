@@ -1,4 +1,4 @@
-import { classifyGatewayEventKind, isReasoningStream } from './event-classifier';
+import { classifyGatewayEventKind, isReasoningStream } from '../../src/gateway/event-classifier';
 
 describe('classifyGatewayEventKind', () => {
   it('classifies "agent" as runtime-agent', () => {

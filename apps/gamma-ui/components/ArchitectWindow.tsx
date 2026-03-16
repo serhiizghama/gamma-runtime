@@ -25,7 +25,7 @@ function useArchitectSession(): { reInit: () => void } {
       const sessions: { windowId: string }[] = await res.json();
       const exists = sessions.some((s) => s.windowId === ARCHITECT_WINDOW_ID);
       if (!exists) {
-        await fetch(`${API_BASE}/api/sessions`, {
+        const postRes = await fetch(`${API_BASE}/api/sessions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -35,6 +35,10 @@ function useArchitectSession(): { reInit: () => void } {
             agentId: "architect",
           }),
         });
+        if (!postRes.ok) {
+          console.warn(`[ArchitectWindow] Failed to create session: ${postRes.status}`);
+          return; // Don't proceed — next reInit call will retry
+        }
       }
     } catch {
       // Backend unavailable — allow the next reInit call to retry

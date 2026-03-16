@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { safeJsonParse } from '../common/safe-json.util';
 
 const MAX_VALUE_SIZE = 65_536; // 64 KB
 const MAX_KEYS_PER_APP = 50;
@@ -31,7 +32,7 @@ export class AppDataController {
     if (!safeKey) throw new BadRequestException('Invalid key');
 
     const raw = await this.redis.get(`${KEY_PREFIX}:${safeAppId}:${safeKey}`);
-    return { value: raw ? (JSON.parse(raw) as unknown) : null };
+    return { value: raw ? safeJsonParse(raw) : null };
   }
 
   @Put(':appId/:key')

@@ -1,8 +1,13 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Logger } from '@nestjs/common';
+
+// Suppress NestJS Logger output during tests
+jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
 
 // ── Mock SessionsService before importing ────────────────────────────────
 
-jest.mock('../sessions/sessions.service', () => ({
+jest.mock('../../src/sessions/sessions.service', () => ({
   SessionsService: jest.fn().mockImplementation(() => ({
     remove: jest.fn().mockResolvedValue(true),
   })),
@@ -33,6 +38,7 @@ jest.mock('simple-git', () => ({
 jest.mock('fs/promises', () => ({
   mkdir: jest.fn().mockResolvedValue(undefined),
   writeFile: jest.fn().mockResolvedValue(undefined),
+  copyFile: jest.fn().mockResolvedValue(undefined),
   unlink: jest.fn().mockResolvedValue(undefined),
   rm: jest.fn().mockResolvedValue(undefined),
   access: jest.fn().mockRejectedValue(new Error('ENOENT')),
@@ -41,9 +47,9 @@ jest.mock('fs/promises', () => ({
 import * as fsMock from 'fs/promises';
 const mockedFs = fsMock as jest.Mocked<typeof fsMock>;
 
-import { ScaffoldService } from './scaffold.service';
-import { AppStorageService } from './app-storage.service';
-import { ValidationService } from './validation.service';
+import { ScaffoldService } from '../../src/scaffold/scaffold.service';
+import { AppStorageService } from '../../src/scaffold/app-storage.service';
+import { ValidationService } from '../../src/scaffold/validation.service';
 import { REDIS_KEYS } from '@gamma/types';
 
 // ── Shared mock objects ───────────────────────────────────────────────────

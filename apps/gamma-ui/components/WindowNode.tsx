@@ -46,6 +46,10 @@ function EmbeddedAgentChat({
               sessionKey: windowId,
               agentId: "app-owner",
             }),
+          }).then((postRes) => {
+            if (!postRes.ok) {
+              console.warn(`[EmbeddedAgentChat] Failed to create session for ${appId}: ${postRes.status}`);
+            }
           });
         }
       })
@@ -289,7 +293,7 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
         const sessions: { windowId: string }[] = await res.json();
         const exists = sessions.some((s) => s.windowId === sessionWindowId);
         if (!exists) {
-          await fetch(`${API_BASE}/api/sessions`, {
+          const postRes = await fetch(`${API_BASE}/api/sessions`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -299,6 +303,9 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
               agentId: "app-owner",
             }),
           });
+          if (!postRes.ok) {
+            console.warn(`[WindowNode] Failed to create session: ${postRes.status}`);
+          }
         }
       } catch {
         /* Kernel may not be running */

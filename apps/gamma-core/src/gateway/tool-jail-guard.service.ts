@@ -12,11 +12,11 @@ const SHELL_ESCAPE_PATTERNS = [
   /\/proc\//,                  // proc filesystem
   /\/var\//,                   // system data
   /~\//,                       // home directory expansion
-  /\$HOME/,                    // env-based home
+  /\$\{?HOME\}?/,              // env-based home ($HOME or ${HOME})
   /\$\(/,                      // command substitution
   /`[^`]+`/,                   // backtick command substitution
   /\|\s*(bash|sh|zsh|curl)/,   // pipe to shell / network
-  />\s*\//,                    // redirect to absolute path
+  />\s*\/(?!dev\/null)/,        // redirect to absolute path (except /dev/null)
   /;\s*(cd|rm|mv|cp)\s/,       // chained destructive commands outside jail
 ] as const;
 
