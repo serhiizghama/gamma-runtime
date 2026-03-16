@@ -1,20 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import type { SessionRecord, GammaSSEEvent } from "@gamma/types";
 import { API_BASE } from "../constants/api";
-
-// Set VITE_GAMMA_SYSTEM_TOKEN in web/.env.local to match the kernel's GAMMA_SYSTEM_TOKEN.
-const SYSTEM_TOKEN =
-  ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.["VITE_GAMMA_SYSTEM_TOKEN"]) ?? "";
+// Auth utilities live in lib/auth.ts — re-exported here for backwards compatibility.
+// New code should import directly from "../lib/auth".
+export { systemAuthHeaders } from "../lib/auth";
+import { systemAuthHeaders } from "../lib/auth"; // used internally by useSessionRegistry
 
 export interface SessionRegistryState {
   records: SessionRecord[];
   loading: boolean;
   error: string | null;
   refresh: () => void;
-}
-
-export function systemAuthHeaders(): Record<string, string> {
-  return { "X-Gamma-System-Token": SYSTEM_TOKEN };
 }
 
 // ── Singleton EventSource ────────────────────────────────────────────────────
