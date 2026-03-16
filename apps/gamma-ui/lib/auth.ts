@@ -9,10 +9,7 @@
 
 import { API_BASE } from "../constants/api";
 
-const SYSTEM_TOKEN =
-  ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.[
-    "VITE_GAMMA_SYSTEM_TOKEN"
-  ]) ?? "";
+const SYSTEM_TOKEN = import.meta.env.VITE_GAMMA_SYSTEM_TOKEN ?? "";
 
 /**
  * Returns the standard system-auth header map.

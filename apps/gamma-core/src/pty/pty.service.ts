@@ -140,6 +140,19 @@ export class PtyService implements OnModuleInit, OnModuleDestroy {
     const shell = process.env.SHELL ?? '/bin/zsh';
     const cwd   = homedir();
 
+    // Sanitize environment — strip secrets before passing to the PTY shell.
+    // The spawned shell should have a clean user environment, not the server's
+    // credentials (gateway tokens, Redis URLs, private keys, etc.).
+    const SENSITIVE_PREFIXES = ['OPENCLAW_', 'GAMMA_DEVICE_', 'REDIS_', 'SCAFFOLD_'];
+    const SENSITIVE_EXACT = ['GATEWAY_SCOPES', 'ALLOWED_ORIGINS'];
+    const sanitizedEnv: Record<string, string> = {};
+    for (const [key, val] of Object.entries(process.env)) {
+      if (val === undefined) continue;
+      if (SENSITIVE_EXACT.includes(key)) continue;
+      if (SENSITIVE_PREFIXES.some((p) => key.startsWith(p))) continue;
+      sanitizedEnv[key] = val;
+    }
+
     let ptyProcess: nodePty.IPty;
     try {
       ptyProcess = nodePty.spawn(shell, [], {
@@ -147,7 +160,7 @@ export class PtyService implements OnModuleInit, OnModuleDestroy {
         cols,
         rows,
         cwd,
-        env: process.env as Record<string, string>,
+        env: sanitizedEnv,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

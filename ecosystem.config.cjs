@@ -16,7 +16,7 @@ module.exports = {
   apps: [
     {
       name: 'gamma-core',
-      script: 'apps/gamma-core/dist/apps/gamma-core/src/main.js',
+      script: 'apps/gamma-core/dist/main.js',
       cwd: ROOT,
       interpreter: 'node',
       env_file: 'apps/gamma-core/.env',
@@ -25,7 +25,7 @@ module.exports = {
       // env vars from the .env file are loaded via the shell wrapper below
       // We use a wrapper script to source the .env before starting node
       script: 'bash',
-      args: `-c "set -a; source ${ROOT}/apps/gamma-core/.env; set +a; node ${ROOT}/apps/gamma-core/dist/apps/gamma-core/src/main.js"`,
+      args: `-c "set -a; source ${ROOT}/apps/gamma-core/.env; set +a; node ${ROOT}/apps/gamma-core/dist/main.js"`,
       interpreter: 'none',
       autorestart: true,
       restart_delay: 3000,

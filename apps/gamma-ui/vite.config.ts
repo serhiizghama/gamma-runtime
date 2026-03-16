@@ -26,7 +26,7 @@ export default defineConfig({
   plugins: [react(), watchdogBridge()],
   resolve: {
     alias: {
-      "@gamma/types": path.resolve(__dirname, "../../packages/gamma-types/index.ts"),
+      "@gamma/types": path.resolve(__dirname, "../../packages/gamma-types/dist/index.js"),
       "@gamma/os": path.resolve(__dirname, "hooks/os-api.ts"),
     },
   },

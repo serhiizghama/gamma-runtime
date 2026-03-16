@@ -21,9 +21,9 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "paths": {
-      "@gamma/types": ["../../packages/gamma-types"]
+      "@gamma/types": ["../../packages/gamma-types/dist"]
     }
   },
-  "include": ["src/**/*", "../../packages/gamma-types/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

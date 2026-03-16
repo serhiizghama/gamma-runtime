@@ -5,9 +5,12 @@
   "scripts": {
     "dev": "pnpm --filter @gamma/ui dev",
     "dev:core": "pnpm --filter @gamma/core start:dev",
-    "build": "pnpm --filter @gamma/ui build",
-    "build:core": "pnpm --filter @gamma/core build",
+    "build:types": "pnpm --filter @gamma/types build",
+    "build:core": "pnpm run build:types && pnpm --filter @gamma/core build",
+    "build:ui": "pnpm run build:types && pnpm --filter @gamma/ui build",
+    "build": "pnpm run build:types && pnpm --filter @gamma/core build && pnpm --filter @gamma/ui build && pnpm --filter @gamma/watchdog build",
     "start:core": "pnpm --filter @gamma/core start:prod",
-    "typecheck": "pnpm --filter @gamma/ui typecheck && pnpm --filter @gamma/core typecheck"
+    "test": "pnpm -r --if-present run test",
+    "typecheck": "pnpm run build:types && pnpm -r --if-present run typecheck"
   }
 }

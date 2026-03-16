@@ -4,7 +4,6 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "tsConfigPath": "tsconfig.build.json",
-    "entryFile": "apps/gamma-core/src/main"
+    "tsConfigPath": "tsconfig.build.json"
   }
 }
