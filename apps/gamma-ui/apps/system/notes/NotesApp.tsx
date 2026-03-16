@@ -1,9 +1,6 @@
 import React, { useState } from "react";
 import { useNotesStore, type Note } from "../../../store/useNotesStore";
-
-function formatDate(ts: number): string {
-  return new Date(ts).toLocaleString();
-}
+import { fmtDate } from "../../../lib/format";
 
 export function NotesApp(): React.ReactElement {
   const notes = useNotesStore((s) => s.notes);
@@ -148,7 +145,7 @@ export function NotesApp(): React.ReactElement {
                   width: "100%",
                 }}
               >
-                {formatDate(n.createdAt)}
+                {fmtDate(n.createdAt)}
               </span>
             </button>
           ))}

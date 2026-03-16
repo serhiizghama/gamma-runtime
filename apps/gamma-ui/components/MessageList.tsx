@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AgentStatus } from "@gamma/types";
+import { fmtTimeShort } from "../lib/format";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -48,10 +49,6 @@ function isAllowedImageSrc(src: string | undefined): boolean {
 
 function truncate(str: string, max = MAX_TOOL_LEN): string {
   return str.length <= max ? str : str.slice(0, max) + "…";
-}
-
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 // ── Avatars ──────────────────────────────────────────────────────────────
@@ -171,7 +168,7 @@ function UserBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
           {msg.text}
         </div>
         <span style={{ fontSize: 10, color: "rgba(255,255,255,0.22)", transition: "opacity 0.15s", opacity: hovered ? 1 : 0, paddingRight: 4 }}>
-          {formatTime(msg.ts)}
+          {fmtTimeShort(msg.ts)}
         </span>
       </div>
     </div>
@@ -213,7 +210,7 @@ function ThinkingBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
           {msg.text || "…"}
         </div>
         <span style={{ fontSize: 10, color: "rgba(139,92,246,0.3)", paddingLeft: 4, transition: "opacity 0.15s", opacity: hovered ? 1 : 0 }}>
-          thinking · {formatTime(msg.ts)}
+          thinking · {fmtTimeShort(msg.ts)}
         </span>
       </div>
     </div>
@@ -265,7 +262,7 @@ function ToolBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
           )}
         </div>
         <span style={{ fontSize: 10, color: "rgba(34,197,94,0.3)", paddingLeft: 4, transition: "opacity 0.15s", opacity: hovered ? 1 : 0 }}>
-          tools · {formatTime(msg.ts)}
+          tools · {fmtTimeShort(msg.ts)}
         </span>
       </div>
     </div>
@@ -308,7 +305,7 @@ function AnswerBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
           </div>
         </div>
         <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", paddingLeft: 4, transition: "opacity 0.15s", opacity: hovered ? 1 : 0 }}>
-          Gamma · {formatTime(msg.ts)}
+          Gamma · {fmtTimeShort(msg.ts)}
         </span>
       </div>
     </div>

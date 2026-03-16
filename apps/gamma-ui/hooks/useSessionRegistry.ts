@@ -1,52 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { SessionRecord, GammaSSEEvent } from "@gamma/types";
 import { API_BASE } from "../constants/api";
-// Auth utilities live in lib/auth.ts — re-exported here for backwards compatibility.
-// New code should import directly from "../lib/auth".
-export { systemAuthHeaders } from "../lib/auth";
-import { systemAuthHeaders } from "../lib/auth"; // used internally by useSessionRegistry
+import { systemAuthHeaders } from "../lib/auth";
+import { useSecureSse } from "./useSecureSse";
 
 export interface SessionRegistryState {
   records: SessionRecord[];
   loading: boolean;
   error: string | null;
   refresh: () => void;
-}
-
-// ── Singleton EventSource ────────────────────────────────────────────────────
-// Sentinel and AgentMonitor both use this hook — we share ONE SSE connection
-// instead of opening a new one per component, saving a precious HTTP/1.1 slot.
-type SseListener = (event: GammaSSEEvent) => void;
-let sharedEs: EventSource | null = null;
-let esRefCount = 0;
-const esListeners = new Set<SseListener>();
-
-function addSseListener(fn: SseListener): () => void {
-  if (esListeners.size === 0 || !sharedEs || sharedEs.readyState === EventSource.CLOSED) {
-    sharedEs?.close();
-    sharedEs = new EventSource(`${API_BASE}/api/stream/agent-monitor`);
-    sharedEs.onmessage = (ev) => {
-      let event: GammaSSEEvent;
-      try {
-        event = JSON.parse(ev.data as string) as GammaSSEEvent;
-      } catch {
-        return;
-      }
-      esListeners.forEach((l) => l(event));
-    };
-  }
-  esRefCount++;
-  esListeners.add(fn);
-
-  return () => {
-    esListeners.delete(fn);
-    esRefCount--;
-    if (esRefCount <= 0 && sharedEs) {
-      sharedEs.close();
-      sharedEs = null;
-      esRefCount = 0;
-    }
-  };
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -94,17 +56,29 @@ export function useSessionRegistry(): SessionRegistryState {
     };
   }, [refreshTick]);
 
-  // Live updates via shared singleton SSE connection
-  useEffect(() => {
-    const unsubscribe = addSseListener((event) => {
+  const handleMessage = useCallback(
+    (ev: MessageEvent) => {
       if (!mountedRef.current) return;
+      let event: GammaSSEEvent;
+      try {
+        event = JSON.parse(ev.data as string) as GammaSSEEvent;
+      } catch {
+        return;
+      }
       if (event.type === "session_registry_update") {
         setRecords(event.records);
         setLoading(false);
       }
-    });
-    return unsubscribe;
-  }, []);
+    },
+    [],
+  );
+
+  useSecureSse({
+    path: "/api/stream/agent-monitor",
+    onMessage: handleMessage,
+    reconnectMs: 4000,
+    label: "SessionRegistry",
+  });
 
   return { records, loading, error, refresh: () => setRefreshTick((t) => t + 1) };
 }

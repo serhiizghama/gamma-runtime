@@ -4,7 +4,9 @@ import { API_BASE } from "../../../constants/api";
 // [FIX arch] Import auth utilities from the canonical lib/auth module, not from
 // a hooks file. useSessionRegistry re-exports for back-compat; we import the
 // source directly to match the architecture recommendation.
-import { systemAuthHeaders, fetchSseTicket } from "../../../lib/auth";
+import { systemAuthHeaders } from "../../../lib/auth";
+import { useSecureSse } from "../../../hooks/useSecureSse";
+import { ConfirmModal, AlertModal } from "../../../components/ui/ConfirmModal";
 
 // ── Local UI types ────────────────────────────────────────────────────────
 
@@ -111,13 +113,6 @@ const BTN_DANGER: React.CSSProperties = {
   color: "var(--monitor-fg-error)",
 };
 
-const BTN_MUTED: React.CSSProperties = {
-  ...BTN,
-  background: "transparent",
-  border: "1px solid var(--monitor-border)",
-  opacity: 0.7,
-};
-
 const INPUT: React.CSSProperties = {
   background: "var(--monitor-surface-success-faint)",
   border: "1px solid var(--monitor-border-success-faint)",
@@ -157,136 +152,6 @@ const STATUS_DOT: React.CSSProperties = {
   marginRight: 6,
 };
 
-// ── Modal styles (matches AgentMonitorApp) ───────────────────────────────
-
-const MODAL_OVERLAY: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.55)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 9999,
-};
-
-const MODAL_BOX: React.CSSProperties = {
-  background: "var(--color-surface)",
-  border: "1px solid var(--color-border-subtle)",
-  borderRadius: 8,
-  padding: "20px 24px",
-  maxWidth: 420,
-  width: "100%",
-  fontFamily: "var(--font-system)",
-  fontSize: 13,
-  boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-};
-
-const MODAL_TITLE: React.CSSProperties = {
-  fontWeight: 700,
-  marginBottom: 10,
-  fontSize: 14,
-};
-
-const MODAL_BODY: React.CSSProperties = {
-  opacity: 0.85,
-  marginBottom: 18,
-  lineHeight: 1.5,
-};
-
-const MODAL_ACTIONS: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "flex-end",
-  gap: 8,
-};
-
-// ── ConfirmModal ─────────────────────────────────────────────────────────
-
-// [FIX security] Replace window.confirm() with a custom modal consistent with
-// the rest of the Gamma UI (AgentMonitorApp pattern). window.confirm() is:
-//   1. Suppressed (returns false unconditionally) inside cross-origin iframes.
-//   2. Deprecated in many embedded/PWA contexts.
-//   3. Architecturally inconsistent with the rest of this codebase.
-
-interface ConfirmModalProps {
-  title: string;
-  message: string;
-  confirmLabel?: string;
-  danger?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function ConfirmModal({
-  title,
-  message,
-  confirmLabel = "Confirm",
-  danger = false,
-  onConfirm,
-  onCancel,
-}: ConfirmModalProps): React.ReactElement {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onCancel]);
-
-  return (
-    <div style={MODAL_OVERLAY} onClick={onCancel}>
-      <div style={MODAL_BOX} onClick={(e) => e.stopPropagation()}>
-        <div style={MODAL_TITLE}>{title}</div>
-        <div style={MODAL_BODY}>{message}</div>
-        <div style={MODAL_ACTIONS}>
-          <button type="button" style={BTN_MUTED} onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            style={danger ? BTN_DANGER : BTN}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── AlertModal ───────────────────────────────────────────────────────────
-
-// [FIX logic] Surface errors from deleteSession instead of swallowing silently.
-
-interface AlertModalProps {
-  title: string;
-  message: string;
-  onClose: () => void;
-}
-
-function AlertModal({ title, message, onClose }: AlertModalProps): React.ReactElement {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "Enter") onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
-
-  return (
-    <div style={MODAL_OVERLAY} onClick={onClose}>
-      <div style={MODAL_BOX} onClick={(e) => e.stopPropagation()}>
-        <div style={MODAL_TITLE}>{title}</div>
-        <div style={MODAL_BODY}>{message}</div>
-        <div style={MODAL_ACTIONS}>
-          <button type="button" style={BTN} onClick={onClose}>
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Confirm-modal state helpers (AgentMonitorApp pattern) ────────────────
 
@@ -303,7 +168,8 @@ export function KernelMonitorApp(): React.ReactElement {
   const [sessions, setSessions] = useState<WindowSession[]>([]);
   const [windowId, setWindowId] = useState("test-debug-001");
   const [windowIdError, setWindowIdError] = useState<string | null>(null);
-  const [sseConnected, setSseConnected] = useState(false);
+  const [sseEnabled, setSseEnabled] = useState(false);
+  const [activePath, setActivePath] = useState<string | null>(null);
   const [logs, setLogs] = useState<SSELogEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -315,7 +181,6 @@ export function KernelMonitorApp(): React.ReactElement {
   const [alertModal, setAlertModal] = useState<{ title: string; message: string } | null>(null);
 
   const logRef = useRef<HTMLDivElement>(null);
-  const esRef = useRef<EventSource | null>(null);
   const logIdRef = useRef(0);
 
   // ── Confirm modal helpers ──────────────────────────────────────────
@@ -478,19 +343,7 @@ export function KernelMonitorApp(): React.ReactElement {
       { id: logIdRef.current, ts: Date.now(), data },
     ]);
   };
-
-  // [FIX] Extracted as stable ref-based helper so disconnectSSE can be called from onerror
-  const disconnectSSE = useCallback(() => {
-    if (esRef.current) {
-      esRef.current.close();
-      esRef.current = null;
-    }
-    setSseConnected(false);
-    addLog({ event: "SSE_DISCONNECTED" });
-  }, []);
-
-  const connectSSE = async () => {
-    // [FIX] Validate windowId before use in URL and logs
+  const handleConnect = () => {
     if (!isValidWindowId(windowId)) {
       setWindowIdError(
         "Window ID must be 1–64 alphanumeric/dash/underscore characters.",
@@ -498,61 +351,41 @@ export function KernelMonitorApp(): React.ReactElement {
       return;
     }
     setWindowIdError(null);
-
-    // Close any existing connection first
-    if (esRef.current) {
-      esRef.current.close();
-      esRef.current = null;
-    }
-
-    // [FIX security] Obtain a short-lived SSE ticket before opening the EventSource.
-    // EventSource does not support custom request headers, so we exchange the system
-    // token for a single-use ticket (matching SentinelApp's pattern). If the ticket
-    // endpoint is unavailable the stream falls back to unauthenticated — the server
-    // is expected to enforce its own auth gate in that case.
     const streamPath = `/api/stream/${encodeURIComponent(windowId)}`;
-    const ticketParam = await fetchSseTicket(streamPath);
+    setActivePath(streamPath);
+    setSseEnabled(true);
+    addLog({ event: "SSE_CONNECTING", windowId: windowId.slice(0, 64) });
+  };
 
-    const es = new EventSource(`${API_BASE}${streamPath}${ticketParam}`);
+  const handleDisconnect = () => {
+    setSseEnabled(false);
+    addLog({ event: "SSE_DISCONNECTED" });
+  };
 
-    es.onopen = () => {
-      setSseConnected(true);
-      // [FIX] Log validated windowId only — no raw user input in log entries
-      addLog({ event: "SSE_CONNECTED", windowId: windowId.slice(0, 64) });
-    };
-
-    es.onmessage = (e) => {
+  const onMessage = useCallback(
+    (ev: MessageEvent) => {
       try {
-        const parsed = JSON.parse(e.data as string) as Record<string, unknown>;
+        const parsed = JSON.parse(ev.data as string) as Record<string, unknown>;
         addLog(parsed);
       } catch {
-        addLog({ raw: e.data });
+        addLog({ raw: ev.data });
       }
-    };
+    },
+    [],
+  );
 
-    // [FIX] Call es.close() on error to prevent zombie browser reconnect loop.
-    // Then set ref to null so subsequent "Connect" clicks start clean.
-    es.onerror = () => {
-      es.close();
-      esRef.current = null;
-      setSseConnected(false);
-      addLog({ event: "SSE_ERROR", message: "Connection lost" });
-    };
-
-    esRef.current = es;
-  };
+  const { connected: sseConnected } = useSecureSse({
+    path: activePath ?? "/api/stream/__disabled__",
+    onMessage,
+    reconnectMs: 4000,
+    label: "KernelMonitor",
+    enabled: sseEnabled && !!activePath,
+  });
 
   useEffect(() => {
     if (!logRef.current) return;
     logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
-
-  // SSE cleanup on unmount — prevent connection leak
-  useEffect(() => {
-    return () => {
-      esRef.current?.close();
-    };
-  }, []);
 
   const statusColor = (status: string): string => {
     switch (status) {
@@ -706,7 +539,7 @@ export function KernelMonitorApp(): React.ReactElement {
             <button
               type="button"
               style={BTN}
-              onClick={connectSSE}
+              onClick={handleConnect}
               disabled={sseConnected}
             >
               Connect
@@ -714,7 +547,7 @@ export function KernelMonitorApp(): React.ReactElement {
             <button
               type="button"
               style={BTN_DANGER}
-              onClick={disconnectSSE}
+              onClick={handleDisconnect}
               disabled={!sseConnected}
             >
               Disconnect

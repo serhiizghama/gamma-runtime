@@ -10,8 +10,10 @@ import type {
 // TODO(arch): `systemAuthHeaders` should be exported from a dedicated `src/lib/auth.ts`
 // or `src/api/client.ts` utility — not as a side-export from a hooks module.
 // Tracked: move systemAuthHeaders out of useSessionRegistry before next auth refactor.
-import { systemAuthHeaders } from "../../../hooks/useSessionRegistry";
+import { systemAuthHeaders } from "../../../lib/auth";
 import { API_BASE } from "../../../constants/api";
+import { useSecureSse } from "../../../hooks/useSecureSse";
+import { fmtTime, fmtDate, relativeTime } from "../../../lib/format";
 
 // ── Styles ────────────────────────────────────────────────────────────────
 
@@ -193,42 +195,6 @@ function fmtBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
-function fmtDate(ts: number): string {
-  return new Date(ts).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function fmtRelative(ts: number): string {
-  if (!ts || ts <= 0) return "never";
-  const delta = Math.floor((Date.now() - ts) / 1000);
-  if (delta < 0) {
-    // Negative delta = timestamp is in the future. Surface as a clock-skew warning
-    // rather than silently coercing — the caller can decide whether to act on it.
-    console.warn(
-      `[Sentinel] fmtRelative: timestamp ${ts} is ${Math.abs(delta)}s in the future. ` +
-      "Possible client/server clock skew.",
-    );
-    return "just now";
-  }
-  if (delta < 5) return "just now";
-  if (delta < 60) return `${delta}s ago`;
-  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
-  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
-  return `${Math.floor(delta / 86400)}d ago`;
-}
-
 function tierStyle(tier: "system" | "private"): React.CSSProperties {
   return {
     ...TIER_BADGE,
@@ -375,8 +341,6 @@ function useBackupInventory() {
 
 // ── Agent Registry hook (REST + SSE live updates) ─────────────────────────
 
-const MAX_SSE_RETRIES = 5;
-
 function useAgentRegistry() {
   const [agents, setAgents] = useState<AgentRegistryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -387,10 +351,6 @@ function useAgentRegistry() {
   // restMountedRef guards the REST fetch effect. Set true at each effect run start,
   // false at cleanup. AbortController cancels the in-flight request on cleanup.
   const restMountedRef = useRef(false);
-  // sseLiveRef guards SSE message/error handlers after the component unmounts.
-  // It is independent of restMountedRef so refreshTick cycling does not
-  // accidentally suppress SSE state writes.
-  const sseLiveRef = useRef(true);
 
   // REST fetch effect — re-runs on refreshTick (manual + auto-10s fallback)
   useEffect(() => {
@@ -429,83 +389,41 @@ function useAgentRegistry() {
     };
   }, [refreshTick]);
 
-  // SSE live updates — uses a short-lived ticket so the system token never
-  // appears in the URL (and therefore never leaks into logs / history / Referer).
-  // Falls back to unauthenticated if the ticket endpoint is unavailable (server
-  // will reject the connection in that case).
-  useEffect(() => {
-    sseLiveRef.current = true;
-    let es: EventSource | null = null;
-    let sseRetryCount = 0;
-    let closed = false;
-
-    async function connect() {
-      // Exchange the system token for a short-lived, single-use SSE ticket.
-      let ticketParam = "";
+  // SSE live updates — now delegated to useSecureSse which handles ticket auth,
+  // reconnects, and cleanup.
+  const handleSseMessage = useCallback(
+    (ev: MessageEvent) => {
+      let event: GammaSSEEvent;
       try {
-        const res = await fetch(`${API_BASE}/api/system/sse-ticket`, {
-          method: "POST",
-          headers: systemAuthHeaders(),
-        });
-        if (res.ok) {
-          const body = await res.json() as { ticket: string };
-          if (typeof body.ticket === "string" && body.ticket.length > 0) {
-            ticketParam = `?ticket=${encodeURIComponent(body.ticket)}`;
-          }
-        }
+        event = JSON.parse(ev.data as string) as GammaSSEEvent;
       } catch {
-        // Ticket endpoint unavailable — server must enforce its own auth gate.
+        return;
       }
 
-      if (closed) return; // component unmounted while ticket fetch was in flight
-
-      es = new EventSource(`${API_BASE}/api/stream/agent-monitor${ticketParam}`);
-
-      es.onmessage = (ev) => {
-        if (!sseLiveRef.current) return;
-        let event: GammaSSEEvent;
-        try {
-          event = JSON.parse(ev.data as string) as GammaSSEEvent;
-        } catch {
+      if (event.type === "agent_registry_update") {
+        // Validate shape before applying to state to prevent injected data from
+        // corrupting the agent table if the SSE endpoint is ever compromised.
+        if (!Array.isArray(event.agents)) {
+          console.warn(
+            "[Sentinel] agent_registry_update: event.agents is not an array — ignoring.",
+            event,
+          );
           return;
         }
+        setSseError(null);
+        setAgents(event.agents);
+        setLoading(false);
+      }
+    },
+    [],
+  );
 
-        if (event.type === "agent_registry_update") {
-          // Validate shape before applying to state to prevent injected data from
-          // corrupting the agent table if the SSE endpoint is ever compromised.
-          if (!Array.isArray(event.agents)) {
-            console.warn(
-              "[Sentinel] agent_registry_update: event.agents is not an array — ignoring.",
-              event,
-            );
-            return;
-          }
-          sseRetryCount = 0;
-          setSseError(null);
-          setAgents(event.agents);
-          setLoading(false);
-        }
-      };
-
-      es.onerror = () => {
-        if (!sseLiveRef.current || closed) return;
-        sseRetryCount++;
-        if (sseRetryCount >= MAX_SSE_RETRIES) {
-          es?.close();
-          setSseError("Live stream unavailable after repeated failures. Showing polled data.");
-        }
-        // Below MAX_SSE_RETRIES: browser will auto-reconnect with its default backoff.
-      };
-    }
-
-    connect();
-
-    return () => {
-      closed = true;
-      sseLiveRef.current = false;
-      es?.close();
-    };
-  }, []);
+  useSecureSse({
+    path: "/api/stream/agent-monitor",
+    onMessage: handleSseMessage,
+    reconnectMs: 4000,
+    label: "SentinelAgents",
+  });
 
   // Auto-refresh every 10s as fallback when SSE is silent or unavailable
   useEffect(() => {
@@ -738,7 +656,7 @@ function AgentsView({
                         {a.status}
                       </td>
                       <td style={{ ...TD, color: heartbeatStale ? "#ef4444" : "var(--color-text-secondary)" }}>
-                        {fmtRelative(a.lastHeartbeat)}
+                        {relativeTime(a.lastHeartbeat)}
                       </td>
                       <td style={{ ...TD, maxWidth: 220 }} title={a.lastActivity}>
                         {a.lastActivity || "\u2014"}
@@ -781,7 +699,7 @@ function AgentsView({
               <DetailRow label="Window ID" value={selectedAgent.windowId || "\u2014"} />
               <DetailRow label="App ID" value={selectedAgent.appId || "\u2014"} />
               <DetailRow label="IPC Ready" value={selectedAgent.acceptsMessages ? "Yes" : "No"} />
-              <DetailRow label="Heartbeat" value={fmtRelative(selectedAgent.lastHeartbeat)} />
+              <DetailRow label="Heartbeat" value={relativeTime(selectedAgent.lastHeartbeat)} />
               <DetailRow label="Created" value={selectedAgent.createdAt ? fmtDate(selectedAgent.createdAt) : "\u2014"} />
               <DetailRow label="Last Activity" value={selectedAgent.lastActivity || "\u2014"} />
 

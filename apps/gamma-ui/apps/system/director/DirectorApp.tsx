@@ -5,6 +5,7 @@ import type { ActivityEvent, AgentRegistryEntry, GammaSSEEvent, SpawnAgentDto, A
 import { systemAuthHeaders } from "../../../lib/auth";
 import { API_BASE } from "../../../constants/api";
 import { useSecureSse } from "../../../hooks/useSecureSse";
+import { fmtTime, truncate, relativeTime } from "../../../lib/format";
 
 // ─── Event color coding ───────────────────────────────────────────────────────
 
@@ -49,30 +50,6 @@ const KIND_ICONS: Record<string, string> = {
 
 function formatKind(kind: string): string {
   return kind.replace(/_/g, " ").toUpperCase();
-}
-
-function formatTime(ts: number): string {
-  if (!ts || ts <= 0) return "--:--:--";
-  try {
-    return new Date(ts).toLocaleTimeString("en-US", { hour12: false });
-  } catch {
-    return "--:--:--";
-  }
-}
-
-function relativeTime(ts: number): string {
-  if (!ts || ts <= 0) return "—";
-  const diff = Math.floor((Date.now() - ts) / 1000);
-  if (diff < 0) return "just now";
-  if (diff < 2) return "just now";
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  return `${Math.floor(diff / 3600)}h ago`;
-}
-
-function truncate(s: string | undefined, n: number): string {
-  if (!s) return "";
-  return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
 function buildDetail(ev: ActivityEvent): string {
@@ -409,7 +386,7 @@ function EventRow({
           }}
           title={relativeTime(ev.ts)}
         >
-          {formatTime(ev.ts)}
+          {fmtTime(ev.ts)}
         </span>
         {/* Icon */}
         <span style={{ color, flexShrink: 0, width: 12, textAlign: "center", fontSize: 10 }}>
