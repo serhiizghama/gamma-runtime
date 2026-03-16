@@ -11,6 +11,15 @@ interface SSELogEntry {
   data: Record<string, unknown>;
 }
 
+// ── Validation ────────────────────────────────────────────────────────────
+
+/** Allowlist for user-supplied windowId — alphanumeric, dash, underscore, 1–64 chars. */
+const WINDOW_ID_RE = /^[\w\-]{1,64}$/;
+
+function isValidWindowId(id: string): boolean {
+  return WINDOW_ID_RE.test(id);
+}
+
 // ── Config ───────────────────────────────────────────────────────────────
 
 // API_BASE is imported from ../../../constants/api (shared project constant)
@@ -140,6 +149,7 @@ const STATUS_DOT: React.CSSProperties = {
 export function KernelMonitorApp(): React.ReactElement {
   const [sessions, setSessions] = useState<WindowSession[]>([]);
   const [windowId, setWindowId] = useState("test-debug-001");
+  const [windowIdError, setWindowIdError] = useState<string | null>(null);
   const [sseConnected, setSseConnected] = useState(false);
   const [logs, setLogs] = useState<SSELogEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -161,10 +171,31 @@ export function KernelMonitorApp(): React.ReactElement {
     }
   }, []);
 
+  // [FIX] Pause polling when tab is hidden — N open windows = N polls otherwise.
   useEffect(() => {
     fetchSessions();
-    const iv = setInterval(fetchSessions, 5000);
-    return () => clearInterval(iv);
+
+    let iv: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (iv) return;
+      iv = setInterval(fetchSessions, 5000);
+    };
+    const stopPolling = () => {
+      if (iv) { clearInterval(iv); iv = null; }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") stopPolling();
+      else { fetchSessions(); startPolling(); }
+    };
+
+    startPolling();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [fetchSessions]);
 
   // ── Spawn mock session ─────────────────────────────────────────────
@@ -173,6 +204,7 @@ export function KernelMonitorApp(): React.ReactElement {
     setLoading(true);
     try {
       const id = `win-${Math.random().toString(36).slice(2, 8)}`;
+      // [FIX] Removed hardcoded agentId:"debug" — backend assigns agent from sessionKey
       await fetch(`${API_BASE}/api/sessions`, {
         method: "POST",
         headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
@@ -180,7 +212,6 @@ export function KernelMonitorApp(): React.ReactElement {
           windowId: id,
           appId: "kernel-monitor",
           sessionKey: `sess-${id}`,
-          agentId: "debug",
         }),
       });
       await fetchSessions();
@@ -193,9 +224,14 @@ export function KernelMonitorApp(): React.ReactElement {
 
   // ── Delete session ─────────────────────────────────────────────────
 
+  // [FIX] Confirmation gate before destructive DELETE
   const deleteSession = async (wid: string) => {
+    if (!window.confirm(`Kill session "${wid}"?\n\nThis will abort any running agent task.`)) return;
     try {
-      await fetch(`${API_BASE}/api/sessions/${wid}`, { method: "DELETE", headers: systemAuthHeaders() });
+      await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(wid)}`, {
+        method: "DELETE",
+        headers: systemAuthHeaders(),
+      });
       await fetchSessions();
     } catch {
       // silent
@@ -207,21 +243,41 @@ export function KernelMonitorApp(): React.ReactElement {
   const addLog = (data: Record<string, unknown>) => {
     logIdRef.current++;
     setLogs((prev) => [
-      ...prev.slice(-199), // keep last 200 entries (slice(-199) + 1 new = 200)
+      ...prev.slice(-199), // keep last 200 entries
       { id: logIdRef.current, ts: Date.now(), data },
     ]);
   };
 
-  const connectSSE = () => {
+  // [FIX] Extracted as stable ref-based helper so disconnectSSE can be called from onerror
+  const disconnectSSE = useCallback(() => {
     if (esRef.current) {
       esRef.current.close();
+      esRef.current = null;
+    }
+    setSseConnected(false);
+    addLog({ event: "SSE_DISCONNECTED" });
+  }, []);
+
+  const connectSSE = () => {
+    // [FIX] Validate windowId before use in URL and logs
+    if (!isValidWindowId(windowId)) {
+      setWindowIdError("Window ID must be 1–64 alphanumeric/dash/underscore characters.");
+      return;
+    }
+    setWindowIdError(null);
+
+    // Close any existing connection first
+    if (esRef.current) {
+      esRef.current.close();
+      esRef.current = null;
     }
 
     const es = new EventSource(`${API_BASE}/api/stream/${encodeURIComponent(windowId)}`);
 
     es.onopen = () => {
       setSseConnected(true);
-      addLog({ event: "SSE_CONNECTED", windowId });
+      // [FIX] Log validated windowId only — no raw user input in log entries
+      addLog({ event: "SSE_CONNECTED", windowId: windowId.slice(0, 64) });
     };
 
     es.onmessage = (e) => {
@@ -233,21 +289,16 @@ export function KernelMonitorApp(): React.ReactElement {
       }
     };
 
+    // [FIX] Call es.close() on error to prevent zombie browser reconnect loop.
+    // Then set ref to null so subsequent "Connect" clicks start clean.
     es.onerror = () => {
+      es.close();
+      esRef.current = null;
       setSseConnected(false);
       addLog({ event: "SSE_ERROR", message: "Connection lost" });
     };
 
     esRef.current = es;
-  };
-
-  const disconnectSSE = () => {
-    if (esRef.current) {
-      esRef.current.close();
-      esRef.current = null;
-    }
-    setSseConnected(false);
-    addLog({ event: "SSE_DISCONNECTED" });
   };
 
   useEffect(() => {
@@ -281,13 +332,7 @@ export function KernelMonitorApp(): React.ReactElement {
           <div style={{ fontSize: 13, fontWeight: 600 }}>
             Gamma Kernel Monitor
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              opacity: 0.8,
-              marginTop: 2,
-            }}
-          >
+          <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
             Sessions · SSE Streams · Lifecycle Events
           </div>
         </div>
@@ -321,12 +366,7 @@ export function KernelMonitorApp(): React.ReactElement {
                 <td style={TD}>{s.windowId}</td>
                 <td style={TD}>{s.appId}</td>
                 <td style={TD}>
-                  <span
-                    style={{
-                      ...STATUS_DOT,
-                      backgroundColor: statusColor(s.status),
-                    }}
-                  />
+                  <span style={{ ...STATUS_DOT, backgroundColor: statusColor(s.status) }} />
                   {s.status}
                 </td>
                 <td style={TD}>{s.agentId}</td>
@@ -362,41 +402,29 @@ export function KernelMonitorApp(): React.ReactElement {
 
       {/* SSE control + logs */}
       <section style={PANEL}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 8,
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div>
             <div style={SECTION_TITLE}>SSE Stream</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 11 }}>Window ID</span>
-              <input
-                value={windowId}
-                onChange={(e) => setWindowId(e.target.value)}
-                spellCheck={false}
-                style={INPUT}
-              />
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <input
+                  value={windowId}
+                  onChange={(e) => { setWindowId(e.target.value); setWindowIdError(null); }}
+                  spellCheck={false}
+                  style={{ ...INPUT, borderColor: windowIdError ? "var(--monitor-border-error)" : undefined }}
+                />
+                {windowIdError && (
+                  <span style={{ fontSize: 10, color: "var(--monitor-fg-error)" }}>{windowIdError}</span>
+                )}
+              </div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              style={BTN}
-              onClick={connectSSE}
-              disabled={sseConnected}
-            >
+            <button type="button" style={BTN} onClick={connectSSE} disabled={sseConnected}>
               Connect
             </button>
-            <button
-              type="button"
-              style={BTN_DANGER}
-              onClick={disconnectSSE}
-              disabled={!sseConnected}
-            >
+            <button type="button" style={BTN_DANGER} onClick={disconnectSSE} disabled={!sseConnected}>
               Disconnect
             </button>
           </div>
@@ -413,34 +441,17 @@ export function KernelMonitorApp(): React.ReactElement {
         >
           {logs.map((entry) => (
             <div key={entry.id} style={LOG_ENTRY}>
-              <div
-                style={{
-                  fontSize: 10,
-                  opacity: 0.7,
-                  marginBottom: 2,
-                }}
-              >
+              <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 2 }}>
                 {new Date(entry.ts).toLocaleTimeString()} ·{" "}
                 {String(entry.data["event"] ?? "message")}
               </div>
-              <pre
-                style={{
-                  margin: 0,
-                  fontFamily: "inherit",
-                }}
-              >
+              <pre style={{ margin: 0, fontFamily: "inherit" }}>
                 {JSON.stringify(entry.data, null, 2)}
               </pre>
             </div>
           ))}
           {logs.length === 0 && (
-            <div
-              style={{
-                ...LOG_ENTRY,
-                opacity: 0.7,
-                textAlign: "center",
-              }}
-            >
+            <div style={{ ...LOG_ENTRY, opacity: 0.7, textAlign: "center" }}>
               No events yet. Connect to an SSE stream to start tailing events.
             </div>
           )}
@@ -449,4 +460,3 @@ export function KernelMonitorApp(): React.ReactElement {
     </div>
   );
 }
-
