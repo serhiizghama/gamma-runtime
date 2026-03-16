@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { AgentStatus, GammaSSEEvent } from "@gamma/types";
 import type { ChatMessage, ToolCallEntry } from "../components/MessageList";
 import { API_BASE } from "../constants/api";
+import { fetchSseTicket } from "../lib/auth";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -72,10 +73,16 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
 
   useEffect(() => {
     mountedRef.current = true;
-    const url = `${API_BASE}/api/stream/${windowId}`;
-    const es = new EventSource(url);
+    let es: EventSource | null = null;
+    let cancelled = false;
 
-    es.onmessage = (ev) => {
+    const connect = async () => {
+      const ticketQs = await fetchSseTicket(`/api/stream/${windowId}`);
+      if (cancelled) return;
+      const url = `${API_BASE}/api/stream/${windowId}${ticketQs}`;
+      es = new EventSource(url);
+
+      es.onmessage = (ev) => {
       if (!mountedRef.current) return;
 
       let event: GammaSSEEvent;
@@ -240,11 +247,15 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
       }
     };
 
-    es.onerror = () => { /* EventSource auto-reconnects */ };
+      es.onerror = () => { /* EventSource auto-reconnects */ };
+    };
+
+    void connect();
 
     return () => {
+      cancelled = true;
       mountedRef.current = false;
-      es.close();
+      es?.close();
     };
   }, [windowId, patchMsg, finalizeMsg, finalizeAllPhases]);
 
