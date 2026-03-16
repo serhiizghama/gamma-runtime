@@ -7,6 +7,9 @@ import type {
   AgentRegistryEntry,
   GammaSSEEvent,
 } from "@gamma/types";
+// TODO(arch): `systemAuthHeaders` should be exported from a dedicated `src/lib/auth.ts`
+// or `src/api/client.ts` utility — not as a side-export from a hooks module.
+// Tracked: move systemAuthHeaders out of useSessionRegistry before next auth refactor.
 import { systemAuthHeaders } from "../../../hooks/useSessionRegistry";
 import { API_BASE } from "../../../constants/api";
 
@@ -154,6 +157,18 @@ const ERROR_BANNER: React.CSSProperties = {
   flexShrink: 0,
 };
 
+const WARN_BANNER: React.CSSProperties = {
+  padding: "6px 16px",
+  background: "rgba(234, 179, 8, 0.08)",
+  borderBottom: "1px solid rgba(234, 179, 8, 0.25)",
+  color: "#eab308",
+  fontSize: 11,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  flexShrink: 0,
+};
+
 const STAT_VALUE: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
@@ -198,7 +213,15 @@ function fmtDate(ts: number): string {
 function fmtRelative(ts: number): string {
   if (!ts || ts <= 0) return "never";
   const delta = Math.floor((Date.now() - ts) / 1000);
-  if (delta < 0) return "just now";
+  if (delta < 0) {
+    // Negative delta = timestamp is in the future. Surface as a clock-skew warning
+    // rather than silently coercing — the caller can decide whether to act on it.
+    console.warn(
+      `[Sentinel] fmtRelative: timestamp ${ts} is ${Math.abs(delta)}s in the future. ` +
+      "Possible client/server clock skew.",
+    );
+    return "just now";
+  }
   if (delta < 5) return "just now";
   if (delta < 60) return `${delta}s ago`;
   if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
@@ -286,10 +309,16 @@ function useBackupInventory() {
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const lastFetchRef = useRef(0);
+  // Invariant: mountedRef.current is true for the lifetime of a single effect run.
+  // The cleanup of each run sets it to false and aborts the in-flight request;
+  // the next run's body sets it back to true before scheduling the fetch.
+  // The auto-refresh setInterval only triggers setRefreshTick, which re-enters
+  // the fetch effect — it does not own mountedRef and does not need to.
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
+    const controller = new AbortController();
 
     const now = Date.now();
     const elapsed = now - lastFetchRef.current;
@@ -301,6 +330,7 @@ function useBackupInventory() {
 
       fetch(`${API_BASE}/api/system/backups`, {
         headers: systemAuthHeaders(),
+        signal: controller.signal,
       })
         .then((res) => {
           if (res.status === 401 || res.status === 403) {
@@ -317,6 +347,7 @@ function useBackupInventory() {
           }
         })
         .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
           if (mountedRef.current) {
             setError(err instanceof Error ? err.message : "Failed to fetch backups");
             setLoading(false);
@@ -327,6 +358,7 @@ function useBackupInventory() {
     return () => {
       mountedRef.current = false;
       clearTimeout(timer);
+      controller.abort();
     };
   }, [refreshTick]);
 
@@ -343,19 +375,31 @@ function useBackupInventory() {
 
 // ── Agent Registry hook (REST + SSE live updates) ─────────────────────────
 
+const MAX_SSE_RETRIES = 5;
+
 function useAgentRegistry() {
   const [agents, setAgents] = useState<AgentRegistryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // sseError is non-blocking: stale REST data remains visible when SSE fails.
+  const [sseError, setSseError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
-  const mountedRef = useRef(true);
+  // restMountedRef guards the REST fetch effect. Set true at each effect run start,
+  // false at cleanup. AbortController cancels the in-flight request on cleanup.
+  const restMountedRef = useRef(false);
+  // sseLiveRef guards SSE message/error handlers after the component unmounts.
+  // It is independent of restMountedRef so refreshTick cycling does not
+  // accidentally suppress SSE state writes.
+  const sseLiveRef = useRef(true);
 
-  // Initial REST fetch
+  // REST fetch effect — re-runs on refreshTick (manual + auto-10s fallback)
   useEffect(() => {
-    mountedRef.current = true;
+    restMountedRef.current = true;
+    const controller = new AbortController();
 
     fetch(`${API_BASE}/api/system/agents`, {
       headers: systemAuthHeaders(),
+      signal: controller.signal,
     })
       .then((res) => {
         if (res.status === 401 || res.status === 403) {
@@ -365,53 +409,105 @@ function useAgentRegistry() {
         return res.json() as Promise<AgentRegistryEntry[]>;
       })
       .then((data) => {
-        if (mountedRef.current) {
+        if (restMountedRef.current) {
           setAgents(data);
           setError(null);
           setLoading(false);
         }
       })
       .catch((err: unknown) => {
-        if (mountedRef.current) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        if (restMountedRef.current) {
           setError(err instanceof Error ? err.message : "Failed to load agents");
           setLoading(false);
         }
       });
 
-    return () => { mountedRef.current = false; };
+    return () => {
+      restMountedRef.current = false;
+      controller.abort();
+    };
   }, [refreshTick]);
 
-  // Live updates via SSE broadcast
+  // SSE live updates — uses a short-lived ticket so the system token never
+  // appears in the URL (and therefore never leaks into logs / history / Referer).
+  // Falls back to unauthenticated if the ticket endpoint is unavailable (server
+  // will reject the connection in that case).
   useEffect(() => {
-    const authHeaders = systemAuthHeaders() as Record<string, string>;
-    const sseToken = authHeaders["X-Gamma-System-Token"] ?? "";
-    const sseUrl = sseToken
-      ? `${API_BASE}/api/stream/agent-monitor?token=${encodeURIComponent(sseToken)}`
-      : `${API_BASE}/api/stream/agent-monitor`;
-    const es = new EventSource(sseUrl);
+    sseLiveRef.current = true;
+    let es: EventSource | null = null;
+    let sseRetryCount = 0;
+    let closed = false;
 
-    es.onmessage = (ev) => {
-      let event: GammaSSEEvent;
+    async function connect() {
+      // Exchange the system token for a short-lived, single-use SSE ticket.
+      let ticketParam = "";
       try {
-        event = JSON.parse(ev.data as string) as GammaSSEEvent;
+        const res = await fetch(`${API_BASE}/api/system/sse-ticket`, {
+          method: "POST",
+          headers: systemAuthHeaders(),
+        });
+        if (res.ok) {
+          const body = await res.json() as { ticket: string };
+          if (typeof body.ticket === "string" && body.ticket.length > 0) {
+            ticketParam = `?ticket=${encodeURIComponent(body.ticket)}`;
+          }
+        }
       } catch {
-        return;
+        // Ticket endpoint unavailable — server must enforce its own auth gate.
       }
 
-      if (event.type === "agent_registry_update") {
-        setAgents(event.agents);
-        setLoading(false);
-      }
-    };
+      if (closed) return; // component unmounted while ticket fetch was in flight
 
-    es.onerror = () => {
-      // EventSource auto-reconnects
-    };
+      es = new EventSource(`${API_BASE}/api/stream/agent-monitor${ticketParam}`);
 
-    return () => { es.close(); };
+      es.onmessage = (ev) => {
+        if (!sseLiveRef.current) return;
+        let event: GammaSSEEvent;
+        try {
+          event = JSON.parse(ev.data as string) as GammaSSEEvent;
+        } catch {
+          return;
+        }
+
+        if (event.type === "agent_registry_update") {
+          // Validate shape before applying to state to prevent injected data from
+          // corrupting the agent table if the SSE endpoint is ever compromised.
+          if (!Array.isArray(event.agents)) {
+            console.warn(
+              "[Sentinel] agent_registry_update: event.agents is not an array — ignoring.",
+              event,
+            );
+            return;
+          }
+          sseRetryCount = 0;
+          setSseError(null);
+          setAgents(event.agents);
+          setLoading(false);
+        }
+      };
+
+      es.onerror = () => {
+        if (!sseLiveRef.current || closed) return;
+        sseRetryCount++;
+        if (sseRetryCount >= MAX_SSE_RETRIES) {
+          es?.close();
+          setSseError("Live stream unavailable after repeated failures. Showing polled data.");
+        }
+        // Below MAX_SSE_RETRIES: browser will auto-reconnect with its default backoff.
+      };
+    }
+
+    connect();
+
+    return () => {
+      closed = true;
+      sseLiveRef.current = false;
+      es?.close();
+    };
   }, []);
 
-  // Auto-refresh every 10s as fallback
+  // Auto-refresh every 10s as fallback when SSE is silent or unavailable
   useEffect(() => {
     const id = setInterval(() => setRefreshTick((t) => t + 1), 10_000);
     return () => clearInterval(id);
@@ -419,7 +515,7 @@ function useAgentRegistry() {
 
   const refresh = useCallback(() => setRefreshTick((t) => t + 1), []);
 
-  return { agents, loading, error, refresh };
+  return { agents, loading, error, sseError, refresh };
 }
 
 // ── Sorted tables (memoized) ─────────────────────────────────────────────
@@ -557,17 +653,21 @@ function AgentsView({
   agents,
   loading,
   error,
+  sseError,
   refresh,
 }: {
   agents: AgentRegistryEntry[];
   loading: boolean;
   error: string | null;
+  sseError: string | null;
   refresh: () => void;
 }): React.ReactElement {
   const [selected, setSelected] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
-  // Re-render every 5s to keep relative timestamps fresh
+  // Re-render every 5s to keep relative timestamps fresh.
+  // TODO(perf): scope this interval to a dedicated RelativeTime component
+  // so only timestamp cells re-render rather than the full agent table.
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 5_000);
     return () => clearInterval(id);
@@ -578,128 +678,134 @@ function AgentsView({
     [agents, selected],
   );
 
-  if (error) {
-    return (
-      <div style={ERROR_BANNER}>
-        <span>{error}</span>
-        <button type="button" style={BTN} onClick={refresh}>Retry</button>
-      </div>
-    );
-  }
-
-  if (loading && agents.length === 0) {
-    return <div style={EMPTY}>Loading agents...</div>;
-  }
-
-  if (agents.length === 0) {
-    return <div style={EMPTY}>No agents registered.</div>;
-  }
-
+  // Error banner is non-blocking: stale agent data (if any) remains visible below it.
+  // This prevents the table from disappearing after a successful initial load
+  // when a subsequent refresh fails.
   return (
-    <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-      {/* Agent table */}
-      <div style={{ flex: 1, overflow: "auto" }}>
-        <table style={TABLE}>
-          <thead>
-            <tr>
-              <th style={TH}>Agent</th>
-              <th style={TH}>Role</th>
-              <th style={TH}>Status</th>
-              <th style={TH}>Heartbeat</th>
-              <th style={TH}>Last Activity</th>
-              <th style={{ ...TH, textAlign: "center" }}>IPC</th>
-            </tr>
-          </thead>
-          <tbody>
-            {agents.map((a) => {
-              const heartbeatAge = a.lastHeartbeat > 0 ? (Date.now() - a.lastHeartbeat) / 1000 : Infinity;
-              const heartbeatStale = heartbeatAge > 30;
-              const isSelected = selected === a.agentId;
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+      {error && (
+        <div style={ERROR_BANNER}>
+          <span>{error}</span>
+          <button type="button" style={BTN} onClick={refresh}>Retry</button>
+        </div>
+      )}
+      {sseError && !error && (
+        <div style={WARN_BANNER}>
+          <span>⚠ {sseError}</span>
+        </div>
+      )}
 
-              return (
-                <tr
-                  key={a.agentId}
-                  onClick={() => setSelected(isSelected ? null : a.agentId)}
-                  style={{
-                    cursor: "pointer",
-                    background: isSelected ? "rgba(255,255,255,0.04)" : undefined,
-                  }}
-                >
-                  <td style={{ ...TD, fontWeight: 600 }}>{a.agentId}</td>
-                  <td style={TD}>
-                    <span style={roleBadgeStyle(a.role)}>{a.role}</span>
-                  </td>
-                  <td style={TD}>
-                    <span style={statusDot(a.status)} />
-                    {a.status}
-                  </td>
-                  <td style={{ ...TD, color: heartbeatStale ? "#ef4444" : "var(--color-text-secondary)" }}>
-                    {fmtRelative(a.lastHeartbeat)}
-                  </td>
-                  <td style={{ ...TD, maxWidth: 220 }} title={a.lastActivity}>
-                    {a.lastActivity || "\u2014"}
-                  </td>
-                  <td style={{ ...TD, textAlign: "center" }}>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        width: 7,
-                        height: 7,
-                        borderRadius: "50%",
-                        backgroundColor: a.acceptsMessages ? "#22c55e" : "#6b7280",
-                      }}
-                    />
-                  </td>
+      {loading && agents.length === 0 ? (
+        <div style={EMPTY}>Loading agents…</div>
+      ) : agents.length === 0 ? (
+        <div style={EMPTY}>No agents registered.</div>
+      ) : (
+        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+          {/* Agent table */}
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <table style={TABLE}>
+              <thead>
+                <tr>
+                  <th style={TH}>Agent</th>
+                  <th style={TH}>Role</th>
+                  <th style={TH}>Status</th>
+                  <th style={TH}>Heartbeat</th>
+                  <th style={TH}>Last Activity</th>
+                  <th style={{ ...TH, textAlign: "center" }}>IPC</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {agents.map((a) => {
+                  const heartbeatAge = a.lastHeartbeat > 0 ? (Date.now() - a.lastHeartbeat) / 1000 : Infinity;
+                  const heartbeatStale = heartbeatAge > 30;
+                  const isSelected = selected === a.agentId;
 
-      {/* Detail panel */}
-      {selectedAgent && (
-        <div
-          style={{
-            flex: "0 0 260px",
-            borderLeft: "1px solid var(--color-border-subtle)",
-            overflow: "auto",
-            padding: "12px 14px",
-          }}
-        >
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
-            {selectedAgent.agentId}
+                  return (
+                    <tr
+                      key={a.agentId}
+                      onClick={() => setSelected(isSelected ? null : a.agentId)}
+                      style={{
+                        cursor: "pointer",
+                        background: isSelected ? "rgba(255,255,255,0.04)" : undefined,
+                      }}
+                    >
+                      <td style={{ ...TD, fontWeight: 600 }}>{a.agentId}</td>
+                      <td style={TD}>
+                        <span style={roleBadgeStyle(a.role)}>{a.role}</span>
+                      </td>
+                      <td style={TD}>
+                        <span style={statusDot(a.status)} />
+                        {a.status}
+                      </td>
+                      <td style={{ ...TD, color: heartbeatStale ? "#ef4444" : "var(--color-text-secondary)" }}>
+                        {fmtRelative(a.lastHeartbeat)}
+                      </td>
+                      <td style={{ ...TD, maxWidth: 220 }} title={a.lastActivity}>
+                        {a.lastActivity || "\u2014"}
+                      </td>
+                      <td style={{ ...TD, textAlign: "center" }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            width: 7,
+                            height: 7,
+                            borderRadius: "50%",
+                            backgroundColor: a.acceptsMessages ? "#22c55e" : "#6b7280",
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
-          <DetailRow label="Role" value={selectedAgent.role} />
-          <DetailRow label="Status" value={selectedAgent.status} />
-          <DetailRow label="Session Key" value={selectedAgent.sessionKey} />
-          <DetailRow label="Window ID" value={selectedAgent.windowId || "\u2014"} />
-          <DetailRow label="App ID" value={selectedAgent.appId || "\u2014"} />
-          <DetailRow label="IPC Ready" value={selectedAgent.acceptsMessages ? "Yes" : "No"} />
-          <DetailRow label="Heartbeat" value={fmtRelative(selectedAgent.lastHeartbeat)} />
-          <DetailRow label="Created" value={selectedAgent.createdAt ? fmtDate(selectedAgent.createdAt) : "\u2014"} />
-          <DetailRow label="Last Activity" value={selectedAgent.lastActivity || "\u2014"} />
+          {/* Detail panel */}
+          {selectedAgent && (
+            <div
+              style={{
+                flex: "0 0 260px",
+                borderLeft: "1px solid var(--color-border-subtle)",
+                overflow: "auto",
+                padding: "12px 14px",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+                {selectedAgent.agentId}
+              </div>
 
-          {selectedAgent.capabilities.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <div style={{ ...PANE_HEADER, padding: "4px 0", border: "none" }}>
-                Capabilities
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
-                {selectedAgent.capabilities.map((cap) => (
-                  <span
-                    key={cap}
-                    style={{
-                      ...TIER_BADGE,
-                      background: "rgba(107,114,128,0.15)",
-                      color: "#9ca3af",
-                    }}
-                  >
-                    {cap}
-                  </span>
-                ))}
-              </div>
+              <DetailRow label="Role" value={selectedAgent.role} />
+              <DetailRow label="Status" value={selectedAgent.status} />
+              <DetailRow label="Session Key" value={selectedAgent.sessionKey} />
+              <DetailRow label="Window ID" value={selectedAgent.windowId || "\u2014"} />
+              <DetailRow label="App ID" value={selectedAgent.appId || "\u2014"} />
+              <DetailRow label="IPC Ready" value={selectedAgent.acceptsMessages ? "Yes" : "No"} />
+              <DetailRow label="Heartbeat" value={fmtRelative(selectedAgent.lastHeartbeat)} />
+              <DetailRow label="Created" value={selectedAgent.createdAt ? fmtDate(selectedAgent.createdAt) : "\u2014"} />
+              <DetailRow label="Last Activity" value={selectedAgent.lastActivity || "\u2014"} />
+
+              {selectedAgent.capabilities.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ ...PANE_HEADER, padding: "4px 0", border: "none" }}>
+                    Capabilities
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                    {selectedAgent.capabilities.map((cap) => (
+                      <span
+                        key={cap}
+                        style={{
+                          ...TIER_BADGE,
+                          background: "rgba(107,114,128,0.15)",
+                          color: "#9ca3af",
+                        }}
+                      >
+                        {cap}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -857,7 +963,7 @@ export function SentinelApp(): React.ReactElement {
         </button>
       </div>
 
-      {/* Error banner */}
+      {/* Error banner (dashboard tab) */}
       {tab === "dashboard" && error && (
         <div style={ERROR_BANNER}>
           <span>{error}</span>
@@ -875,6 +981,7 @@ export function SentinelApp(): React.ReactElement {
             agents={agentState.agents}
             loading={agentState.loading}
             error={agentState.error}
+            sseError={agentState.sseError}
             refresh={agentState.refresh}
           />
         )}
