@@ -28,7 +28,6 @@ const APP_OWNER_INIT_FIELD = 'appOwnerInitialized';
  */
 const GLOBAL_SESSION_IDENTITY: Record<string, { appId: string; windowId: string }> = {
   'system-architect': { appId: 'system-architect', windowId: 'system-architect-window' },
-  'inspector': { appId: 'inspector', windowId: 'inspector-window' },
 };
 
 /**
@@ -131,7 +130,7 @@ export class SessionsService {
     // hint ("app-owner", "architect") and is NOT unique across agents.
     const agentId = dto.sessionKey;
     const role = this.resolveAgentRole(dto.sessionKey);
-    // Default supervisor: app-owners and inspector report to system-architect
+    // Default supervisor: app-owners report to system-architect
     const defaultSupervisor = dto.sessionKey === 'system-architect' ? null : 'system-architect';
     await this.agentRegistry.register({
       agentId,
@@ -149,7 +148,6 @@ export class SessionsService {
     });
 
     // Initialize App Owner sessions with a dedicated system prompt + source context.
-    // The inspector daemon has its own init path via ensureAppInspectorSession().
     if (dto.sessionKey?.startsWith(APP_OWNER_PREFIX)) {
       this.initializeAppOwnerSession(dto.sessionKey, windowId, appId).catch(
         (err: unknown) => {
@@ -170,10 +168,6 @@ export class SessionsService {
         },
       );
     }
-
-    // NOTE: app-inspector initialization is handled by ensureAppInspectorSession()
-    // which awaits the Gateway session creation before returning. This avoids the
-    // race condition where sendMessage is called before the session is ready.
 
     return session;
   }
@@ -285,7 +279,7 @@ export class SessionsService {
    * 3. Broadcasts an `emergency_stop` event via SSE so all connected UIs react.
    * 4. Emits to the Activity Stream for audit.
    *
-   * Global sessions (system-architect, inspector) are also stopped.
+   * Global sessions (system-architect) are also stopped.
    * Returns the number of sessions that were aborted.
    */
   async emergencyStopAll(): Promise<number> {
@@ -707,115 +701,6 @@ export class SessionsService {
   }
 
   /**
-   * Initialize the App Inspector daemon session with its persona prompt.
-   * Mirrors the System Architect init pattern — loads persona from
-   * docs/agents/app-inspector.md and registers with daemon capabilities.
-   */
-  private async initializeAppInspectorSession(
-    sessionKey: string,
-    windowId: string,
-  ): Promise<void> {
-    const repoRoot = process.cwd();
-    let personaContent = '';
-    try {
-      const personaPath = path.join(repoRoot, 'docs/agents/app-inspector.md');
-      personaContent = await fs.readFile(personaPath, 'utf8');
-    } catch {
-      this.logger.debug('app-inspector.md not found — using default persona');
-    }
-
-    const systemPrompt = personaContent
-      ? `[SYSTEM INJECTION] You are the App Inspector daemon of Gamma Agent Runtime.\n\n${personaContent}`
-      : '[SYSTEM INJECTION] You are the App Inspector daemon. Review files for bugs, security issues, and React anti-patterns. Send feedback via send_message.';
-
-    this.logger.log(
-      `[TRACE:SESSION] initializeAppInspectorSession | sessionKey=${sessionKey} | promptLen=${systemPrompt.length}`,
-    );
-
-    // sessions.create is best-effort — some Gateway versions don't support it.
-    // Context and registry are always stored regardless of Gateway response so
-    // that dual-path prompt injection works even if sessions.create is rejected.
-    const created = await this.gatewayWs.createSession(
-      sessionKey,
-      systemPrompt,
-      'inspector',
-    );
-    this.logger.log(
-      `[TRACE:SESSION] Gateway sessions.create result: ${created ? 'OK' : 'FAILED (will use dual-path injection)'}`,
-    );
-    if (!created) {
-      this.logger.warn(
-        'initializeAppInspectorSession: Gateway sessions.create failed — ' +
-        'continuing with local context storage (dual-path injection will apply on first send)',
-      );
-    }
-
-    // Update Agent Registry with daemon role and capabilities
-    this.logger.log(`[TRACE:SESSION] Updating Agent Registry: role=daemon, capabilities=[code_review, ipc]`);
-    await this.agentRegistry.update(sessionKey, {
-      role: 'daemon',
-      capabilities: ['code_review', 'ipc'],
-    });
-
-    // Persist for dual-path injection on chat.send
-    await Promise.all([
-      this.registry.setContext(sessionKey, systemPrompt),
-      this.registry.upsert({
-        sessionKey,
-        windowId,
-        appId: 'inspector',
-        systemPromptSnippet: systemPrompt.slice(0, 2000),
-        lastActiveAt: Date.now(),
-      }),
-    ]);
-  }
-
-  /**
-   * Ensure the App Inspector daemon session exists, creating it if needed.
-   * Blocks until the OpenClaw Gateway session is fully initialized so that
-   * callers can immediately send messages to the inspector.
-   * Returns the windowId for the inspector session.
-   */
-  async ensureAppInspectorSession(): Promise<string> {
-    const inspectorWindowId = 'inspector-window';
-    const existing = await this.findBySessionKey('inspector');
-    if (existing) {
-      this.logger.log(`[TRACE:SESSION] Inspector already exists — windowId=${existing.windowId}`);
-      return existing.windowId;
-    }
-
-    this.logger.log(`[TRACE:SESSION] Inspector not found — creating session with windowId=${inspectorWindowId}`);
-
-    // Create the session record in Redis + Agent Registry
-    await this.create({
-      windowId: inspectorWindowId,
-      appId: 'inspector',
-      sessionKey: 'inspector',
-      agentId: 'inspector',
-    });
-
-    this.logger.log(`[TRACE:SESSION] Session record created — now initializing Gateway session...`);
-
-    // Block until the OpenClaw Gateway session is ready, with a 15s timeout
-    // to prevent hanging if the Gateway is unreachable.
-    const INIT_TIMEOUT_MS = 15_000;
-    try {
-      await Promise.race([
-        this.initializeAppInspectorSession('inspector', inspectorWindowId),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Inspector Gateway init timed out after 15s')), INIT_TIMEOUT_MS),
-        ),
-      ]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`[TRACE:SESSION] Inspector init failed/timed out: ${msg} — session exists but Gateway may not be ready`);
-    }
-
-    this.logger.log(`[TRACE:SESSION] Inspector fully initialized — ready to receive messages`);
-    return inspectorWindowId;
-  }
-
-  /**
    * Build the shared App Owner context block combining persona, context.md and
    * main .tsx source, searching both generated and system app directories.
    */
@@ -1003,7 +888,6 @@ export class SessionsService {
 
   private resolveAgentRole(sessionKey: string): 'architect' | 'app-owner' | 'daemon' {
     if (sessionKey === 'system-architect') return 'architect';
-    if (sessionKey === 'inspector') return 'daemon';
     if (sessionKey.startsWith(APP_OWNER_PREFIX)) return 'app-owner';
     return 'daemon';
   }

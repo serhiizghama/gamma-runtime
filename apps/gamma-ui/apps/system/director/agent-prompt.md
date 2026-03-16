@@ -40,7 +40,7 @@ Store: `useActivityStore` (Zustand, defined inside DirectorApp.tsx)
 agent_registered | agent_deregistered | agent_status_change |
 message_sent | tool_call_start | tool_call_end |
 lifecycle_start | lifecycle_end | lifecycle_error |
-file_change | system_event | emergency_stop
+system_event | emergency_stop
 
 ## Constraints
 - Use only: React, standard hooks, Zustand.

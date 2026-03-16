@@ -39,7 +39,6 @@ type ActivityEventKind =
   | 'lifecycle_start'       // agent run started
   | 'lifecycle_end'         // agent run completed
   | 'hierarchy_change'      // supervisor assignment changed
-  | 'file_change'           // file modified in jail
   | 'system_event';         // watchdog, rollback, health alert
 
 interface ActivityEvent {
@@ -88,7 +87,6 @@ New module: `apps/gamma-core/src/activity/`
 | `GatewayWsService` tool_result handler | `tool_call_end` | Tool invocation resolves |
 | `GatewayWsService` lifecycle handlers | `lifecycle_start/end` | Agent run boundaries |
 | `MessageBusService.send/broadcast()` | `message_sent` | IPC dispatch |
-| `FileChangeConsumerService` | `file_change` | File modified in jail |
 | `ToolWatchdogService` timeout handler | `tool_call_end` (severity: error) | Tool timeout |
 
 > **Note:** `thinking` events are NOT published to activity stream (too noisy). They remain in per-window SSE only.
@@ -126,7 +124,6 @@ interface AgentNode {
 | Agent | Default Supervisor |
 |-------|--------------------|
 | `system-architect` | `null` (root) |
-| `inspector` | `system-architect` |
 | `app-owner-*` | `system-architect` |
 
 ### 3.2 HierarchyService
@@ -187,19 +184,19 @@ Location: `apps/gamma-ui/apps/system/director/DirectorApp.tsx`
 ├──────────┬──────────────────────────┬───────────────────────┤
 │          │                          │                       │
 │  AGENT   │     THE PULSE            │   AGENT DETAIL        │
-│  TREE    │  (Activity Feed)         │   (Inspector)         │
+│  TREE    │  (Activity Feed)         │   (Session Detail)    │
 │          │                          │                       │
 │  ┌──┐    │  ● architect → tool_call │   agent-id: ...       │
 │  │SA│    │    fs_read /private/...  │   status: running     │
 │  └┬─┘    │  ● app-owner-notes →    │   supervisor: SA      │
-│   ├─►INS │    lifecycle_start       │   tokens: 12.4k in    │
-│   ├─►AO1 │  ● inspector →          │                       │
-│   └─►AO2 │    message_sent → AO1   │   [Pause] [Kill]      │
+│   ├─►AO1 │    lifecycle_start       │   tokens: 12.4k in    │
+│   └─►AO2 │  ● architect →          │                       │
+│          │    message_sent → AO1    │   [Pause] [Kill]      │
 │          │    "Review: 3 issues"    │   [Load Context]      │
 │          │                          │   [Reassign ▾]        │
 │          │                          │                       │
 ├──────────┴──────────────────────────┴───────────────────────┤
-│  SA: idle │ INS: idle │ AO1: running │ AO2: error   │ 4 agt│
+│  SA: idle │ AO1: running │ AO2: error              │ 3 agt│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -257,7 +254,7 @@ Component: `AgentTree.tsx`
 
 - Renders `AgentNode[]` as an indented tree (hierarchy is strictly tree-shaped)
 - Each node: role icon + agentId (truncated) + status dot (same colors as `AgentMonitorApp`)
-- Click → selects agent → populates right inspector pane
+- Click → selects agent → populates right detail pane
 - Drag-and-drop for supervisor reassignment → calls `PATCH /api/orchestration/hierarchy`
 - Collapses on narrow windows
 - Refreshes via `agent_registry_update` SSE events (already broadcast by `AgentRegistryService`)
@@ -276,7 +273,6 @@ Component: `ActivityPulse.tsx`
 | `lifecycle_start` | play | green | `agentId run started` |
 | `lifecycle_end` | stop | neutral | `agentId run ended (reason, tokens)` |
 | `agent_status_change` | circle | status color | `agentId: idle → running` |
-| `file_change` | file | neutral | `appId: filename.tsx modified` |
 | `system_event` | alert | red / yellow | severity-based message |
 
 **Feed behavior:**
@@ -287,11 +283,11 @@ Component: `ActivityPulse.tsx`
 - **Virtualized list** (`react-window` or equivalent) for 500+ items
 - Timestamps as relative ("2s ago") with absolute on hover
 
-### 4.6 Right Pane — Agent Inspector
+### 4.6 Right Pane — Agent Detail
 
-Component: `AgentInspector.tsx`
+Component: `AgentDetail.tsx`
 
-Extends patterns from existing `AgentMonitorApp` Inspector:
+Extends patterns from existing `AgentMonitorApp` session detail panel:
 
 - **Header:** agentId, role badge, appId, windowId
 - **Status:** status dot + label, supervisor link (clickable → selects in tree), children count
@@ -374,7 +370,7 @@ Component: `DirectorStatusBar.tsx`
 | **11** | Frontend | `DirectorApp` shell + layout + app registry entry | 9 |
 | **12** | Frontend | `AgentTree` component | 9, 6 |
 | **13** | Frontend | `ActivityPulse` component (the feed) | 10 |
-| **14** | Frontend | `AgentInspector` component (detail pane + controls) | 6, 9 |
+| **14** | Frontend | `AgentDetail` component (detail pane + controls) | 6, 9 |
 | **15** | Frontend | `DirectorStatusBar` | 9, 10 |
 | **16** | Polish | Filters, drag-and-drop reassignment, keyboard shortcuts | 12–15 |
 

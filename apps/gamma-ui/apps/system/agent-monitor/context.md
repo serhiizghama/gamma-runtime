@@ -20,7 +20,7 @@
 - Header: app title and live session count.
 - Left pane (60%): data grid — columns: Window, App, Status, Runs, In Tok, Out Tok, Last Active.
   - Clicking a row selects it for inspection.
-- Right pane (40%): inspector — shows session metadata, context prompt (on demand), and kill button.
+- Right pane (40%): session detail — shows session metadata, context prompt (on demand), and kill button.
 
 **Architecture notes**
 - `useSessionRegistry` hook (web/hooks/useSessionRegistry.ts) handles all data fetching and SSE wiring.

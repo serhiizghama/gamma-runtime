@@ -40,7 +40,7 @@ const GRID_PANE: React.CSSProperties = {
   overflow: "hidden",
 };
 
-const INSPECTOR_PANE: React.CSSProperties = {
+const DETAIL_PANE: React.CSSProperties = {
   flex: 1,
   display: "flex",
   flexDirection: "column",
@@ -161,15 +161,15 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
-// ── Inspector panel ───────────────────────────────────────────────────────
+// ── Session detail panel ──────────────────────────────────────────────────
 
-interface InspectorProps {
+interface SessionDetailProps {
   record: SessionRecord;
   onKill: (sessionKey: string) => Promise<void>;
   killing: boolean;
 }
 
-function Inspector({ record, onKill, killing }: InspectorProps): React.ReactElement {
+function SessionDetail({ record, onKill, killing }: SessionDetailProps): React.ReactElement {
   const [context, setContext] = useState<string | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
@@ -206,7 +206,7 @@ function Inspector({ record, onKill, killing }: InspectorProps): React.ReactElem
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      {/* Inspector header */}
+      {/* Session header */}
       <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--color-border-subtle)", flexShrink: 0 }}>
         <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>
           {record.appId || "—"} · {record.windowId || "—"}
@@ -345,7 +345,7 @@ export function AgentMonitorApp(): React.ReactElement {
         </div>
       </header>
 
-      {/* Body: Grid + Inspector */}
+      {/* Body: Grid + Detail */}
       <div style={BODY}>
         {/* Data grid */}
         <div style={GRID_PANE}>
@@ -408,11 +408,11 @@ export function AgentMonitorApp(): React.ReactElement {
           </div>
         </div>
 
-        {/* Inspector */}
-        <div style={INSPECTOR_PANE}>
-          <div style={PANE_HEADER}>Inspector</div>
+        {/* Session Detail */}
+        <div style={DETAIL_PANE}>
+          <div style={PANE_HEADER}>Session Detail</div>
           {selectedRecord ? (
-            <Inspector
+            <SessionDetail
               key={selectedRecord.sessionKey}
               record={selectedRecord}
               onKill={handleKill}

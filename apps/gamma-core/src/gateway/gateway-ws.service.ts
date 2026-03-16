@@ -9,10 +9,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import WebSocket from 'ws';
 import { createPrivateKey, sign as cryptoSign } from 'crypto';
-import { readFile, appendFile, mkdir } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
-import { findRepoRoot } from '../scaffold/app-storage.service';
 import { ulid } from 'ulid';
 import { REDIS_KEYS } from '@gamma/types';
 import Redis from 'ioredis';
@@ -62,19 +61,11 @@ const SYSTEM_ARCHITECT_TOOLS = [
   'send_message',
 ] as const;
 
-/** Tools available to App Inspector — read-only cross-app access + IPC. */
-const APP_INSPECTOR_TOOLS = [
-  'fs_read',
-  'fs_list',
-  'send_message',
-] as const;
-
 /**
  * Resolve the tool allowlist for a given session key.
  * Returns undefined for sessions without explicit scoping (fallback to gateway defaults).
  */
 function resolveAllowedTools(sessionKey: string): readonly string[] | undefined {
-  if (sessionKey === 'inspector') return APP_INSPECTOR_TOOLS;
   if (sessionKey.startsWith('app-owner-')) return APP_OWNER_TOOLS;
   if (sessionKey === 'system-architect') return SYSTEM_ARCHITECT_TOOLS;
   return undefined;
@@ -158,7 +149,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
    */
   private toOpenClawKey(internalKey: string): string {
     if (internalKey === 'system-architect') return 'agent:system-architect:main';
-    if (internalKey === 'inspector') return 'agent:inspector:main';
     if (internalKey.startsWith('app-owner-')) {
       const appId = internalKey.replace('app-owner-', '');
       return `agent:app-owner:${appId}`;
@@ -176,7 +166,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
    */
   private toInternalKey(openClawKey: string): string {
     if (openClawKey === 'agent:system-architect:main') return 'system-architect';
-    if (openClawKey === 'agent:inspector:main') return 'inspector';
     // OpenClaw actual format: agent:app-owner-<appId>:main
     if (openClawKey.startsWith('agent:app-owner-') && openClawKey.endsWith(':main')) {
       return openClawKey.replace(/^agent:/, '').replace(/:main$/, '');
@@ -235,9 +224,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       toolCallStepIds: Map<string, string>; // toolCallId → stepId
     }
   >();
-
-  /** Stash fs_write file paths from tool_call phase for emission on result. */
-  private pendingFsWritePaths = new Map<string, string>(); // toolCallId → filePath
 
   private readonly gatewayUrl: string;
   private readonly gatewayToken: string;
@@ -352,7 +338,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     // Clear run tracking to avoid orphaned counters when runs are interrupted
     this.runStepCounters.clear();
     this.inflightChatSend.clear();
-    this.pendingFsWritePaths.clear();
 
     for (const [id, req] of this.pendingRequests) {
       clearTimeout(req.timer);
@@ -655,11 +640,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           this.toolWatchdog.resetRollbackCount(sessionKey.replace('app-owner-', ''));
         }
 
-        // Log inspector verdicts to quality-audit.log
-        if (sessionKey === 'inspector') {
-          this.appendQualityAuditLog(windowId, runId, nowMs).catch(() => {});
-        }
-
         // Activity Stream (Phase 5) — emit message_completed with text snippet
         {
           const streamText = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'streamText') ?? '';
@@ -915,24 +895,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
-        // Stash fs_write path for file_changed emission on successful result
-        if (name === 'fs_write' && toolCallId) {
-          const isRegularAppOwner = sessionKey.startsWith('app-owner-');
-          this.logger.log(
-            `[TRACE:EMITTER] fs_write CALL intercepted | session=${sessionKey} | toolCallId=${toolCallId} | isRegularAppOwner=${isRegularAppOwner}`,
-          );
-          if (isRegularAppOwner) {
-            const args = (data?.arguments as Record<string, unknown>) ?? {};
-            const filePath = (args.path ?? args.file ?? args.filePath ?? '') as string;
-            this.logger.log(
-              `[TRACE:EMITTER] Extracted filePath="${filePath}" from args keys=[${Object.keys(args).join(',')}]`,
-            );
-            if (filePath) {
-              this.pendingFsWritePaths.set(toolCallId, filePath);
-            }
-          }
-        }
-
         // Tool call initiated
         const eventId = await this.pushSSE(sseKey, {
           type: 'tool_call',
@@ -1090,54 +1052,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           parentId,
         });
 
-        // ── File-changed event for the Duty Architect loop (Phase 4.2) ──
-        if (name === 'fs_write' && toolCallId) {
-          const filePath = this.pendingFsWritePaths.get(toolCallId);
-          this.pendingFsWritePaths.delete(toolCallId);
-
-          const isRegularAppOwner = sessionKey.startsWith('app-owner-');
-          this.logger.log(
-            `[TRACE:EMITTER] fs_write RESULT | session=${sessionKey} | toolCallId=${toolCallId} | ` +
-            `stashedPath="${filePath ?? '<none>'}" | isError=${!!data?.isError} | isRegularAppOwner=${isRegularAppOwner}`,
-          );
-
-          if (filePath && !data?.isError && isRegularAppOwner) {
-            const appId = sessionKey.replace('app-owner-', '');
-            this.logger.log(
-              `[TRACE:EMITTER] Publishing file_changed to ${REDIS_KEYS.FILE_CHANGED_STREAM} | appId=${appId} | filePath=${filePath}`,
-            );
-            this.redis
-              .xadd(
-                REDIS_KEYS.FILE_CHANGED_STREAM,
-                'MAXLEN', '~', '500',
-                '*',
-                'appId', appId,
-                'filePath', filePath,
-                'sessionKey', sessionKey,
-                'toolCallId', toolCallId,
-                'windowId', windowId,
-                'timestamp', String(nowMs),
-              )
-              .then((streamId) => {
-                this.logger.log(`[TRACE:EMITTER] xadd SUCCESS — streamId=${streamId}`);
-              })
-              .catch((err: unknown) => {
-                const msg = err instanceof Error ? err.message : String(err);
-                this.logger.error(`[TRACE:EMITTER] xadd FAILED: ${msg}`);
-              });
-
-            // Activity Stream (Phase 5)
-            this.activityStream?.emit({
-              kind: 'file_change',
-              agentId: sessionKey,
-              windowId,
-              appId,
-              toolCallId,
-              payload: filePath,
-              severity: 'info',
-            });
-          }
-        }
       }
       return;
     }
@@ -1742,42 +1656,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       'pendingToolLines', JSON.stringify(lines),
       'lastEventAt', String(nowMs),
     );
-  }
-
-  // ── Quality Audit Log (Inspector verdicts) ───────────────────────────
-
-  /**
-   * Appends the inspector's final text output to logs/quality-audit.log.
-   * Extracts the accumulated streamText from Redis state for the window.
-   */
-  private async appendQualityAuditLog(
-    windowId: string,
-    runId: string,
-    nowMs: number,
-  ): Promise<void> {
-    try {
-      const streamText = await this.redis.hget(
-        `${REDIS_KEYS.STATE_PREFIX}${windowId}`,
-        'streamText',
-      );
-      if (!streamText) return;
-
-      const repoRoot = findRepoRoot(__dirname);
-      const logDir = join(repoRoot, 'logs');
-      await mkdir(logDir, { recursive: true });
-
-      const timestamp = new Date(nowMs).toISOString();
-      const entry =
-        `\n[${'─'.repeat(60)}]\n` +
-        `[${timestamp}] Inspector Run ${runId}\n` +
-        `${streamText}\n`;
-
-      await appendFile(join(logDir, 'quality-audit.log'), entry, 'utf8');
-      this.logger.debug(`[AUDIT] Inspector verdict logged for run ${runId}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`[AUDIT] Failed to write quality-audit.log: ${msg}`);
-    }
   }
 
   // ── v1.6: Explicit session kill — free Gateway resources ────────────

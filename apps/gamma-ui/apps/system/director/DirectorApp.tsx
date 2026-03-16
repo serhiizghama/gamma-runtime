@@ -49,7 +49,6 @@ const KIND_COLORS: Record<string, string> = {
   agent_registered:   "#87ffd7",
   agent_deregistered: "#d787ff",
   agent_status_change: "#888",
-  file_change:     "#87ffd7",
   hierarchy_change: "#d7afff",
   system_event:    "#d787ff",
 };
@@ -72,7 +71,6 @@ const KIND_ICONS: Record<string, string> = {
   agent_registered:   "+",
   agent_deregistered: "−",
   agent_status_change: "◦",
-  file_change:     "◇",
   hierarchy_change: "⇅",
   system_event:    "⚡",
 };
