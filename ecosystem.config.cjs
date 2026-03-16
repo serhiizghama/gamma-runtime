@@ -16,17 +16,15 @@ module.exports = {
   apps: [
     {
       name: 'gamma-core',
-      script: 'apps/gamma-core/dist/main.js',
-      cwd: ROOT,
+      // Use dotenv/config via full path — safe for multiline values (PEM keys).
+      // bash `set -a; source .env` breaks on OPENCLAW_DEVICE_PRIVATE_KEY_PEM.
+      script: `${ROOT}/apps/gamma-core/dist/main.js`,
+      cwd: `${ROOT}/apps/gamma-core`,
       interpreter: 'node',
-      env_file: 'apps/gamma-core/.env',
-      // Load .env manually via preload (pm2 doesn't source dotenv natively)
-      node_args: [],
-      // env vars from the .env file are loaded via the shell wrapper below
-      // We use a wrapper script to source the .env before starting node
-      script: 'bash',
-      args: `-c "set -a; source ${ROOT}/apps/gamma-core/.env; set +a; node ${ROOT}/apps/gamma-core/dist/main.js"`,
-      interpreter: 'none',
+      node_args: `-r ${ROOT}/apps/gamma-core/node_modules/dotenv/config`,
+      env: {
+        DOTENV_CONFIG_PATH: `${ROOT}/apps/gamma-core/.env`,
+      },
       autorestart: true,
       restart_delay: 3000,
       max_restarts: 20,
