@@ -1,6 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import { useGammaStore } from "../../../store/useGammaStore";
 import type { UISettings } from "@gamma/types";
+
+// TODO(architecture): SegmentedControl, SliderRow, and GlassButton are
+// generic UI primitives. They should be extracted to the shared component
+// library (e.g. @gamma/ui or a shared components/ layer) to avoid
+// duplication across apps. Tracked separately.
 
 const SECTION: React.CSSProperties = {
   display: "flex",
@@ -39,8 +44,15 @@ export function SettingsApp(): React.ReactElement {
   const updateUI = useGammaStore((s) => s.updateUISettings);
   const resetAll = useGammaStore((s) => s.resetAll);
 
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
   const set = <K extends keyof UISettings>(key: K, val: UISettings[K]) =>
     updateUI({ [key]: val } as Partial<UISettings>);
+
+  const handleResetConfirmed = () => {
+    resetAll();
+    setShowResetConfirm(false);
+  };
 
   return (
     <div
@@ -118,11 +130,65 @@ export function SettingsApp(): React.ReactElement {
               Clears session, windows, and preferences
             </p>
           </div>
-          <GlassButton danger onClick={resetAll}>
+          <GlassButton danger onClick={() => setShowResetConfirm(true)}>
             Reset
           </GlassButton>
         </div>
       </div>
+
+      {/* ── Reset Confirmation Modal ────────────────────────────── */}
+      {showResetConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-confirm-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--color-overlay)",
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              background: "var(--color-surface-elevated)",
+              border: "1px solid var(--color-border-subtle)",
+              borderRadius: 16,
+              padding: "28px 32px",
+              maxWidth: 360,
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              gap: 20,
+              boxShadow: "var(--shadow-modal)",
+            }}
+          >
+            <div>
+              <p
+                id="reset-confirm-title"
+                style={{ fontSize: 16, fontWeight: 600, margin: "0 0 8px" }}
+              >
+                Reset All Settings?
+              </p>
+              <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: 0 }}>
+                This will permanently clear your session, windows, and all
+                preferences. This action cannot be undone.
+              </p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <GlassButton onClick={() => setShowResetConfirm(false)}>
+                Cancel
+              </GlassButton>
+              <GlassButton danger onClick={handleResetConfirmed}>
+                Reset Everything
+              </GlassButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -152,29 +218,29 @@ function SegmentedControl({
       }}
     >
       {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            style={{
-              padding: "5px 14px",
-              borderRadius: 8,
-              border: "none",
-              cursor: "pointer",
-              fontSize: 13,
-              fontFamily: "var(--font-system)",
-              fontWeight: 500,
-              transition: "background 160ms ease, color 160ms ease",
-              background:
-                value === o.value ? "var(--color-surface-muted-strong)" : "transparent",
-              color:
-                value === o.value
-                  ? "var(--color-text-on-muted-strong)"
-                  : "var(--color-text-muted)",
-              boxShadow:
-                value === o.value ? "var(--shadow-soft)" : "none",
-            }}
-          >
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          style={{
+            padding: "5px 14px",
+            borderRadius: 8,
+            border: "none",
+            cursor: "pointer",
+            fontSize: 13,
+            fontFamily: "var(--font-system)",
+            fontWeight: 500,
+            transition: "background 160ms ease, color 160ms ease",
+            background:
+              value === o.value ? "var(--color-surface-muted-strong)" : "transparent",
+            color:
+              value === o.value
+                ? "var(--color-text-on-muted-strong)"
+                : "var(--color-text-muted)",
+            boxShadow:
+              value === o.value ? "var(--shadow-soft)" : "none",
+          }}
+        >
           {o.label}
         </button>
       ))}
@@ -248,10 +314,14 @@ function GlassButton({
   onClick: () => void;
   danger?: boolean;
 }) {
+  const [hovered, setHovered] = useState(false);
+
   return (
     <button
       type="button"
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         padding: "7px 18px",
         borderRadius: 9,
@@ -259,7 +329,11 @@ function GlassButton({
           ? "1px solid var(--button-danger-border)"
           : "1px solid var(--button-ghost-border)",
         background: danger
-          ? "var(--button-danger-bg)"
+          ? hovered
+            ? "var(--button-danger-bg-hover)"
+            : "var(--button-danger-bg)"
+          : hovered
+          ? "var(--button-ghost-bg-hover)"
           : "var(--button-ghost-bg)",
         color: danger ? "var(--button-danger-fg)" : "var(--button-ghost-fg)",
         fontSize: 13,
@@ -270,19 +344,8 @@ function GlassButton({
         transition: "background 150ms ease",
         flexShrink: 0,
       }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = danger
-          ? "var(--button-danger-bg-hover)"
-          : "var(--button-ghost-bg-hover)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = danger
-          ? "var(--button-danger-bg)"
-          : "var(--button-ghost-bg)";
-      }}
     >
       {children}
     </button>
   );
 }
-
