@@ -19,3 +19,5 @@ packages/gamma-types/*.js
 packages/gamma-types/*.js.map
 packages/gamma-types/*.d.ts
 gamma-runtime-context.xml
+# Agent session backups
+apps/gamma-ui/apps/system/*.bak_session/
