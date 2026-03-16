@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { ITool, ToolResult } from '@gamma/types';
 import type { IToolExecutor, ToolExecutionContext } from '../interfaces';
 import { SessionsService } from '../../sessions/sessions.service';
@@ -49,7 +49,7 @@ export class SpawnSubAgentTool implements IToolExecutor {
 
   readonly toolName = SpawnSubAgentTool.DEFINITION.name;
 
-  constructor(private readonly sessions: SessionsService) {}
+  constructor(@Optional() private readonly sessions: SessionsService) {}
 
   async execute(
     args: Record<string, unknown>,

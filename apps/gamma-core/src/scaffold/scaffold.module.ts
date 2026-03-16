@@ -1,6 +1,5 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { RedisModule } from '../redis/redis.module';
-import { SessionsModule } from '../sessions/sessions.module';
 import { AppStorageService } from './app-storage.service';
 import { GitWorkspaceService } from './git-workspace.service';
 import { ValidationService } from './validation.service';
@@ -9,7 +8,7 @@ import { ScaffoldController } from './scaffold.controller';
 import { ScaffoldAssetsController } from './scaffold-assets.controller';
 
 @Module({
-  imports: [RedisModule, forwardRef(() => SessionsModule)],
+  imports: [RedisModule],
   controllers: [ScaffoldController, ScaffoldAssetsController],
   providers: [
     AppStorageService,

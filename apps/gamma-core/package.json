@@ -1,10 +1,10 @@
 {
   "name": "@gamma/core",
   "version": "1.4.0",
-  "description": "Gamma Agent Runtime — Backend Integration Server",
+  "description": "Gamma Agent Runtime \u2014 Backend Integration Server",
   "private": true,
   "scripts": {
-    "build": "nest build",
+    "build": "rm -f tsconfig.build.tsbuildinfo && nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",

@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, Inject, BadRequestException, Optional } from '@nestjs/common';
 import * as path from 'path';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
@@ -52,7 +52,9 @@ export class ScaffoldService {
     private readonly gitWorkspace: GitWorkspaceService,
     private readonly validation: ValidationService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
-    private readonly sessionsService: SessionsService,
+    // @Optional to break circular: ScaffoldModule ↔ SessionsModule.
+    // SessionsService.remove() is only called during app unscaffold (best-effort).
+    @Optional() private readonly sessionsService: SessionsService,
   ) {}
 
   // ── Delegated accessors (backward compat for SessionsService) ─────────
