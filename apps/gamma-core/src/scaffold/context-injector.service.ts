@@ -17,6 +17,17 @@ import type { AgentRegistryEntry, SessionRecord, SystemHealthReport } from '@gam
 export class ContextInjectorService {
   private readonly logger = new Logger(ContextInjectorService.name);
 
+  /** TTL for live context cache in milliseconds (default: 24h) */
+  private readonly CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+  private cache: { content: string; ts: number } | null = null;
+
+  /** Force-invalidate the cache (e.g. on critical system events). */
+  clearCache(): void {
+    this.cache = null;
+    this.logger.debug('Live context cache cleared.');
+  }
+
   constructor(
     private readonly sessionRegistry: SessionRegistryService,
     private readonly agentRegistry: AgentRegistryService,
@@ -29,6 +40,11 @@ export class ContextInjectorService {
    * Best-effort: returns an empty string if aggregation fails entirely.
    */
   async getLiveContext(callerSessionKey?: string): Promise<string> {
+    // Return cached content if still within TTL
+    if (this.cache && Date.now() - this.cache.ts < this.CACHE_TTL_MS) {
+      return this.cache.content;
+    }
+
     try {
       const [sessions, health, agents] = await Promise.all([
         this.sessionRegistry.getAll().catch(() => [] as SessionRecord[]),
@@ -123,7 +139,12 @@ export class ContextInjectorService {
       }
 
       lines.push('[/LIVE SYSTEM STATE]');
-      return lines.join('\n');
+      const content = lines.join('\n');
+
+      // Store in cache with current timestamp
+      this.cache = { content, ts: Date.now() };
+
+      return content;
     } catch (err) {
       this.logger.warn(
         `getLiveContext failed: ${err instanceof Error ? err.message : String(err)}`,

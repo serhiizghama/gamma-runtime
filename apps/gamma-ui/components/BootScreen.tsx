@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-const BOOT_DURATION  = 4000; // ms total boot sequence
-const EXIT_DELAY     = 400;  // ms pause at 100% before fading
-const EXIT_DURATION  = 900;  // ms fade-out to desktop
+const BOOT_DURATION  = 2000; // ms total boot sequence
+const EXIT_DELAY     = 200;  // ms pause at 100% before fading
+const EXIT_DURATION  = 450;  // ms fade-out to desktop
 
 // ── Mini network canvas ───────────────────────────────────────────
 function NetworkCanvas() {
