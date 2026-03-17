@@ -1,0 +1,27 @@
+{
+  "name": "@gamma/smart-chunker",
+  "version": "0.1.0",
+  "description": "Semantic code & document chunker for the Gamma Knowledge Hub",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "gamma-ingest": "./dist/index.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "typescript": "^5.7.2"
+  },
+  "optionalDependencies": {
+    "openai": "^4.x"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "tsup": "^8.3.0"
+  }
+}

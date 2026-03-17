@@ -15,6 +15,7 @@ import type { Database as DatabaseType, Statement } from 'better-sqlite3';
 import { ulid } from 'ulid';
 import type {
   IVectorUpsertInput,
+  IVectorUpsertWithVectorInput,
   IUpsertResult,
   ISearchOptions,
   ISearchResult,
@@ -264,6 +265,45 @@ export class VectorStoreService {
       this.prepareUpsertVec().run({
         id,
         embedding: serializeEmbedding(vec),
+      });
+    });
+
+    tx();
+
+    return { id, status: exists ? 'updated' : 'created' };
+  }
+
+  // -----------------------------------------------------------------------
+  // Upsert with pre-computed vector (bypasses internal embedding provider)
+  // -----------------------------------------------------------------------
+
+  upsertWithVector(input: IVectorUpsertWithVectorInput, ctx: ISkillContext): IUpsertResult {
+    const id = input.id ?? ulid();
+    const namespace = input.namespace ?? 'default';
+    const now = Date.now();
+
+    const exists = this.prepareExists().get({ id }) !== undefined;
+
+    if (exists) {
+      this.assertOwnership(id, ctx.agentId);
+    }
+
+    const metadata: Record<string, unknown> = { ...input.metadata, _agentId: ctx.agentId };
+    const metadataJson = JSON.stringify(metadata);
+
+    const tx = this.db.transaction(() => {
+      this.prepareUpsertChunk().run({
+        id,
+        namespace,
+        content: input.content,
+        metadata: metadataJson,
+        now,
+      });
+
+      this.prepareDeleteVec().run({ id });
+      this.prepareUpsertVec().run({
+        id,
+        embedding: serializeEmbedding(input.vector),
       });
     });
 

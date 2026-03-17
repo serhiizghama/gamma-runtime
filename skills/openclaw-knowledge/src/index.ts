@@ -21,6 +21,7 @@ import type {
 export type {
   IVectorChunk,
   IVectorUpsertInput,
+  IVectorUpsertWithVectorInput,
   ISearchResult,
   ISearchOptions,
   IDeleteResult,
@@ -92,6 +93,25 @@ export async function handleVectorStore(
       );
     }
 
+    case 'upsert_with_vector': {
+      if (!params.content) {
+        throw new Error('vector_store upsert_with_vector: "content" is required.');
+      }
+      if (!params.vector || !Array.isArray(params.vector)) {
+        throw new Error('vector_store upsert_with_vector: "vector" (number[]) is required.');
+      }
+      return svc.upsertWithVector(
+        {
+          id: params.id,
+          namespace: params.namespace,
+          content: params.content,
+          vector: new Float32Array(params.vector),
+          metadata: params.metadata,
+        },
+        ctx,
+      );
+    }
+
     case 'search': {
       if (!params.query) {
         throw new Error('vector_store search: "query" is required.');
@@ -118,7 +138,7 @@ export async function handleVectorStore(
 
     default:
       throw new Error(
-        `vector_store: unknown action "${params.action as string}". Expected: upsert, search, delete.`,
+        `vector_store: unknown action "${params.action as string}". Expected: upsert, upsert_with_vector, search, delete.`,
       );
   }
 }
@@ -132,7 +152,7 @@ const TOOL_PARAMETERS_SCHEMA = {
   properties: {
     action: {
       type: 'string' as const,
-      enum: ['upsert', 'search', 'delete'],
+      enum: ['upsert', 'upsert_with_vector', 'search', 'delete'],
       description: 'The operation to perform on the knowledge store.',
     },
     id: {
@@ -150,6 +170,11 @@ const TOOL_PARAMETERS_SCHEMA = {
     metadata: {
       type: 'object' as const,
       description: 'Arbitrary JSON metadata attached to the chunk.',
+    },
+    vector: {
+      type: 'array' as const,
+      items: { type: 'number' as const },
+      description: 'Pre-computed embedding vector (number[]). Required for upsert_with_vector.',
     },
     query: {
       type: 'string' as const,

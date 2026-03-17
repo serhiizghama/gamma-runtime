@@ -17,6 +17,7 @@
     "build": "pnpm run build:types && pnpm --filter @gamma/core build && pnpm --filter @gamma/ui build && pnpm --filter @gamma/watchdog build",
     "start:core": "pnpm --filter @gamma/core start:prod",
     "test": "pnpm -r --if-present run test",
-    "typecheck": "pnpm run build:types && pnpm -r --if-present run typecheck"
+    "typecheck": "pnpm run build:types && pnpm -r --if-present run typecheck",
+    "ingest": "pnpm --filter @gamma/smart-chunker dev --"
   }
 }

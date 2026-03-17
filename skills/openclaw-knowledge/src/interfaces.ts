@@ -123,7 +123,7 @@ export interface IEmbeddingProvider {
 // Tool handler (OpenClaw skill contract)
 // ---------------------------------------------------------------------------
 
-export type VectorStoreAction = 'upsert' | 'search' | 'delete';
+export type VectorStoreAction = 'upsert' | 'upsert_with_vector' | 'search' | 'delete';
 
 /** The raw JSON params object received from the LLM via OpenClaw. */
 export interface IToolParams {
@@ -136,4 +136,24 @@ export interface IToolParams {
   limit?: number;
   mode?: SearchMode;
   shared?: boolean;
+  /**
+   * Pre-computed embedding vector (as a plain number array).
+   * Used by `upsert_with_vector` to bypass server-side embedding generation.
+   * The caller is responsible for ensuring dimension parity with the database.
+   */
+  vector?: number[];
+}
+
+/** Input for upsert_with_vector — includes a pre-computed embedding. */
+export interface IVectorUpsertWithVectorInput {
+  /** Optional — if omitted a ULID is generated. */
+  id?: string;
+  /** Defaults to `"default"` when omitted. */
+  namespace?: string;
+  /** The text to store (for FTS and content retrieval). Required. */
+  content: string;
+  /** Pre-computed embedding vector. Required. */
+  vector: Float32Array;
+  /** User-supplied metadata. `_agentId` is injected by the service. */
+  metadata?: Record<string, unknown>;
 }
