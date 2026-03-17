@@ -203,6 +203,75 @@ const TOOL_PARAMETERS_SCHEMA = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Ollama Embedding Provider (built-in for search queries)
+// ---------------------------------------------------------------------------
+
+class OllamaEmbeddingProvider implements IEmbeddingProvider {
+  private _dimensions = -1;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly timeoutMs: number;
+
+  constructor() {
+    this.baseUrl = (process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434').replace(/\/+$/, '');
+    this.model = process.env['OLLAMA_MODEL'] ?? 'nomic-embed-text';
+    this.timeoutMs = 30_000;
+  }
+
+  get dimensions(): number {
+    return this._dimensions;
+  }
+
+  async embed(text: string): Promise<Float32Array> {
+    const url = `${this.baseUrl}/api/embeddings`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: this.model, prompt: text }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '<unreadable>');
+        throw new Error(`Ollama embedding failed (HTTP ${response.status}): ${body.slice(0, 200)}`);
+      }
+
+      const json = await response.json() as { embedding?: number[] };
+      if (!json.embedding || !Array.isArray(json.embedding)) {
+        throw new Error('Ollama returned invalid embedding response');
+      }
+
+      if (this._dimensions < 0) {
+        this._dimensions = json.embedding.length;
+      }
+
+      return new Float32Array(json.embedding);
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error(`Ollama embedding request timed out after ${this.timeoutMs}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+// Singleton embedding provider — initialized once, reused across calls
+let embeddingProvider: IEmbeddingProvider | null = null;
+
+function getEmbeddingProvider(): IEmbeddingProvider {
+  if (!embeddingProvider) {
+    embeddingProvider = new OllamaEmbeddingProvider();
+  }
+  return embeddingProvider;
+}
+
+// ---------------------------------------------------------------------------
 // OpenClaw Plugin registration
 // ---------------------------------------------------------------------------
 
@@ -222,28 +291,14 @@ export default function register(api: any): void {
       'Data is shared across the Gamma agent ecosystem via an Omnichannel Knowledge Hub.',
     parameters: TOOL_PARAMETERS_SCHEMA,
     async execute(_id: string, params: IToolParams, ctx?: { sessionKey?: string; agentId?: string }) {
-      // Build the skill context from the plugin execution context
       const skillCtx: ISkillContext = {
         agentId: ctx?.agentId ?? ctx?.sessionKey ?? 'unknown',
       };
 
-      // For now, we create a no-op embedding provider for upsert_with_vector
-      // (vectors are pre-computed). For upsert/search, the provider is needed.
-      const noopProvider: IEmbeddingProvider = {
-        dimensions: -1,
-        async embed(_text: string): Promise<Float32Array> {
-          throw new Error(
-            'vector_store plugin: embedding provider not configured. ' +
-            'Use upsert_with_vector with pre-computed embeddings, or configure an embedding provider.',
-          );
-        },
-      };
-
       const result = await handleVectorStore(params, skillCtx, {
-        embeddingProvider: noopProvider,
+        embeddingProvider: getEmbeddingProvider(),
       });
 
-      // Return in MCP tool result format
       return {
         content: [
           {

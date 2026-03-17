@@ -62,7 +62,7 @@ const SQL_HYBRID_SEARCH = `
       ROW_NUMBER() OVER (ORDER BY v.distance ASC) AS vec_rank
     FROM vec_knowledge v
     WHERE v.embedding MATCH @query_embedding
-      AND k_param = @k_param
+      AND k = @k_param
     ORDER BY v.distance ASC
     LIMIT @candidate_limit
   ),
@@ -124,7 +124,7 @@ const SQL_VECTOR_SEARCH = `
   FROM vec_knowledge v
   JOIN knowledge_chunks k ON k.id = v.id
   WHERE v.embedding MATCH @query_embedding
-    AND k_param = @k_param
+    AND k = @k_param
     AND (@namespace IS NULL OR k.namespace = @namespace)
     AND (@shared = 1 OR json_extract(k.metadata, '$._agentId') = @agent_id)
   ORDER BY v.distance ASC
