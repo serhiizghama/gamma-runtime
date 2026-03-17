@@ -218,6 +218,16 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
   if (allChunks.length > 0) {
     if (embeddingProvider) {
       // Client-side embedding → upsert_with_vector
+      // Warm up the adapter so dimensions are known before logging.
+      // This embeds a single whitespace string (cheap) to trigger auto-detection.
+      try {
+        if (embeddingProvider.dimensions < 0) {
+          await embeddingProvider.embed(' ');
+        }
+      } catch {
+        // dimensions not yet known — do warm-up call
+        await embeddingProvider.embed(' ');
+      }
       log.info(`Generating embeddings client-side (${embeddingProvider.dimensions}d)...`);
       const embedded = await embedChunks(allChunks, embeddingProvider, log);
       result.upsert = await upserter.upsertWithVectors(embedded);
