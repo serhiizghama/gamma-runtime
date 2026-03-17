@@ -54,7 +54,7 @@ export class SystemController {
 
   /**
    * Exchange a system token for a short-lived, single-use SSE ticket.
-   * The ticket is stored in Redis with a 30s TTL and returned to the caller.
+   * The ticket is stored in Redis with a 60s TTL and returned to the caller.
    * SSE endpoints validate the ticket instead of the long-lived system token.
    */
   @Post('sse-ticket')
@@ -62,7 +62,7 @@ export class SystemController {
   async createSseTicket(): Promise<{ ticket: string }> {
     const ticket = randomBytes(32).toString('hex');
     const key = `${REDIS_KEYS.SSE_TICKET_PREFIX}${ticket}`;
-    await this.redis.set(key, '1', 'EX', 30);
+    await this.redis.set(key, '0', 'EX', 60);
     return { ticket };
   }
 

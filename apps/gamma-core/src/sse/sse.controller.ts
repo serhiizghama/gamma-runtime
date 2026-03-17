@@ -29,12 +29,23 @@ export class SseController {
     @Query('lastEventId') lastEventId?: string,
   ): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
-      // Validate single-use SSE ticket before allowing the stream
+      // Validate SSE ticket. Tickets are short-lived (30s TTL) but reusable
+      // within that window to survive ERR_NETWORK_CHANGED reconnects where the
+      // browser immediately retries with the same URL before the client can
+      // fetch a fresh ticket. We do NOT delete on first use; Redis TTL ensures
+      // the ticket expires naturally. A ticket allows up to 10 uses to prevent
+      // unlimited reuse while still supporting rapid reconnects.
       const validateTicket = async (): Promise<boolean> => {
         if (!ticket) return false;
         const key = `${REDIS_KEYS.SSE_TICKET_PREFIX}${ticket}`;
-        const deleted = await this.redis.del(key);
-        return deleted === 1;
+        // INCR is atomic — returns the new count (1 on first use)
+        const count = await this.redis.incr(key);
+        if (count === 1) {
+          // First use: set the TTL (30s). Key was just created by INCR.
+          await this.redis.expire(key, 30);
+        }
+        // Allow up to 10 uses within the TTL window (covers rapid reconnects)
+        return count <= 10;
       };
 
       // Dedicated Redis connection for blocking reads —
