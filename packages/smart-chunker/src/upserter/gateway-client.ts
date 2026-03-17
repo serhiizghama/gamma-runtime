@@ -2,7 +2,7 @@
  * HTTP client for the OpenClaw Gateway `/tools/invoke` endpoint.
  *
  * Sends tool invocation requests matching the exact payload format expected
- * by the gateway: `{ tool, arguments, context }`. Uses native `fetch` —
+ * by the gateway: `{ tool, args, sessionKey }`. Uses native `fetch` —
  * no HTTP library dependency.
  *
  * Supports two upsert modes:
@@ -111,8 +111,8 @@ export class GatewayClient {
         },
         body: JSON.stringify({
           tool: 'vector_store',
-          arguments: { action: 'delete', id: chunkId },
-          context: { agentId },
+          args: { action: 'delete', id: chunkId },
+          sessionKey: agentId,
         }),
         signal: controller.signal,
       });
@@ -146,8 +146,8 @@ export class GatewayClient {
         },
         body: JSON.stringify({
           tool: 'vector_store',
-          arguments: args,
-          context: { agentId },
+          args,
+          sessionKey: agentId,
         }),
         signal: controller.signal,
       });

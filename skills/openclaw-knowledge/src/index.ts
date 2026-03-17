@@ -1,9 +1,14 @@
 /**
- * index.ts — OpenClaw Skill entry point for gamma-knowledge.
+ * index.ts — OpenClaw Plugin entry point for gamma-knowledge.
  *
- * Exports a single tool (`vector_store`) with three actions:
- * upsert, search, delete. The database and embedding provider are
- * initialized lazily on first invocation and reused across calls.
+ * Registers a single tool (`vector_store`) with actions:
+ * upsert, upsert_with_vector, search, delete.
+ *
+ * The database and embedding provider are initialized lazily on first
+ * invocation and reused across calls.
+ *
+ * Plugin API: exports a default function `register(api)` that calls
+ * `api.registerTool()` per the OpenClaw plugin contract.
  */
 
 import { openKnowledgeDb } from './knowledge-db.js';
@@ -64,11 +69,6 @@ type ToolResult =
  *
  * OpenClaw invokes this function with the raw JSON params from the LLM
  * and a context object identifying the calling agent.
- *
- * @param params  - Deserialized JSON from the LLM tool call.
- * @param ctx     - Execution context (must include `agentId`).
- * @param deps    - Injectable dependencies. The caller MUST provide an
- *                  `embeddingProvider` since embedding strategy is deployment-specific.
  */
 export async function handleVectorStore(
   params: IToolParams,
@@ -144,7 +144,7 @@ export async function handleVectorStore(
 }
 
 // ---------------------------------------------------------------------------
-// OpenClaw skill manifest
+// Tool JSON Schema (for registerTool parameters)
 // ---------------------------------------------------------------------------
 
 const TOOL_PARAMETERS_SCHEMA = {
@@ -202,18 +202,56 @@ const TOOL_PARAMETERS_SCHEMA = {
   required: ['action'],
 } as const;
 
-export default {
-  name: 'gamma-knowledge',
-  version: '0.1.0',
-  tools: [
-    {
-      name: 'vector_store',
-      description:
-        'Persistent knowledge store with hybrid vector + full-text search. ' +
-        'Supports upsert, search (hybrid/vector/fts), and delete operations. ' +
-        'Data is shared across the Gamma agent ecosystem via an Omnichannel Knowledge Hub.',
-      parameters: TOOL_PARAMETERS_SCHEMA,
-      handler: handleVectorStore,
+// ---------------------------------------------------------------------------
+// OpenClaw Plugin registration
+// ---------------------------------------------------------------------------
+
+/**
+ * OpenClaw Plugin entry point.
+ *
+ * Called by the Gateway at startup with the plugin API object.
+ * Registers the `vector_store` tool so it becomes available via
+ * `/tools/invoke` and agent tool calls.
+ */
+export default function register(api: any): void {
+  api.registerTool({
+    name: 'vector_store',
+    description:
+      'Persistent knowledge store with hybrid vector + full-text search. ' +
+      'Supports upsert, upsert_with_vector, search (hybrid/vector/fts), and delete operations. ' +
+      'Data is shared across the Gamma agent ecosystem via an Omnichannel Knowledge Hub.',
+    parameters: TOOL_PARAMETERS_SCHEMA,
+    async execute(_id: string, params: IToolParams, ctx?: { sessionKey?: string; agentId?: string }) {
+      // Build the skill context from the plugin execution context
+      const skillCtx: ISkillContext = {
+        agentId: ctx?.agentId ?? ctx?.sessionKey ?? 'unknown',
+      };
+
+      // For now, we create a no-op embedding provider for upsert_with_vector
+      // (vectors are pre-computed). For upsert/search, the provider is needed.
+      const noopProvider: IEmbeddingProvider = {
+        dimensions: -1,
+        async embed(_text: string): Promise<Float32Array> {
+          throw new Error(
+            'vector_store plugin: embedding provider not configured. ' +
+            'Use upsert_with_vector with pre-computed embeddings, or configure an embedding provider.',
+          );
+        },
+      };
+
+      const result = await handleVectorStore(params, skillCtx, {
+        embeddingProvider: noopProvider,
+      });
+
+      // Return in MCP tool result format
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(result),
+          },
+        ],
+      };
     },
-  ],
-};
+  });
+}

@@ -1,10 +1,14 @@
 #!/usr/bin/env tsx
 /**
- * install.ts — Gamma Knowledge Skill installer.
+ * install.ts — Gamma Knowledge Plugin installer.
  *
- * Bundles the skill with esbuild, deploys the artifact to ~/.openclaw/,
- * copies the better-sqlite3 native addon, and ensures the sqlite-vec
- * loadable extension is present in the extensions directory.
+ * Bundles the plugin with esbuild, deploys the artifact to
+ * ~/.openclaw/extensions/gamma-knowledge/, copies the better-sqlite3
+ * native addon, and ensures the sqlite-vec loadable extension is present.
+ *
+ * Migration note: this was previously deployed as a Skill
+ * (~/.openclaw/skills/gamma-knowledge). The installer now targets the
+ * Plugin directory and cleans up the legacy skill path.
  *
  * Usage:
  *   pnpm --filter @gamma/openclaw-knowledge run install:skill
@@ -69,9 +73,12 @@ const SKILL_ROOT = resolve(__dirname, '..');
 const DIST_DIR = resolve(SKILL_ROOT, 'dist');
 
 const OPENCLAW_HOME = process.env['OPENCLAW_HOME'] ?? resolve(homedir(), '.openclaw');
-const SKILL_TARGET = resolve(OPENCLAW_HOME, 'skills', 'gamma-knowledge');
+const PLUGIN_TARGET = resolve(OPENCLAW_HOME, 'extensions', 'gamma-knowledge');
 const DATA_DIR = resolve(OPENCLAW_HOME, 'data');
 const EXT_DIR = resolve(OPENCLAW_HOME, 'extensions');
+
+// Legacy skill path — cleaned up during migration
+const LEGACY_SKILL_DIR = resolve(OPENCLAW_HOME, 'skills', 'gamma-knowledge');
 
 const BUILD_ONLY = process.argv.includes('--build-only');
 
@@ -135,7 +142,7 @@ async function bundleSkill(): Promise<string> {
     logLevel: 'warning',
     banner: {
       js: [
-        '// gamma-knowledge — OpenClaw Skill (bundled)',
+        '// gamma-knowledge — OpenClaw Plugin (bundled)',
         `// Built: ${new Date().toISOString()}`,
       ].join('\n'),
     },
@@ -146,113 +153,84 @@ async function bundleSkill(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — Ensure target directories
+// Step 2 — Ensure target directories + clean up legacy skill
 // ---------------------------------------------------------------------------
 
 function ensureDirectories(): void {
   heading('Step 2: Ensure target directories');
 
-  for (const dir of [SKILL_TARGET, DATA_DIR, EXT_DIR]) {
+  for (const dir of [PLUGIN_TARGET, DATA_DIR, EXT_DIR]) {
     mkdirSync(dir, { recursive: true });
     ok(`${DIM}${dir}${RESET}`);
+  }
+
+  // Clean up legacy skill installation (migrated to plugin)
+  if (existsSync(LEGACY_SKILL_DIR)) {
+    rmSync(LEGACY_SKILL_DIR, { recursive: true, force: true });
+    ok(`Removed legacy skill dir → ${DIM}${LEGACY_SKILL_DIR}${RESET}`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Step 3 — Copy bundled skill
+// Step 3 — Copy bundled plugin
 // ---------------------------------------------------------------------------
 
 function deployBundle(outfile: string): void {
-  heading('Step 3: Deploy bundled skill');
+  heading('Step 3: Deploy bundled plugin');
 
-  copyFileSync(outfile, join(SKILL_TARGET, 'index.js'));
+  copyFileSync(outfile, join(PLUGIN_TARGET, 'index.js'));
   ok('index.js');
 
   const sourcemap = `${outfile}.map`;
   if (existsSync(sourcemap)) {
-    copyFileSync(sourcemap, join(SKILL_TARGET, 'index.js.map'));
+    copyFileSync(sourcemap, join(PLUGIN_TARGET, 'index.js.map'));
     ok('index.js.map');
   }
 }
 
 // ---------------------------------------------------------------------------
-// Step 4 — Generate skill.json manifest
+// Step 4 — Generate openclaw.plugin.json manifest
 // ---------------------------------------------------------------------------
 
 function writeManifest(): void {
-  heading('Step 4: Write skill.json manifest');
+  heading('Step 4: Write openclaw.plugin.json manifest');
 
   const pkgPath = resolve(SKILL_ROOT, 'package.json');
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version: string };
 
+  // OpenClaw plugin manifest — registers the plugin and its entry point.
+  // The actual tool registration happens at runtime via api.registerTool()
+  // inside the default export of index.js.
   const manifest = {
-    name: 'gamma-knowledge',
+    id: 'gamma-knowledge',
+    name: 'Gamma Knowledge Hub',
     version: pkg.version,
-    entry: 'index.js',
-    runtime: 'node',
-    tools: [
-      {
-        name: 'vector_store',
-        description:
-          'Persistent knowledge store with hybrid vector + full-text search. ' +
-          'Supports upsert, search (hybrid/vector/fts), and delete operations.',
-        parameters: {
-          type: 'object',
-          properties: {
-            action: {
-              type: 'string',
-              enum: ['upsert', 'search', 'delete'],
-              description: 'The operation to perform on the knowledge store.',
-            },
-            id: {
-              type: 'string',
-              description:
-                'Chunk ID. Required for delete. Optional for upsert (auto-generated if omitted).',
-            },
-            namespace: {
-              type: 'string',
-              description: 'Logical partition key. Defaults to "default".',
-            },
-            content: {
-              type: 'string',
-              description: 'The text to embed and store. Required for upsert.',
-            },
-            metadata: {
-              type: 'object',
-              description: 'Arbitrary JSON metadata attached to the chunk.',
-            },
-            query: {
-              type: 'string',
-              description: 'Natural-language search query. Required for search.',
-            },
-            limit: {
-              type: 'number',
-              description: 'Max results to return (1-100). Defaults to 10.',
-              default: 10,
-            },
-            mode: {
-              type: 'string',
-              enum: ['hybrid', 'vector', 'fts'],
-              description: 'Search strategy. Defaults to "hybrid".',
-              default: 'hybrid',
-            },
-            shared: {
-              type: 'boolean',
-              default: false,
-              description:
-                'If true, search across all agents\' knowledge (omnichannel). ' +
-                'If false (default), restrict to the calling agent\'s entries.',
-            },
-          },
-          required: ['action'],
-        },
-      },
-    ],
+    description:
+      'Persistent knowledge store with hybrid vector + full-text search (RRF). ' +
+      'Provides the vector_store tool for upsert, search, and delete operations.',
+    extensions: ['./index.js'],
   };
 
-  const targetPath = join(SKILL_TARGET, 'skill.json');
+  const targetPath = join(PLUGIN_TARGET, 'openclaw.plugin.json');
   writeFileSync(targetPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
-  ok(`skill.json ${DIM}(v${pkg.version})${RESET}`);
+  ok(`openclaw.plugin.json ${DIM}(v${pkg.version})${RESET}`);
+
+  // Also write a package.json so OpenClaw can discover the plugin
+  const pluginPkg = {
+    name: 'gamma-knowledge',
+    version: pkg.version,
+    type: 'module',
+    openclaw: {
+      extensions: ['./index.js'],
+    },
+    dependencies: {
+      'bindings': '^1.5.0',
+    },
+  };
+
+  const pkgTarget = join(PLUGIN_TARGET, 'package.json');
+  writeFileSync(pkgTarget, JSON.stringify(pluginPkg, null, 2) + '\n', 'utf-8');
+  ok(`package.json ${DIM}(v${pkg.version})${RESET}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +251,7 @@ function deployBetterSqlite3(): void {
     );
   }
 
-  const targetModules = join(SKILL_TARGET, 'node_modules', 'better-sqlite3');
+  const targetModules = join(PLUGIN_TARGET, 'node_modules', 'better-sqlite3');
   cpSync(bsqlPath, targetModules, { recursive: true });
 
   // Verify the prebuilt binary exists
@@ -493,20 +471,20 @@ function findFileRecursive(dir: string, filename: string): string | null {
 function verify(): void {
   heading('Step 7: Verify installation');
 
-  // Check bundled skill exists
-  const indexJs = join(SKILL_TARGET, 'index.js');
+  // Check bundled plugin exists
+  const indexJs = join(PLUGIN_TARGET, 'index.js');
   if (!existsSync(indexJs)) fail('index.js missing from target');
   ok('index.js present');
 
   // Check manifest
-  const skillJson = join(SKILL_TARGET, 'skill.json');
-  if (!existsSync(skillJson)) fail('skill.json missing from target');
-  const manifest = JSON.parse(readFileSync(skillJson, 'utf-8'));
-  if (manifest.name !== 'gamma-knowledge') fail('skill.json has wrong name');
-  ok(`skill.json valid ${DIM}(v${manifest.version})${RESET}`);
+  const pluginJson = join(PLUGIN_TARGET, 'openclaw.plugin.json');
+  if (!existsSync(pluginJson)) fail('openclaw.plugin.json missing from target');
+  const manifest = JSON.parse(readFileSync(pluginJson, 'utf-8'));
+  if (manifest.id !== 'gamma-knowledge') fail('openclaw.plugin.json has wrong id');
+  ok(`openclaw.plugin.json valid ${DIM}(v${manifest.version})${RESET}`);
 
   // Check better-sqlite3
-  const bsql = join(SKILL_TARGET, 'node_modules', 'better-sqlite3', 'package.json');
+  const bsql = join(PLUGIN_TARGET, 'node_modules', 'better-sqlite3', 'package.json');
   if (!existsSync(bsql)) fail('better-sqlite3 not deployed');
   ok('better-sqlite3 addon present');
 
@@ -539,7 +517,7 @@ function verify(): void {
 
 async function main(): Promise<void> {
   console.log(
-    `\n${BOLD}Gamma Knowledge Skill — Installer${RESET}` +
+    `\n${BOLD}Gamma Knowledge Plugin — Installer${RESET}` +
     `${DIM}  (${process.platform}-${process.arch})${RESET}\n`,
   );
 
@@ -571,9 +549,15 @@ async function main(): Promise<void> {
 
   // Summary
   console.log(`\n${GREEN}${BOLD}Installation complete.${RESET}\n`);
-  console.log(`  Skill:      ${DIM}${SKILL_TARGET}${RESET}`);
+  console.log(`  Plugin:     ${DIM}${PLUGIN_TARGET}${RESET}`);
   console.log(`  Database:   ${DIM}${DATA_DIR}/knowledge.db  (created on first use)${RESET}`);
   console.log(`  Extensions: ${DIM}${EXT_DIR}${RESET}`);
+  console.log('');
+  console.log(`  ${YELLOW}Next steps:${RESET}`);
+  console.log(`    1. Add to plugins.allow: ${DIM}["gamma-knowledge"]${RESET}`);
+  console.log(`    2. Add to plugins.entries: ${DIM}{ "gamma-knowledge": { "enabled": true } }${RESET}`);
+  console.log(`    3. Remove from skills.entries: ${DIM}gamma-knowledge${RESET}`);
+  console.log(`    4. Restart OpenClaw Gateway`);
   console.log('');
 }
 
