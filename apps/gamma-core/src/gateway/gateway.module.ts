@@ -6,12 +6,13 @@ import { SessionRegistryModule } from '../sessions/session-registry.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { ActivityModule } from '../activity/activity.module';
 import { AppStorageService } from '../scaffold/app-storage.service';
+import { SessionAutoIngestService } from '../sessions/session-auto-ingest.service';
 
 // ToolsModule is imported by AppModule and resolves via ModuleRef in GatewayWsService
 // to break the circular: GatewayModule → ToolsModule → SessionsModule → GatewayModule.
 @Module({
   imports: [SessionRegistryModule, MessagingModule, ActivityModule],
-  providers: [GatewayWsService, ToolWatchdogService, ToolJailGuardService, AppStorageService],
-  exports: [GatewayWsService, ToolWatchdogService, ToolJailGuardService],
+  providers: [GatewayWsService, ToolWatchdogService, ToolJailGuardService, AppStorageService, SessionAutoIngestService],
+  exports: [GatewayWsService, ToolWatchdogService, ToolJailGuardService, SessionAutoIngestService],
 })
 export class GatewayModule {}

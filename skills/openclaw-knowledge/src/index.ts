@@ -283,14 +283,17 @@ function getEmbeddingProvider(): IEmbeddingProvider {
  * `/tools/invoke` and agent tool calls.
  */
 export default function register(api: any): void {
-  api.registerTool({
+  // Factory pattern: ctx (OpenClawPluginToolContext) contains agentId, sessionKey,
+  // workspaceDir etc. — captured via closure so execute() has identity context.
+  api.registerTool((ctx: { agentId?: string; sessionKey?: string }) => ({
     name: 'vector_store',
     description:
       'Persistent knowledge store with hybrid vector + full-text search. ' +
       'Supports upsert, upsert_with_vector, search (hybrid/vector/fts), and delete operations. ' +
       'Data is shared across the Gamma agent ecosystem via an Omnichannel Knowledge Hub.',
     parameters: TOOL_PARAMETERS_SCHEMA,
-    async execute(_id: string, params: IToolParams, ctx?: { sessionKey?: string; agentId?: string }) {
+    async execute(_id: string, params: IToolParams) {
+      // agentId resolved from factory context — no longer "unknown"
       const skillCtx: ISkillContext = {
         agentId: ctx?.agentId ?? ctx?.sessionKey ?? 'unknown',
       };
@@ -308,5 +311,5 @@ export default function register(api: any): void {
         ],
       };
     },
-  });
+  }));
 }

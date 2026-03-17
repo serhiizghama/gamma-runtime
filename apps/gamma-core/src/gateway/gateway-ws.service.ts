@@ -29,6 +29,7 @@ import { ContextInjectorService } from '../scaffold/context-injector.service';
 import { MessageBusService } from '../messaging/message-bus.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { ActivityStreamService } from '../activity/activity-stream.service';
+import { SessionAutoIngestService } from '../sessions/session-auto-ingest.service';
 import { ToolRegistryService } from '../tools/tool-registry.service';
 import { safeJsonParse } from '../common/safe-json.util';
 import type { AgentRole, GWAgentEventPayload, GWFrame, MemoryBusEntry, TokenUsage, WindowSession } from '@gamma/types';
@@ -215,6 +216,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly eventLog?: SystemEventLog,
     @Optional() private readonly activityStream?: ActivityStreamService,
     @Optional() private readonly toolRegistry?: ToolRegistryService,
+    @Optional() private readonly autoIngest?: SessionAutoIngestService,
   ) {
     this.gatewayUrl = this.config.get('OPENCLAW_GATEWAY_URL', 'ws://localhost:18789');
     this.gatewayToken = this.config.get('OPENCLAW_GATEWAY_TOKEN', '');
@@ -643,6 +645,13 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
               severity: 'info',
             });
             this.logger.log(`[DIRECTOR-DEBUG] EMIT message_completed | session=${sessionKey} | snippet=${snippet.slice(0, 80)}`);
+          }
+
+          // Auto-ingest: persist response summary to knowledge store (fire-and-forget)
+          if (streamText.length > 0) {
+            this.autoIngest?.onRunCompleted(sessionKey, windowId, runId, streamText).catch((err: unknown) => {
+              this.logger.debug(`Auto-ingest error: ${err instanceof Error ? err.message : String(err)}`);
+            });
           }
         }
 

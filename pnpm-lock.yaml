@@ -16,6 +16,9 @@ importers:
       '@fastify/static':
         specifier: ^6.12.0
         version: 6.12.0
+      '@gamma/openclaw-knowledge':
+        specifier: workspace:*
+        version: link:../../skills/openclaw-knowledge
       '@gamma/types':
         specifier: workspace:*
         version: link:../../packages/gamma-types
