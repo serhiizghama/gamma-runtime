@@ -372,9 +372,48 @@ function TypingIndicator({ toolLines }: { toolLines?: string[] }): React.ReactEl
 
 export function MessageList({ messages, pendingToolLines, status }: MessageListProps): React.ReactElement {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // True when the user has manually scrolled up away from the bottom.
+  const userScrolledUp = useRef(false);
+  // Track previous message count to detect new messages (vs streaming updates).
+  const prevMessageCount = useRef(messages.length);
+
+  // Detect manual scroll: if user scrolls up, stop auto-scroll.
+  // If user scrolls back near the bottom (within 80px), re-enable it.
+  const handleScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    userScrolledUp.current = distanceFromBottom > 80;
+  };
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const newCount = messages.length;
+    const lastMsg = messages[messages.length - 1];
+
+    // Always scroll on user message (they just sent something → go to bottom)
+    const isNewUserMessage =
+      newCount > prevMessageCount.current && lastMsg?.role === "user";
+
+    // Scroll on new assistant message only if user hasn't scrolled up
+    const isNewAssistantMessage =
+      newCount > prevMessageCount.current && lastMsg?.role !== "user";
+
+    // Streaming update of existing message — only scroll if already at bottom
+    const isStreamingUpdate = newCount === prevMessageCount.current;
+
+    prevMessageCount.current = newCount;
+
+    if (isNewUserMessage) {
+      // User sent a message — reset flag and always snap to bottom
+      userScrolledUp.current = false;
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    } else if (isNewAssistantMessage && !userScrolledUp.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    } else if (isStreamingUpdate && !userScrolledUp.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, pendingToolLines]);
 
   // Typing indicator: visible only while running and no streaming message exists yet
@@ -383,6 +422,8 @@ export function MessageList({ messages, pendingToolLines, status }: MessageListP
 
   return (
     <div
+      ref={listRef}
+      onScroll={handleScroll}
       className="agent-chat-message-list"
       style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "16px 14px 8px", display: "flex", flexDirection: "column" }}
     >
