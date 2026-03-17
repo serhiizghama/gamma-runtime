@@ -63,14 +63,17 @@ Corp Director (routes between teams)
   │     ├── Senior Developer × 2
   │     └── QA Engineer
   ├── Design Team
+  │     ├── UX Researcher                  ← community role
   │     ├── UI/UX Designer
   │     └── Brand Strategist
   ├── Marketing Team
   │     ├── Content Writer
   │     ├── SEO Analyst
+  │     ├── PPC Campaign Strategist        ← community role
   │     └── Social Media Manager
   └── DevOps Team
-        ├── Infrastructure Agent
+        ├── DevOps Automator               ← community role
+        ├── Incident Response Commander    ← community role
         └── Monitoring Agent
 ```
 
@@ -126,10 +129,12 @@ Corp Director (Personal Assistant)
 Corp Director
   ├── Customer Support Team
   │     ├── Support Agent × N (handles tickets)
-  │     └── Escalation Manager
+  │     ├── Escalation Manager
+  │     └── Customer Success Strategist    ← community role
   ├── Sales Team
   │     ├── Lead Qualifier
-  │     └── Proposal Writer
+  │     ├── Proposal Writer
+  │     └── Competitive Intelligence Analyst  ← community role
   └── Finance Team
         ├── Invoice Processor
         └── Expense Tracker
@@ -183,6 +188,38 @@ You are a Senior Developer agent in the Gamma Agent OS...
 ## Task Protocol
 ON TASK_ASSIGNED → read spec → PATCH status: in_progress → implement → PATCH status: review
 ```
+
+#### Community Template Sync
+
+Gamma OS does not need to write every agent prompt from scratch. The open-source community maintains rich libraries of pre-built AI agent role definitions (e.g., [agency-agents](https://github.com/msitarzewski/agency-agents) with 100+ specialized `.md` role files). The Community Sync system allows Gamma to import, adapt, and maintain these external templates as first-class Role Library entries.
+
+**How it works:**
+
+```
+1. FETCH   — Clone or pull a GitHub repo containing .md role files
+2. PARSE   — Extract role name, identity, behaviour rules, and tool requirements
+3. INJECT  — Augment with Gamma-specific capabilities:
+             • vector_store (Knowledge Hub access)
+             • send_message / IPC messaging (team & cross-team comms)
+             • Task Protocol hooks (PATCH status, approval gates)
+             • Scoped tool access (fs, shell, browser per team policy)
+4. FORMAT  — Normalize into Gamma Role Template structure (Identity, Tools, Rules, Protocol)
+5. STORE   — Save to /roles/{domain}/ and register in the Role Hub
+```
+
+**Sync modes:**
+
+| Mode | Trigger | Description |
+|------|---------|-------------|
+| **Manual** | `POST /api/system/roles/sync` | One-shot import from a GitHub repo URL |
+| **CLI** | `gamma-roles sync <repo-url>` | Developer-friendly CLI for local sync |
+| **Scheduled** | Cron (configurable) | Periodic pull to catch upstream updates |
+
+**Adaptation rules:**
+
+- Community templates that reference tools not available in Gamma are annotated with `[UNAVAILABLE]` and flagged for manual review in the Role Hub.
+- Duplicate detection: if an imported role name collides with an existing Gamma role, it is saved as `{name}-community` and surfaced as a merge candidate in the UI.
+- Provenance metadata is preserved: `source_repo`, `source_path`, `sync_date`, `upstream_sha` — enabling diff-based updates without overwriting local customizations.
 
 ---
 
@@ -367,6 +404,7 @@ No autonomous deploys, publishes, or financial actions without Gate 4/5 approval
 - [ ] D.2 Role Template library: Dev, Media, Personal, Business sets
 - [ ] D.3 Team Templates (one-click: "Dev Team" spawns 4 agents)
 - [ ] D.4 Privacy tiers for Personal corps (local-only, encrypted context)
+- [ ] D.5 Community Sync: CLI (`gamma-roles sync`) and API (`POST /api/system/roles/sync`) to fetch, adapt, and auto-format role templates from external GitHub repositories (e.g., agency-agents)
 
 ### Phase E — Polish & Power Features
 - [ ] E.1 Approval gate UI (buttons in Pipeline for Gate 2–5)
@@ -391,6 +429,7 @@ No autonomous deploys, publishes, or financial actions without Gate 4/5 approval
 | `GET/PATCH` | `/api/system/corps/:id` | Get / update corp |
 | `POST` | `/api/system/corps/:id/handoff` | Inter-team task handoff |
 | `GET/POST` | `/api/system/roles` | Role Template CRUD |
+| `POST` | `/api/system/roles/sync` | Sync/import role templates from an external GitHub repository |
 | `GET` | `/api/system/pipeline/stream` | SSE: unified pipeline events |
 
 ---
@@ -403,7 +442,7 @@ No autonomous deploys, publishes, or financial actions without Gate 4/5 approval
 | Parallel agents | ❌ | ✅ N agents per team |
 | Team assembly | Manual | One-click Team Builder |
 | Inter-team handoff | ❌ | ✅ Automated protocol |
-| Reusable roles | ❌ | ✅ Role Library |
+| Reusable roles | ❌ | ✅ Role Library + Community Sync |
 | Multiple domains | Dev only | Any domain |
 | Privacy tiers | ❌ | ✅ Personal corps |
 | Human approval | Ad-hoc | ✅ Structured gates |
