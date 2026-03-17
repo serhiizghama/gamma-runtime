@@ -596,6 +596,9 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           stopReason: 'stop',
         });
 
+        // Capture streamText BEFORE clearing state (needed for Activity Stream + auto-ingest)
+        const streamText = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'streamText') ?? '';
+
         // Clear live state but keep lastEventId for gap protection
         await this.redis.hset(
           `${REDIS_KEYS.STATE_PREFIX}${windowId}`,
@@ -633,7 +636,6 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
 
         // Activity Stream (Phase 5) — emit message_completed with text snippet
         {
-          const streamText = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'streamText') ?? '';
           if (streamText.length > 0) {
             const snippet = streamText.length > 160 ? streamText.slice(0, 160) + '…' : streamText;
             this.activityStream?.emit({
