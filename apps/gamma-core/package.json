@@ -15,6 +15,7 @@
     "postinstall": "chmod 755 node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper node_modules/node-pty/prebuilds/darwin-arm64/pty.node 2>/dev/null || true"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@fastify/cors": "^9.0.1",
     "@fastify/static": "^6.12.0",
     "@gamma/types": "workspace:*",
@@ -26,6 +27,7 @@
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
     "ajv": "^8.18.0",
+    "better-sqlite3": "^11.9.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "fastify": "^4.28.1",
@@ -41,6 +43,7 @@
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.0",
     "@types/ws": "^8.18.1",

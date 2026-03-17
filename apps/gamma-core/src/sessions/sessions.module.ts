@@ -1,14 +1,17 @@
 import { Module, OnModuleInit, Logger, forwardRef } from '@nestjs/common';
+import { existsSync } from 'node:fs';
 import { GatewayModule } from '../gateway/gateway.module';
 import { ScaffoldModule } from '../scaffold/scaffold.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { ActivityModule } from '../activity/activity.module';
+import { StateModule } from '../state/state.module';
 import { SessionRegistryModule } from './session-registry.module';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { SessionGcService } from './session-gc.service';
 import { SessionRegistryService } from './session-registry.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
+import { AgentStateRepository } from '../state/agent-state.repository';
 import { SystemAppGuard } from './system-guard';
 import { WatchdogCommandListenerService } from '../gateway/watchdog-command-listener.service';
 import type { AgentRole } from '@gamma/types';
@@ -28,6 +31,7 @@ function resolveRole(sessionKey: string): AgentRole {
     SessionRegistryModule,
     MessagingModule,
     ActivityModule,
+    StateModule,
   ],
   controllers: [SessionsController],
   providers: [SessionsService, SessionGcService, SystemAppGuard, WatchdogCommandListenerService],
@@ -40,6 +44,7 @@ export class SessionsModule implements OnModuleInit {
     private readonly sessionsService: SessionsService,
     private readonly registry: SessionRegistryService,
     private readonly agentRegistry: AgentRegistryService,
+    private readonly agentStateRepo: AgentStateRepository,
   ) {}
 
   /**
@@ -94,6 +99,66 @@ export class SessionsModule implements OnModuleInit {
     if (synced > 0) {
       this.logger.log(
         `Agent registry sync: back-filled ${synced} missing agent entry/entries`,
+      );
+    }
+
+    // ── Hydrate generative agents from gamma-state.db ──
+    await this.hydrateGenerativeAgents();
+  }
+
+  /**
+   * Re-register generative agents (from gamma-state.db) into the Redis
+   * agent registry on boot. Validates that each agent's workspace directory
+   * still exists on disk — marks it 'corrupted' in the DB if missing.
+   */
+  private async hydrateGenerativeAgents(): Promise<void> {
+    const activeAgents = this.agentStateRepo.findAllActive();
+    if (activeAgents.length === 0) return;
+
+    let hydrated = 0;
+    let corrupted = 0;
+
+    for (const agent of activeAgents) {
+      try {
+        // Validate workspace directory exists on disk
+        if (!existsSync(agent.workspacePath)) {
+          this.logger.warn(
+            `Workspace missing for agent "${agent.name}" (${agent.id}) at ${agent.workspacePath} — marking corrupted`,
+          );
+          this.agentStateRepo.markCorrupted(agent.id);
+          corrupted++;
+          continue;
+        }
+
+        // Re-register in Redis (status = 'offline' — no live session yet)
+        const existing = await this.agentRegistry.getOne(agent.id);
+        if (!existing) {
+          await this.agentRegistry.register({
+            agentId: agent.id,
+            role: 'daemon',
+            sessionKey: agent.id,
+            windowId: '',
+            appId: '',
+            status: 'offline',
+            capabilities: [],
+            lastHeartbeat: Date.now(),
+            lastActivity: 'hydrated from state db',
+            acceptsMessages: true,
+            createdAt: agent.createdAt,
+            supervisorId: null,
+          });
+          hydrated++;
+        }
+      } catch (err) {
+        this.logger.error(
+          `Failed to hydrate agent "${agent.name}" (${agent.id}): ${err}`,
+        );
+      }
+    }
+
+    if (hydrated > 0 || corrupted > 0) {
+      this.logger.log(
+        `State DB hydration: ${hydrated} agent(s) restored, ${corrupted} marked corrupted`,
       );
     }
   }
