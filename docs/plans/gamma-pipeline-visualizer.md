@@ -1,332 +1,418 @@
-# Gamma Pipeline Visualizer + Task Store — Mini-RFC
+# Gamma Agent OS — Teams, Corporations & Pipeline Visualizer
 
 **Status:** Planned
 **Author:** System Architect
-**Date:** 2026-03-17
+**Date:** 2026-03-17 (revised)
 **Priority:** High
 **Phase:** 6 — Agent Orchestration Layer
+**Vision:** Universal Agent Operating System
 
 ---
 
-## Problem
+## Executive Summary
 
-Gamma Agent Runtime has agents and IPC, but no concept of **Tasks**. Today:
+Gamma Agent Runtime is evolving beyond a developer tool into a **Universal Agent Operating System** — a platform where Serhii can assemble any team of AI agents for any purpose, organize teams into corporations, and delegate entire domains of work with minimal manual involvement.
 
-- There is no way to assign a structured unit of work to an agent
-- There is no visibility into *what* each agent is doing or *which stage* it's at
-- System Architect cannot autonomously spawn and route agents to parallelised work
-- Serhii has no real-time visual overview of who owns what, and what's happening
+> You should never need to hire a real employee for a task that an agent team can handle.
 
-This blocks the "give a task → agents build it → deploy" workflow.
+The Pipeline Visualizer is the **control center** for this system — the place where you see every team, every agent, every task, and every inter-team interaction in real time.
 
 ---
 
-## Goal
-
-Build a **Task Store** (backend) and a **Pipeline Visualizer** (frontend app) that together enable:
-
-1. System Architect to autonomously decompose work, spawn agents, and route tasks
-2. Dev/QA agents to claim tasks, update status, and report completion
-3. Serhii to see the full pipeline in real-time: Kanban board + live activity feed
-4. Human-in-the-loop approval gates at RFC and pre-deploy stages
-
----
-
-## Architecture Overview
+## The Core Idea
 
 ```
-Serhii
-  │  gives high-level task
-  ▼
-System Architect
-  │  writes Mini-RFC → waits for Serhii approval
-  │  decomposes into atomic tasks → writes to Task Store
-  │  spawns dev-agents via spawn_sub_agent
-  │  sends TASK_ASSIGNED via send_message
-  │
-  ├── dev-agent-1   (reads task, implements, marks done)
-  ├── dev-agent-2   (parallel module)
-  └── qa-agent      (reviews diff, runs tsc --noEmit, marks reviewed)
-        │
-        └── deploy-agent  (builds, hot-reloads, reports)
-                │
-                └── ⛔ DEPLOY GATE: Serhii approval required
+Traditional company:          Gamma Agent OS:
+──────────────────            ───────────────────────────────
+CEO                           Serhii (you)
+  └── Departments               └── Corporations
+        └── Teams                     └── Teams
+              └── Employees                 └── Agents (roles)
+                    └── Tasks                     └── Tasks
+```
 
-                          ↕ SSE stream
-               ┌──────────────────────────┐
-               │  Pipeline Visualizer App  │
-               │  (Kanban + Activity Feed) │
-               └──────────────────────────┘
+Every **Agent** has:
+- A **Role** (defined in a Role Template)
+- **Instructions** (SOUL.md — personality, behaviour, rules)
+- **Tools** (shell, browser, API access, messaging, etc.)
+- **Goals** (current task or standing directive)
+- **A Supervisor** (team lead or system architect)
+
+Every **Team** has:
+- A **name** and **domain** (dev, media, personal, business, etc.)
+- A set of **Roles** filled by agents
+- A **protocol** (how agents communicate within the team)
+- A **Team Lead** agent (manages internal task routing)
+- An **inbox** (receives tasks from outside the team)
+
+Every **Corporation** has:
+- Multiple **Teams**
+- A **Corp Director** agent (routes tasks between teams)
+- Shared **resources** (knowledge base, file store, memory)
+- **Cross-team protocols** (how teams hand off work to each other)
+
+---
+
+## Example Corporations
+
+### Corp A: Product Company
+```
+Corp Director (routes between teams)
+  ├── Dev Team
+  │     ├── Tech Lead
+  │     ├── Senior Developer × 2
+  │     └── QA Engineer
+  ├── Design Team
+  │     ├── UI/UX Designer
+  │     └── Brand Strategist
+  ├── Marketing Team
+  │     ├── Content Writer
+  │     ├── SEO Analyst
+  │     └── Social Media Manager
+  └── DevOps Team
+        ├── Infrastructure Agent
+        └── Monitoring Agent
+```
+
+**Example flow:**
+```
+Serhii → "Build and launch a landing page for my new app"
+  Corp Director → assigns to Dev Team: "Build the page"
+  Dev Team → builds → notifies Corp Director: "Done, ready for design"
+  Corp Director → assigns to Design Team: "Polish the UI"
+  Design Team → polishes → notifies Corp Director: "Done, ready for launch"
+  Corp Director → assigns to Marketing Team: "Write launch copy + socials"
+  Marketing Team → creates content → notifies Serhii: "Ready for approval"
+  Serhii approves → Corp Director → DevOps Team: "Deploy"
+  ✅ Done
 ```
 
 ---
 
-## Section 1: Task Store (Backend)
+### Corp B: Media Company
+```
+Corp Director
+  ├── Research Team
+  │     ├── Topic Researcher (trending topics, competitor analysis)
+  │     └── Audience Analyst
+  ├── Content Team
+  │     ├── Script Writer
+  │     ├── Video Editor Agent (ffmpeg, tools)
+  │     └── Thumbnail Designer
+  └── Distribution Team
+        ├── YouTube Publisher
+        ├── Instagram Manager
+        └── Telegram Channel Manager
+```
 
-### 1.1 Redis Schema
+---
+
+### Corp C: Personal Advisory Board (private)
+```
+Corp Director (Personal Assistant)
+  ├── Health Advisor (doctor + physiologist)
+  ├── Mental Health Coach (psychologist)
+  ├── Financial Advisor (budgets, investments, taxes)
+  ├── Legal Advisor (contracts, compliance)
+  └── Astrologer / Life Coach
+```
+
+> This corporation has **elevated privacy**: all data is local-only, no external APIs, encrypted context.
+
+---
+
+### Corp D: Business Operations
+```
+Corp Director
+  ├── Customer Support Team
+  │     ├── Support Agent × N (handles tickets)
+  │     └── Escalation Manager
+  ├── Sales Team
+  │     ├── Lead Qualifier
+  │     └── Proposal Writer
+  └── Finance Team
+        ├── Invoice Processor
+        └── Expense Tracker
+```
+
+---
+
+## Architecture
+
+### Layer 1: Role Library
+
+A library of reusable Role Templates. Each template defines:
+
+```
+/roles/
+  dev/
+    senior-developer.md       ← instructions, tools, behaviour
+    qa-engineer.md
+    tech-lead.md
+  media/
+    content-researcher.md
+    script-writer.md
+    social-media-manager.md
+  personal/
+    financial-advisor.md
+    health-advisor.md
+    psychologist.md
+  business/
+    customer-support.md
+    sales-agent.md
+```
+
+A Role Template contains:
+```markdown
+# Role: Senior Developer
+
+## Identity
+You are a Senior Developer agent in the Gamma Agent OS...
+
+## Tools Available
+- fs_read, fs_write (scoped to team workspace)
+- shell_exec (sandboxed)
+- send_message (to team members only)
+
+## Behaviour Rules
+1. Always read the task spec before writing code
+2. Write TypeScript only (Gamma architectural compliance)
+3. Report completion with a summary diff
+...
+
+## Task Protocol
+ON TASK_ASSIGNED → read spec → PATCH status: in_progress → implement → PATCH status: review
+```
+
+---
+
+### Layer 2: Team Store (Redis)
+
+```
+# Team record
+gamma:team:{teamId}
+  id, name, domain, corpId
+  agentIds[]        → list of agents in this team
+  leadAgentId       → team lead agent
+  status            → active | idle | disbanded
+  inbox             → gamma:team:{teamId}:inbox (message queue)
+  createdAt, updatedAt
+
+# Corporation record  
+gamma:corp:{corpId}
+  id, name
+  teamIds[]         → list of teams
+  directorAgentId   → corp director agent
+  sharedMemoryKey   → shared knowledge base reference
+  privacy           → "standard" | "private" | "local-only"
+  createdAt
+
+# Indexes
+gamma:corps:index              → sorted set of all corps
+gamma:teams:index              → sorted set of all teams
+gamma:teams:corp:{corpId}      → set of teamIds in a corp
+```
+
+---
+
+### Layer 3: Task Store (Redis)
 
 ```
 gamma:task:{taskId}
-  id:           string (uuid)
-  title:        string
-  spec:         string (markdown — full implementation spec)
-  status:       "backlog" | "assigned" | "in_progress" | "review" | "done" | "failed"
-  assignedTo:   agentId | null
-  parentTaskId: taskId | null   (for subtasks)
-  createdBy:    agentId | "serhii"
-  createdAt:    ISO timestamp
-  updatedAt:    ISO timestamp
-  completedAt:  ISO timestamp | null
-  output:       string | null   (agent's completion summary / diff)
-
-gamma:tasks:index  → sorted set (score = createdAt) of all taskIds
+  id, title, spec (markdown)
+  status: backlog | assigned | in_progress | review | done | failed
+  assignedTo:   agentId | teamId | corpId
+  level:        "agent" | "team" | "corp"   ← routing level
+  parentTaskId, corpId, teamId
+  createdBy, createdAt, updatedAt, completedAt
+  output        → completion summary / artifacts
+  approvalRequired: boolean
+  approvedBy, approvedAt
 ```
 
-### 1.2 API Endpoints
+---
+
+### Layer 4: Inter-Team Communication Protocol
+
+```
+Team A (Dev) completes work:
+  → POST /api/system/tasks  { title: "Hand off to Marketing", assignedTo: "team:marketing", ... }
+  → send_message("corp-director", "HANDOFF", { from: "dev-team", artifact: "...", nextTeam: "marketing" })
+
+Corp Director receives:
+  → Routes task to Marketing Team lead
+  → PATCH task { assignedTo: "team:marketing", status: "assigned" }
+  → send_message("team:marketing:lead", "TASK_ASSIGNED", { taskId })
+
+Marketing Team Lead:
+  → Decomposes into subtasks for team members
+  → Spawns agents if needed
+  → Reports back to Corp Director on completion
+```
+
+---
+
+### Layer 5: Pipeline Visualizer App
+
+The single real-time control center for the entire ecosystem.
+
+#### Layout
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  🔀 GAMMA PIPELINE              [LIVE ●]    Corps: 3   [+ NEW]      │
+├────────────┬──────────────────────────────────────────────────────── ┤
+│ CORPS      │                  PIPELINE VIEW                          │
+│            │                                                         │
+│ ▼ Product  │  BACKLOG    IN PROGRESS    REVIEW    DONE    FAILED     │
+│   Dev      │  ────────   ────────────   ──────    ────    ──────     │
+│   Design   │  [Task A]   [Task B]       [Task D]  [✅E]             │
+│   Marketing│             dev-agent-1    qa-agent                     │
+│            │  [Task C]   ██████░░░░                                  │
+│ ▼ Media    │             [Task C]                                    │
+│   Research │             dev-agent-2                                 │
+│   Content  │             ████░░░░░░                                  │
+│   Distrib. │                                                         │
+│            ├─────────────────────────────────────────────────────── ┤
+│ ▼ Personal │  AGENT MAP (selected corp/team)                        │
+│   Health   │                                                         │
+│   Finance  │  [Corp Director] ──→ [Dev Team Lead] ──→ [dev-agent-1] │
+│            │                  ──→ [Marketing Lead] ──→ [writer-1]   │
+│ + New Corp │                                                         │
+├────────────┴──────────────────────────────────────────────────────── ┤
+│  Live Feed: 12:45 dev-agent-1 → wrote LandingPage.tsx (204 lines)   │
+│             12:46 qa-agent → tsc --noEmit: 0 errors ✅              │
+│             12:46 Corp Director → handoff to Marketing Team         │
+├──────────────────────────────────────────────────────────────────────┤
+│  Corps: 3  │  Teams: 8  │  Agents: 14 active  │  Tasks: 23 total   │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+#### Views
+
+| View | Description |
+|------|-------------|
+| **Kanban** | Tasks by status across selected team/corp |
+| **Agent Map** | Visual hierarchy: Corp → Teams → Agents |
+| **Live Feed** | Real-time event stream from all agents |
+| **Task Detail** | Full spec, output, timeline, approval button |
+| **Team Builder** | Create/edit teams and assign roles |
+| **Corp Builder** | Create corps, add teams, set director |
+| **Role Hub** | Browse and edit Role Templates |
+
+---
+
+### Layer 6: Team Builder UI
+
+A dedicated interface within Pipeline for assembling teams:
+
+```
+[+ New Team]
+  → Pick domain: Dev / Media / Personal / Business / Custom
+  → Pick roles from Role Library (drag & drop)
+  → Name the team
+  → Assign to corp (or standalone)
+  → [Launch] → system spawns all agents, wires up IPC
+```
+
+```
+[+ New Corporation]
+  → Name the corp
+  → Add existing teams
+  → Auto-spawn Corp Director agent
+  → Set privacy level
+  → [Create]
+```
+
+---
+
+## Human-in-the-Loop Gates
+
+```
+GATE 1: RFC Approval          ← Serhii approves plan before execution
+GATE 2: Task Approval         ← optional per-task (set approvalRequired: true)
+GATE 3: Inter-team Handoff    ← optional: Serhii reviews before handoff
+GATE 4: Deploy / Publish      ← always requires Serhii approval
+GATE 5: Sensitive Actions     ← financial, legal, personal data ops
+```
+
+No autonomous deploys, publishes, or financial actions without Gate 4/5 approval.
+
+---
+
+## Implementation Phases
+
+### Phase A — Foundation (Task Store + Basic Pipeline UI)
+- [ ] A.1 Task Store Redis schema + CRUD API
+- [ ] A.2 SSE stream for task events
+- [ ] A.3 Basic Pipeline app: Kanban board (single team view)
+- [ ] A.4 Task Protocol in System Architect + app-owner SOUL.md
+
+### Phase B — Teams
+- [ ] B.1 Team Store Redis schema + CRUD API
+- [ ] B.2 Role Library: first 10 role templates
+- [ ] B.3 Team Builder UI in Pipeline app
+- [ ] B.4 Team-level task routing (team inbox + lead agent)
+- [ ] B.5 Agent Map view (hierarchy visualization)
+
+### Phase C — Corporations
+- [ ] C.1 Corp Store Redis schema + CRUD API
+- [ ] C.2 Corp Director agent role template
+- [ ] C.3 Inter-team handoff protocol
+- [ ] C.4 Corp Builder UI
+- [ ] C.5 Cross-corp communication (message bus between corps)
+
+### Phase D — Role Hub & Templates
+- [ ] D.1 Role Hub UI (browse, create, edit roles)
+- [ ] D.2 Role Template library: Dev, Media, Personal, Business sets
+- [ ] D.3 Team Templates (one-click: "Dev Team" spawns 4 agents)
+- [ ] D.4 Privacy tiers for Personal corps (local-only, encrypted context)
+
+### Phase E — Polish & Power Features
+- [ ] E.1 Approval gate UI (buttons in Pipeline for Gate 2–5)
+- [ ] E.2 Task history, archive, analytics
+- [ ] E.3 Agent performance metrics (tasks completed, avg time, error rate)
+- [ ] E.4 Corp/Team memory (shared knowledge base per team)
+- [ ] E.5 Pipeline app `context.md` for agent self-documentation
+
+---
+
+## API Surface (new endpoints)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/system/tasks` | List all tasks (with filters: status, assignedTo) |
-| `POST` | `/api/system/tasks` | Create task |
-| `GET` | `/api/system/tasks/:id` | Get single task |
-| `PATCH` | `/api/system/tasks/:id` | Update status / assignee / output |
-| `DELETE` | `/api/system/tasks/:id` | Delete task |
-| `GET` | `/api/system/tasks/stream` | **SSE** — real-time task state changes |
-
-### 1.3 SSE Event Types
-
-```ts
-type TaskEvent =
-  | { type: 'task_created';  task: Task }
-  | { type: 'task_updated';  taskId: string; patch: Partial<Task> }
-  | { type: 'task_deleted';  taskId: string }
-```
+| `GET/POST` | `/api/system/tasks` | Task CRUD |
+| `PATCH/DELETE` | `/api/system/tasks/:id` | Update / delete task |
+| `GET` | `/api/system/tasks/stream` | SSE: task events |
+| `GET/POST` | `/api/system/teams` | Team CRUD |
+| `GET/PATCH` | `/api/system/teams/:id` | Get / update team |
+| `POST` | `/api/system/teams/:id/spawn` | Spawn all agents for a team |
+| `GET/POST` | `/api/system/corps` | Corporation CRUD |
+| `GET/PATCH` | `/api/system/corps/:id` | Get / update corp |
+| `POST` | `/api/system/corps/:id/handoff` | Inter-team task handoff |
+| `GET/POST` | `/api/system/roles` | Role Template CRUD |
+| `GET` | `/api/system/pipeline/stream` | SSE: unified pipeline events |
 
 ---
 
-## Section 2: Agent Task Protocol
+## What This Unlocks
 
-All agents operating in the pipeline MUST follow this protocol.
-It will be embedded in their SOUL.md / system prompts.
-
-### 2.1 System Architect (this agent)
-
-```
-ON task received from Serhii:
-  1. Read relevant architecture files
-  2. Generate Mini-RFC → send to Serhii, STOP
-  3. ON approval:
-     a. POST /api/system/tasks for each atomic subtask
-     b. spawn_sub_agent(role="dev-agent", goal=taskId) for each
-     c. send_message(agentId, "TASK_ASSIGNED", { taskId, spec })
-  4. Monitor task SSE stream
-  5. ON all tasks status="review": aggregate → send summary to Serhii
-  6. ON Serhii approval: send_message("deploy-agent", "DEPLOY", { taskIds })
-```
-
-### 2.2 Dev Agent (spawned per task)
-
-```
-ON TASK_ASSIGNED message received:
-  1. GET /api/system/tasks/:id → read spec
-  2. PATCH task { status: "in_progress" }
-  3. Implement according to spec (fs_write, shell_exec)
-  4. PATCH task { status: "review", output: "<summary of changes>" }
-  5. send_message("qa-agent", "REVIEW_REQUESTED", { taskId })
-```
-
-### 2.3 QA Agent (persistent, reviews all tasks)
-
-```
-ON REVIEW_REQUESTED:
-  1. GET /api/system/tasks/:id → read output/diff
-  2. Run: shell_exec("tsc --noEmit") → check 0 errors
-  3. Review: types, imports, arch compliance, SOUL.md rules
-  4. IF pass:  PATCH task { status: "done" }
-              send_message("system-architect", "QA_PASSED", { taskId })
-  5. IF fail:  PATCH task { status: "in_progress", output: "<issues>" }
-              send_message(task.assignedTo, "QA_FAILED", { taskId, issues })
-```
-
-### 2.4 Deploy Agent
-
-```
-ON DEPLOY message received:
-  1. shell_exec("npm run build") in gamma-ui root
-  2. IF errors: report to System Architect, STOP
-  3. IF success:
-     - Vite hot-reload (if dev server running)
-     - OR: notify Serhii to restart
-  4. PATCH all tasks { status: "deployed" }
-  5. send_message("system-architect", "DEPLOY_DONE", { summary })
-```
+| Capability | Today | After Gamma Agent OS |
+|-----------|-------|----------------------|
+| Task visibility | ❌ | ✅ Kanban, real-time |
+| Parallel agents | ❌ | ✅ N agents per team |
+| Team assembly | Manual | One-click Team Builder |
+| Inter-team handoff | ❌ | ✅ Automated protocol |
+| Reusable roles | ❌ | ✅ Role Library |
+| Multiple domains | Dev only | Any domain |
+| Privacy tiers | ❌ | ✅ Personal corps |
+| Human approval | Ad-hoc | ✅ Structured gates |
+| Hiring real employees | Required | Optional |
 
 ---
 
-## Section 3: Pipeline Visualizer App
+## North Star
 
-### 3.1 App ID & Location
-
-```
-appId:    pipeline
-path:     apps/gamma-ui/apps/system/pipeline/
-entry:    PipelineApp.tsx
-icon:     🔀
-name:     Pipeline
-```
-
-### 3.2 Layout
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  🔀 PIPELINE                        [LIVE ●]    [+ NEW TASK]    │
-├──────────┬──────────────┬───────────┬──────────┬────────────────┤
-│ BACKLOG  │  IN PROGRESS │  REVIEW   │  DONE    │  FAILED        │
-├──────────┼──────────────┼───────────┼──────────┼────────────────┤
-│          │              │           │          │                │
-│ [Task A] │ [Task B]     │ [Task D]  │ [Task E] │                │
-│          │  dev-agent-1 │  qa-agent │  ✅      │                │
-│ [Task C] │  ██████░░░░  │  👁 ...   │          │                │
-│          │              │           │          │                │
-│          │ [Task C]     │           │          │                │
-│          │  dev-agent-2 │           │          │                │
-│          │  ████░░░░░░  │           │          │                │
-└──────────┴──────────────┴───────────┴──────────┴────────────────┘
-
-── Live Activity Feed ─────────────────────────────────────────────
-  12:21  dev-agent-1 → wrote ActivityTab.tsx (142 lines)
-  12:22  dev-agent-2 → wrote AgentsTab.tsx (89 lines)
-  12:22  qa-agent    → tsc --noEmit: 0 errors ✅
-  12:23  System Architect → awaiting Serhii approval for deploy ⛔
-──────────────────────────────────────────────────────────────────
-│ Tasks: 5 total  │  Agents: 3 active  │  Phase 6               │
-└──────────────────────────────────────────────────────────────────
-```
-
-### 3.3 Task Card Component
-
-```tsx
-interface TaskCardProps {
-  task: Task;
-  agent?: AgentRegistryEntry;  // matched by task.assignedTo
-}
-
-// Displays:
-//  - Task title
-//  - Assigned agent (name + status dot)
-//  - Progress bar (if agent reports %)
-//  - Last update timestamp
-//  - [Click] → opens TaskDetail drawer:
-//       full spec, full output, timeline of status changes
-```
-
-### 3.4 File Structure
-
-```
-apps/gamma-ui/apps/system/pipeline/
-├── PipelineApp.tsx          # Root: header + kanban board + feed
-├── components/
-│   ├── KanbanBoard.tsx      # 5-column kanban layout
-│   ├── TaskCard.tsx         # Task card with agent badge + progress
-│   ├── TaskDetail.tsx       # Drawer: full spec, output, timeline
-│   ├── ActivityFeed.tsx     # Live SSE feed of task events
-│   └── NewTaskModal.tsx     # Create task (title + spec)
-├── hooks/
-│   └── usePipelineData.ts   # Single hook: SSE stream + REST backfill
-└── context.md               # Self-documentation for agents
-```
-
-### 3.5 Data Flow
-
-```
-usePipelineData()
-  ├── SSE /api/system/tasks/stream   → real-time task updates
-  ├── GET /api/system/tasks          → initial load (on mount)
-  └── GET /api/system/agents         → for agent name/status matching
-```
-
----
-
-## Section 4: Registration
-
-### constants/apps.ts
-
-```diff
-+ { id: 'pipeline', name: 'Pipeline', icon: '🔀' },
-```
-
-### registry/systemApps.ts
-
-```diff
-+ registerSystemApp('pipeline', lazy(() => import('../apps/system/pipeline/PipelineApp')));
-```
-
----
-
-## Section 5: Migration / Implementation Plan
-
-### Phase A — Backend: Task Store
-- [ ] A.1 Redis schema + `gamma:tasks` key design
-- [ ] A.2 REST CRUD endpoints (`/api/system/tasks`)
-- [ ] A.3 SSE stream for task changes (`/api/system/tasks/stream`)
-- [ ] A.4 Integration tests: create → update status → SSE receives event
-
-### Phase B — Frontend: Pipeline App
-- [ ] B.1 Scaffold `pipeline` app, register in `apps.ts`
-- [ ] B.2 `usePipelineData` hook (SSE + REST)
-- [ ] B.3 `KanbanBoard` + `TaskCard` components
-- [ ] B.4 `TaskDetail` drawer
-- [ ] B.5 `ActivityFeed` (live SSE events)
-- [ ] B.6 `NewTaskModal` (Serhii can create tasks manually)
-
-### Phase C — Agent Protocol
-- [ ] C.1 Update System Architect SOUL.md with Task Protocol
-- [ ] C.2 Update app-owner-director SOUL.md with QA protocol
-- [ ] C.3 Define spawn_sub_agent convention for dev-agents
-- [ ] C.4 End-to-end test: Architect creates tasks → dev-agents claim → QA reviews → deploy gate fires
-
-### Phase D — Polish
-- [ ] D.1 Task progress % reporting from agents
-- [ ] D.2 Deploy approval gate UI (button in Pipeline app)
-- [ ] D.3 Task history / archive view
-- [ ] D.4 Write `pipeline/context.md` for agent self-documentation
-
----
-
-## Section 6: Human-in-the-Loop Gates
-
-```
-GATE 1: After Mini-RFC              ← Serhii approves plan
-GATE 2: Before deploy               ← Serhii approves in Pipeline UI
-GATE 3: Manual override anytime     ← Serhii can kill any agent via Director/Nexus
-```
-
-No autonomous deployment without explicit approval at Gate 2.
-
----
-
-## Section 7: Estimated Scope
-
-| Area | Files | Complexity |
-|------|-------|-----------|
-| Backend: Task Store API | ~3 new files | Medium |
-| Backend: SSE stream | ~1 new file | Small |
-| Frontend: Pipeline App | ~7 new files | Medium |
-| Agent Protocol updates | SOUL.md × 2 | Small |
-| Registration | 2 file edits | Trivial |
-
-**Backend changes:** Yes (Task Store is new)
-**Frontend changes:** 1 new system app
-**Agent changes:** SOUL.md protocol additions only
-
----
-
-## Section 8: What This Unlocks
-
-| Before | After |
-|--------|-------|
-| Serhii manually assigns tasks in chat | Serhii gives high-level goal; Architect decomposes |
-| No visibility into agent work | Full Kanban board, live feed |
-| Single-agent sequential work | Parallel dev-agents per task |
-| Deploy by hand | Deploy-agent with approval gate |
-| "Is it done?" requires asking | Real-time status in Pipeline app |
+> Gamma Agent OS is the operating system for your personal empire of AI agents.
+> You set the vision. You approve the milestones. Agents execute everything in between.
+> Any team. Any domain. Any scale.
