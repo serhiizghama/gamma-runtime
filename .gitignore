@@ -21,3 +21,6 @@ packages/gamma-types/*.d.ts
 gamma-runtime-context.xml
 # Agent session backups
 apps/gamma-ui/apps/system/*.bak_session/
+agency-agents
+.pnpm-store
+.claude
