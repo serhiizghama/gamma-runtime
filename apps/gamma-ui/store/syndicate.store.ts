@@ -111,7 +111,7 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
       // Fetch live registry for status/hierarchy
       let registryMap = new Map<string, AgentRegistryEntry>();
       try {
-        const regRes = await fetch(`${API_BASE}/api/system/agent-registry`, {
+        const regRes = await fetch(`${API_BASE}/api/system/agents`, {
           headers: systemAuthHeaders(),
         });
         if (regRes.ok) {
