@@ -8,7 +8,7 @@
  * this component does NOT inject its own <style> tags.
  */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import {
   getSmoothStepPath,
   BaseEdge,

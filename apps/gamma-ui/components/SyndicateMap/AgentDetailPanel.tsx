@@ -41,7 +41,13 @@ interface TraceEntry {
   parentId?: string;
 }
 
-type Tab = "soul" | "tasks" | "trace";
+type Tab = "tasks" | "trace";
+
+/** Check if agentId matches backend's strict ULID format: agent.<26-char ULID> */
+const AGENT_ULID_RE = /^agent\.[A-Z0-9]{26}$/;
+function isValidUlidAgentId(id: string): boolean {
+  return AGENT_ULID_RE.test(id);
+}
 
 interface Props {
   agentId: string;
@@ -122,7 +128,9 @@ const tabBtnActive: CSSProperties = {
 
 const tabContent: CSSProperties = {
   flex: 1,
-  overflow: "auto",
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
   padding: 16,
 };
 
@@ -143,9 +151,10 @@ const loadingMsg: CSSProperties = {
   opacity: 0.6,
 };
 
-// ── Soul Tab ──────────────────────────────────────────────────────────────
+// ── Soul Tab (hidden — pending backend data migration) ────────────────────
 
-function SoulTab({ agentId }: { agentId: string }) {
+// @ts-ignore — SoulTab temporarily unused while Soul tab is hidden
+function _SoulTab({ agentId }: { agentId: string }) {
   const [soul, setSoul] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -218,6 +227,12 @@ function TasksTab({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Skip fetch for registry-only agents (non-ULID IDs fail backend validation)
+    if (!isValidUlidAgentId(agentId)) {
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -309,9 +324,9 @@ function truncate(s: string, max: number): string {
 // ── Trace Tab ─────────────────────────────────────────────────────────────
 
 const TRACE_KIND_COLORS: Record<string, string> = {
-  thought: "#d7afff",
+  thought: "#c9a0ff",   // brighter purple for legibility
   tool_call: "#ffd787",
-  tool_result: "#5fd7ff",
+  tool_result: "#40e0d0", // teal — distinct from thought purple
   text: "#87d7ff",
 };
 
@@ -328,6 +343,12 @@ function TraceTab({ agentId }: { agentId: string }) {
 
   // Fetch historical trace
   useEffect(() => {
+    // Skip fetch for registry-only agents (non-ULID IDs fail backend validation)
+    if (!isValidUlidAgentId(agentId)) {
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -385,11 +406,13 @@ function TraceTab({ agentId }: { agentId: string }) {
     [], // stable — setEntries is stable, activeAgentRef is a ref
   );
 
+  // Only connect SSE for agents with valid ULID IDs (backend rejects others)
   useSecureSse({
     path: `/api/agents/${encodeURIComponent(agentId)}/trace/stream`,
     onMessage: handleStreamMessage,
     reconnectMs: 5000,
     label: "Trace",
+    enabled: isValidUlidAgentId(agentId),
   });
 
   // Auto-scroll on new entries
@@ -427,8 +450,8 @@ function TraceTab({ agentId }: { agentId: string }) {
           style={{
             display: "flex",
             gap: 8,
-            padding: "2px 0",
-            borderBottom: "1px solid var(--color-border-subtle-strong)",
+            padding: "4px 4px",
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
           }}
         >
           <span style={{ color: "var(--color-text-secondary)", flexShrink: 0, width: 56 }}>
@@ -492,13 +515,13 @@ export function AgentDetailPanel({
   agentColor,
   onClose,
 }: Props) {
-  const [tab, setTab] = useState<Tab>("soul");
+  const [tab, setTab] = useState<Tab>("tasks");
 
-  // Reset tab to "soul" when switching agents
+  // Reset tab to "tasks" when switching agents
   const prevIdRef = useRef(agentId);
   if (prevIdRef.current !== agentId) {
     prevIdRef.current = agentId;
-    setTab("soul");
+    setTab("tasks");
   }
 
   return (
@@ -516,16 +539,18 @@ export function AgentDetailPanel({
           >
             {agentName}
           </div>
-          <div style={{ fontSize: 11, color: agentColor }}>{agentId.slice(0, 20)}...</div>
+          <div style={{ fontSize: 11, color: agentColor }}>
+            {agentId.length > 24 ? `${agentId.slice(0, 20)}…` : agentId}
+          </div>
         </div>
         <button style={closeBtn} onClick={onClose} title="Close">
           &#x2715;
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — Soul tab hidden pending backend data migration */}
       <div style={tabBar}>
-        {(["soul", "tasks", "trace"] as const).map((t) => (
+        {(["tasks", "trace"] as const).map((t) => (
           <button
             key={t}
             style={{
@@ -542,7 +567,7 @@ export function AgentDetailPanel({
       {/* Tab content — key on agentId forces remount on agent switch,
           ensuring each tab's internal state (fetch, SSE) is cleanly reset */}
       <div style={tabContent} key={agentId}>
-        {tab === "soul" && <SoulTab agentId={agentId} />}
+        {/* {tab === "soul" && <SoulTab agentId={agentId} />} */}
         {tab === "tasks" && <TasksTab agentId={agentId} />}
         {tab === "trace" && <TraceTab agentId={agentId} />}
       </div>

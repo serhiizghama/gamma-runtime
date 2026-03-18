@@ -120,7 +120,7 @@ const handleStyle: CSSProperties = {
 
 // ── Component ─────────────────────────────────────────────────────────────
 
-function AgentNodeInner({ data }: NodeProps) {
+function AgentNodeInner({ data, selected }: NodeProps) {
   const {
     name,
     roleId,
@@ -145,7 +145,11 @@ function AgentNodeInner({ data }: NodeProps) {
           style={{
             ...avatarBase,
             border: `2px solid ${color}`,
-            boxShadow: `0 0 12px ${color}44, 0 0 4px ${color}22`,
+            boxShadow: selected
+              ? `0 0 20px ${color}88, 0 0 8px ${color}66, inset 0 0 4px ${color}22`
+              : `0 0 12px ${color}44, 0 0 4px ${color}22`,
+            transform: selected ? "scale(1.05)" : undefined,
+            transition: "box-shadow 200ms ease, transform 200ms ease",
           }}
         >
           <span style={{ userSelect: "none" }}>{avatarEmoji}</span>
@@ -194,6 +198,7 @@ function AgentNodeInner({ data }: NodeProps) {
  * move or selection changes.
  */
 function arePropsEqual(prev: NodeProps, next: NodeProps): boolean {
+  if (prev.selected !== next.selected) return false;
   const p = prev.data as unknown as AgentNodeData;
   const n = next.data as unknown as AgentNodeData;
   return (

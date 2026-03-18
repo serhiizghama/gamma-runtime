@@ -80,6 +80,24 @@ function toLiveStatus(
 
 const IPC_FLASH_DURATION = 1200; // ms — matches CSS animation duration
 
+/** Emoji fallback per role for registry-only agents. */
+const ROLE_EMOJI: Record<string, string> = {
+  architect: "🏛️",
+  "app-owner": "📱",
+  sentinel: "🛡️",
+  worker: "⚙️",
+  researcher: "🔬",
+};
+
+/** Color fallback per role for registry-only agents. */
+const ROLE_COLOR: Record<string, string> = {
+  architect: "#a78bfa",
+  "app-owner": "#60a5fa",
+  sentinel: "#f97316",
+  worker: "#22d3ee",
+  researcher: "#34d399",
+};
+
 /**
  * Queued SSE events that arrived before the initial fetch completed.
  * Replayed once after hydration. Module-scoped because the store factory
@@ -87,6 +105,21 @@ const IPC_FLASH_DURATION = 1200; // ms — matches CSS animation duration
  */
 let pendingEvents: ActivityEvent[] = [];
 let pendingRegistryUpdates: AgentRegistryEntry[][] = [];
+
+/** Prevent concurrent fetchAgents calls (React Strict Mode double-mount). */
+let fetchInFlight = false;
+
+/** Max IPC flashes held before forced prune. */
+const MAX_FLASH_ENTRIES = 100;
+
+/**
+ * Humanize a raw agentId like "app-owner-syndicate-map" → "App Owner Syndicate Map".
+ */
+function humanizeName(id: string): string {
+  return id
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 // ── Store ─────────────────────────────────────────────────────────────────
 
@@ -99,6 +132,8 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
   error: null,
 
   fetchAgents: async () => {
+    if (fetchInFlight) return;
+    fetchInFlight = true;
     set({ loading: true, error: null });
     try {
       // Fetch static agent list from DB
@@ -122,9 +157,12 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
         // Registry unavailable — proceed with DB status only
       }
 
+      // 1. Start with DB agents (enriched with live registry data)
+      const seenIds = new Set<string>();
       const agents: SyndicateAgent[] = agentRecords
         .filter((r) => r.status !== "archived")
         .map((r) => {
+          seenIds.add(r.id);
           const reg = registryMap.get(r.id);
           return {
             id: r.id,
@@ -138,7 +176,23 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
           };
         });
 
+      // 2. Add registry-only agents (not in DB but alive in runtime)
+      for (const [agentId, reg] of registryMap) {
+        if (seenIds.has(agentId)) continue;
+        agents.push({
+          id: agentId,
+          name: humanizeName(reg.agentId),
+          roleId: reg.role ?? "unknown",
+          avatarEmoji: ROLE_EMOJI[reg.role] ?? "🤖",
+          uiColor: ROLE_COLOR[reg.role] ?? "#6366f1",
+          liveStatus: toLiveStatus(reg.status),
+          supervisorId: reg.supervisorId ?? null,
+          inProgressTaskCount: 0,
+        });
+      }
+
       set({ agents, loading: false, hydrated: true });
+      fetchInFlight = false;
 
       // Replay any SSE events that arrived before hydration
       const queuedEvents = pendingEvents;
@@ -153,6 +207,7 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
         get().handleActivityEvent(event);
       }
     } catch (err) {
+      fetchInFlight = false;
       set({
         loading: false,
         error: err instanceof Error ? err.message : "Failed to fetch agents",
@@ -166,8 +221,9 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
       return;
     }
     const byId = new Map(entries.map((e) => [e.agentId, e]));
-    set((s) => ({
-      agents: s.agents.map((a) => {
+    set((s) => {
+      const existingIds = new Set(s.agents.map((a) => a.id));
+      const updated = s.agents.map((a) => {
         const reg = byId.get(a.id);
         if (!reg) return a;
         return {
@@ -175,8 +231,25 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
           liveStatus: toLiveStatus(reg.status),
           supervisorId: reg.supervisorId ?? null,
         };
-      }),
-    }));
+      });
+
+      // Add newly-appeared registry agents that aren't in the store yet
+      for (const [agentId, reg] of byId) {
+        if (existingIds.has(agentId)) continue;
+        updated.push({
+          id: agentId,
+          name: humanizeName(reg.agentId),
+          roleId: reg.role ?? "unknown",
+          avatarEmoji: ROLE_EMOJI[reg.role] ?? "🤖",
+          uiColor: ROLE_COLOR[reg.role] ?? "#6366f1",
+          liveStatus: toLiveStatus(reg.status),
+          supervisorId: reg.supervisorId ?? null,
+          inProgressTaskCount: 0,
+        });
+      }
+
+      return { agents: updated };
+    });
   },
 
   handleActivityEvent: (event) => {
@@ -203,7 +276,15 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
         target: event.targetAgentId,
         ts: Date.now(),
       };
-      set((s) => ({ ipcFlashes: [...s.ipcFlashes, flash] }));
+      set((s) => {
+        const next = [...s.ipcFlashes, flash];
+        // Safety cap: prevent unbounded growth between prune cycles
+        return {
+          ipcFlashes: next.length > MAX_FLASH_ENTRIES
+            ? next.slice(next.length - MAX_FLASH_ENTRIES)
+            : next,
+        };
+      });
     }
   },
 

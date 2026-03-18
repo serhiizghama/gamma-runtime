@@ -13,7 +13,7 @@
  *    preserving existing positions so nodes don't jump.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, Component, type ErrorInfo, type ReactNode } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -22,6 +22,7 @@ import {
   Controls,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   type NodeTypes,
   type EdgeTypes,
   type Node,
@@ -160,16 +161,109 @@ const INJECTED_KEYFRAMES = `
   95%  { opacity: 1; }
   100% { offset-distance: 100%; opacity: 0; }
 }
+
+/* ── React Flow Controls visibility fix ─────────────────────────────── */
+.react-flow__controls {
+  background: #1e1e1e !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+.react-flow__controls-button {
+  background: #2a2a2a !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  fill: rgba(255, 255, 255, 0.7) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+.react-flow__controls-button:hover {
+  background: #3a3a3a !important;
+  fill: #fff !important;
+}
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+.react-flow__controls-button svg {
+  fill: inherit !important;
+  max-width: 14px;
+  max-height: 14px;
+}
+
+/* ── Syndicate Map toolbar button hover ─────────────────────────────── */
+.syndicate-toolbar-btn:hover {
+  background: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-subtle) !important;
+}
+.syndicate-toolbar-btn:focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 1px;
+}
 `;
+
+// ── Error Boundary ────────────────────────────────────────────────────────
+
+interface EBProps { children: ReactNode }
+interface EBState { error: Error | null }
+
+class SyndicateMapErrorBoundary extends Component<EBProps, EBState> {
+  state: EBState = { error: null };
+
+  static getDerivedStateFromError(error: Error): EBState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[SyndicateMap] Render error:", error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          ...containerStyle,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+          gap: 12,
+        }}>
+          <span style={{ fontSize: 32 }}>⚠️</span>
+          <span style={{
+            fontSize: 13,
+            color: "var(--color-text-secondary)",
+            fontFamily: "var(--font-system)",
+            textAlign: "center",
+            maxWidth: 320,
+          }}>
+            Syndicate Map encountered an error.
+            <br />
+            <code style={{ fontSize: 11, opacity: 0.7 }}>{this.state.error.message}</code>
+          </span>
+          <button
+            style={toolbarBtn}
+            onClick={() => this.setState({ error: null })}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ── Component ─────────────────────────────────────────────────────────────
 
-/** Outer wrapper — provides ReactFlowProvider context for hooks */
+/** Outer wrapper — provides ReactFlowProvider context for hooks + error boundary */
 export function SyndicateMap() {
   return (
-    <ReactFlowProvider>
-      <SyndicateMapInner />
-    </ReactFlowProvider>
+    <SyndicateMapErrorBoundary>
+      <ReactFlowProvider>
+        <SyndicateMapInner />
+      </ReactFlowProvider>
+    </SyndicateMapErrorBoundary>
   );
 }
 
@@ -181,6 +275,8 @@ function SyndicateMapInner() {
   const selectAgent = useSyndicateStore((s) => s.selectAgent);
   const fetchAgents = useSyndicateStore((s) => s.fetchAgents);
   const loading = useSyndicateStore((s) => s.loading);
+  const error = useSyndicateStore((s) => s.error);
+  const { fitView } = useReactFlow();
 
   const prevTopoRef = useRef("");
 
@@ -225,6 +321,10 @@ function SyndicateMapInner() {
       );
       setNodes(laid);
       setEdges(laidEdges);
+      // Ensure fitView runs after React Flow has rendered the new nodes
+      requestAnimationFrame(() => {
+        fitView(fitViewOptions);
+      });
     } else {
       // Data-only update: patch node.data in-place, preserving positions
       setNodes((prev) => {
@@ -255,8 +355,11 @@ function SyndicateMapInner() {
       const result = getLayoutedElements(nodes, edges, { direction });
       setNodes(result.nodes);
       setEdges(result.edges);
+      requestAnimationFrame(() => {
+        fitView(fitViewOptions);
+      });
     },
-    [nodes, edges, setNodes, setEdges],
+    [nodes, edges, setNodes, setEdges, fitView],
   );
 
   const onNodeClick = useCallback(
@@ -304,21 +407,30 @@ function SyndicateMapInner() {
       {/* Layout toolbar */}
       <div style={toolbarStyle}>
         <button style={toolbarBtn} onClick={() => onLayout("TB")}>
-          Vertical
+          ↕ Vertical
         </button>
         <button style={toolbarBtn} onClick={() => onLayout("LR")}>
-          Horizontal
+          ↔ Horizontal
         </button>
         {loading && (
+          <span style={{ fontSize: 11, color: "var(--color-text-secondary)", alignSelf: "center", marginLeft: 8 }}>
+            Loading…
+          </span>
+        )}
+        {error && !loading && (
           <span
             style={{
               fontSize: 11,
-              color: "var(--color-text-secondary)",
+              color: "var(--color-accent-error, #ff5f57)",
               alignSelf: "center",
               marginLeft: 8,
+              cursor: "pointer",
+              textDecoration: "underline",
             }}
+            onClick={() => void fetchAgents()}
+            title="Click to retry"
           >
-            Loading...
+            ⚠ {error} — retry
           </span>
         )}
       </div>
