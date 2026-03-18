@@ -56,13 +56,24 @@ export class PtyService implements OnModuleInit, OnModuleDestroy {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   onModuleInit(): void {
-    // Attach raw WS server to the underlying HTTP server (Fastify-compatible)
+    // Use noServer mode to avoid EADDRINUSE with Fastify HTTP/2.
+    // We manually handle the 'upgrade' event on the underlying server.
     const httpServer = this.httpAdapterHost.httpAdapter.getHttpServer() as http.Server;
 
-    this.wss = new WebSocketServer({ server: httpServer, path: '/pty' });
+    this.wss = new WebSocketServer({ noServer: true });
 
     this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
       this.handleConnection(ws, req);
+    });
+
+    httpServer.on('upgrade', (req: http.IncomingMessage, socket: import('stream').Duplex, head: Buffer) => {
+      const pathname = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`).pathname;
+      if (pathname === '/pty') {
+        this.wss!.handleUpgrade(req, socket, head, (ws) => {
+          this.wss!.emit('connection', ws, req);
+        });
+      }
+      // Non-/pty upgrades are left for other handlers (e.g. Vite HMR proxy)
     });
 
     this.logger.log('PTY WebSocket server ready at ws://.../pty');
