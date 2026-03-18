@@ -78,6 +78,14 @@ const _registry = new Map<string, LazyApp>([
       })),
     ),
   ],
+  [
+    "syndicate-map",
+    lazy(() =>
+      import("../apps/system/syndicate-map/SyndicateMapApp").then((m) => ({
+        default: m.SyndicateMapApp,
+      })),
+    ),
+  ],
 ]);
 
 /** Returns the lazy-loaded component for a built-in system app, or undefined. */
