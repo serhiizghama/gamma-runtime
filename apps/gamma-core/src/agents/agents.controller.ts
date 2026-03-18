@@ -52,6 +52,13 @@ const SOUL_MAX_CHARS = 2000;
 /** Max entries returned from a single XRANGE trace query. */
 const TRACE_MAX_COUNT = 500;
 
+/**
+ * Safety cap on XRANGE scan iterations. Prevents runaway scans on a
+ * memory bus with millions of entries where the target agent has few.
+ * 20 iterations × 500 entries/batch = 10,000 entries scanned max.
+ */
+const TRACE_MAX_SCAN_ITERATIONS = 20;
+
 @Controller('api/agents')
 @UseGuards(SystemAppGuard)
 export class AgentsController {
@@ -211,8 +218,11 @@ export class AgentsController {
     // loop until we collect enough or exhaust the stream.
     const trace: MemoryBusEntry[] = [];
     let cursor = since || '-';
+    let iterations = 0;
 
-    while (trace.length < maxCount) {
+    while (trace.length < maxCount && iterations < TRACE_MAX_SCAN_ITERATIONS) {
+      iterations++;
+
       const batch = (await this.redis.xrange(
         REDIS_KEYS.MEMORY_BUS,
         cursor,
@@ -255,13 +265,20 @@ export class AgentsController {
     this.validateAgentId(id);
 
     return new Observable<MessageEvent>((subscriber) => {
+      // closed flag lives in the outer scope so the teardown function
+      // returned below can set it even if start() hasn't resolved yet.
       let closed = false;
+      let keepAlive: ReturnType<typeof setInterval> | null = null;
+      let blockingRedis: Redis | null = null;
 
       const start = async () => {
+        if (closed) return;
+
         const entry = await this.registry.getOne(id);
 
+        if (closed) return; // client disconnected during await
+
         if (!entry || entry.status === 'offline' || entry.status === 'idle') {
-          // Gracefully close — no active stream to proxy
           subscriber.next({
             data: JSON.stringify({ type: 'trace_end', reason: entry?.status ?? 'not_found' }),
           } as MessageEvent);
@@ -270,17 +287,25 @@ export class AgentsController {
         }
 
         const windowKey = `${REDIS_KEYS.SSE_PREFIX}${entry.windowId}`;
-        const blockingRedis = this.redis.duplicate();
+        blockingRedis = this.redis.duplicate();
         let lastId = '$';
 
-        // Keep-alive every 15s
-        const keepAlive = setInterval(() => {
+        keepAlive = setInterval(() => {
           if (!closed) {
             subscriber.next({
               data: JSON.stringify({ type: 'keep_alive' }),
             } as MessageEvent);
           }
         }, 15_000);
+
+        // If client already disconnected while we were setting up
+        if (closed) {
+          clearInterval(keepAlive);
+          keepAlive = null;
+          blockingRedis.disconnect();
+          blockingRedis = null;
+          return;
+        }
 
         const poll = async (): Promise<void> => {
           while (!closed) {
@@ -319,19 +344,26 @@ export class AgentsController {
           }
         };
 
-        // Cleanup on disconnect
-        subscriber.add(() => {
-          closed = true;
-          clearInterval(keepAlive);
-          blockingRedis.disconnect();
-        });
-
         poll().catch((err) => {
           this.logger.error(`Trace stream error for ${id}: ${err}`);
         });
       };
 
       start().catch(() => subscriber.complete());
+
+      // Teardown: returned from the Observable constructor so it fires
+      // immediately on unsubscribe, even if start() is still in-flight.
+      return () => {
+        closed = true;
+        if (keepAlive !== null) {
+          clearInterval(keepAlive);
+          keepAlive = null;
+        }
+        if (blockingRedis !== null) {
+          blockingRedis.disconnect();
+          blockingRedis = null;
+        }
+      };
     });
   }
 

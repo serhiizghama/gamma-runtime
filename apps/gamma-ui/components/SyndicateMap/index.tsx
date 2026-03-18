@@ -4,6 +4,13 @@
  * Connects to the Zustand syndicate store for live agent data.
  * Builds nodes from SyndicateAgent[], edges from supervisorId hierarchy,
  * and overlays IPC flash animations on inter-agent communication.
+ *
+ * Layout strategy:
+ *  - Dagre re-layout ONLY when the graph topology changes (agents added/removed,
+ *    supervisor links changed). A "topology fingerprint" (sorted agent IDs +
+ *    supervisorIds) gates re-layout.
+ *  - Status/flash/data changes update node.data and edge.data in-place,
+ *    preserving existing positions so nodes don't jump.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
@@ -29,44 +36,54 @@ import { getLayoutedElements } from "../../lib/layout";
 import {
   useSyndicateStore,
   handleSyndicateSseEvent,
+  startFlashPruner,
   type SyndicateAgent,
   type IpcFlash,
 } from "../../store/syndicate.store";
 import { useSecureSse } from "../../hooks/useSecureSse";
 
-// ── Node / edge type registries ───────────────────────────────────────────
+// ── Node / edge type registries (stable refs — never recreate) ────────────
 
 const nodeTypes: NodeTypes = { agent: AgentNode } as const;
 const edgeTypes: EdgeTypes = { ipc: IpcEdge } as const;
-
 const fitViewOptions: FitViewOptions = { padding: 0.25 };
 
 // ── Build React Flow elements from store data ─────────────────────────────
 
+function agentToNodeData(a: SyndicateAgent): AgentNodeData {
+  return {
+    name: a.name,
+    roleId: a.roleId,
+    avatarEmoji: a.avatarEmoji,
+    uiColor: a.uiColor,
+    status: a.liveStatus,
+    inProgressTaskCount: a.inProgressTaskCount,
+  };
+}
+
 function buildNodes(agents: SyndicateAgent[]): Node[] {
   return agents.map((a) => ({
     id: a.id,
-    type: "agent",
+    type: "agent" as const,
     position: { x: 0, y: 0 },
-    data: {
-      name: a.name,
-      roleId: a.roleId,
-      avatarEmoji: a.avatarEmoji,
-      uiColor: a.uiColor,
-      status: a.liveStatus,
-      inProgressTaskCount: a.inProgressTaskCount,
-    } satisfies AgentNodeData,
+    data: agentToNodeData(a),
   }));
 }
 
 function buildEdges(agents: SyndicateAgent[], flashes: IpcFlash[]): Edge[] {
-  const flashSet = new Set(flashes.map((f) => `${f.source}:${f.target}`));
+  // Build flash lookup — check both directions so a→b flash matches b→a edge
+  const flashSet = new Set<string>();
+  for (const f of flashes) {
+    flashSet.add(`${f.source}:${f.target}`);
+    flashSet.add(`${f.target}:${f.source}`);
+  }
+
   const edges: Edge[] = [];
+  const agentIds = new Set(agents.map((a) => a.id));
 
   for (const a of agents) {
     if (!a.supervisorId) continue;
-    // Verify supervisor exists in agent list
-    if (!agents.some((o) => o.id === a.supervisorId)) continue;
+    if (!agentIds.has(a.supervisorId)) continue;
 
     const key = `${a.supervisorId}:${a.id}`;
     const isFlashing = flashSet.has(key);
@@ -76,7 +93,7 @@ function buildEdges(agents: SyndicateAgent[], flashes: IpcFlash[]): Edge[] {
       source: a.supervisorId,
       target: a.id,
       type: "ipc",
-      animated: !isFlashing, // disable default animation during flash
+      animated: !isFlashing,
       data: {
         flashing: isFlashing,
         color: "var(--color-border-subtle)",
@@ -85,6 +102,18 @@ function buildEdges(agents: SyndicateAgent[], flashes: IpcFlash[]): Edge[] {
   }
 
   return edges;
+}
+
+/**
+ * Topology fingerprint — a string that changes ONLY when graph structure
+ * changes (agent added/removed, supervisor link changed). Status, flash,
+ * and data-only changes do NOT affect this fingerprint.
+ */
+function topologyFingerprint(agents: SyndicateAgent[]): string {
+  return agents
+    .map((a) => `${a.id}:${a.supervisorId ?? ""}`)
+    .sort()
+    .join("|");
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────
@@ -117,6 +146,8 @@ const toolbarBtn: React.CSSProperties = {
   cursor: "pointer",
 };
 
+// Keyframes injected once into the DOM. Covers AgentNode badge pulse
+// and IpcEdge particle animation — no per-component <style> tags needed.
 const INJECTED_KEYFRAMES = `
 @keyframes agentBadgePulse {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -140,12 +171,12 @@ export function SyndicateMap() {
   const fetchAgents = useSyndicateStore((s) => s.fetchAgents);
   const loading = useSyndicateStore((s) => s.loading);
 
-  // Track previous agent count for re-layout detection
-  const prevCountRef = useRef(0);
+  const prevTopoRef = useRef("");
 
-  // Fetch agents on mount
+  // Fetch agents on mount + start flash pruner
   useEffect(() => {
     void fetchAgents();
+    return startFlashPruner();
   }, [fetchAgents]);
 
   // Subscribe to SSE for live updates (activity stream + broadcast)
@@ -163,41 +194,50 @@ export function SyndicateMap() {
     label: "SyndicateRegistry",
   });
 
-  // Build React Flow elements from store
-  const rawNodes = useMemo(() => buildNodes(agents), [agents]);
-  const rawEdges = useMemo(() => buildEdges(agents, ipcFlashes), [agents, ipcFlashes]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  // Apply dagre layout
-  const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
-    () => getLayoutedElements(rawNodes, rawEdges, { direction: "TB" }),
-    [rawNodes, rawEdges],
-  );
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
-
-  // Re-layout when agents change (new spawn / removal)
+  // Sync store → React Flow state.
+  // Split into two paths: topology change (re-layout) vs data-only (in-place).
   useEffect(() => {
-    if (agents.length !== prevCountRef.current) {
-      prevCountRef.current = agents.length;
-      const fresh = getLayoutedElements(
-        buildNodes(agents),
-        buildEdges(agents, ipcFlashes),
+    const topo = topologyFingerprint(agents);
+    const topoChanged = topo !== prevTopoRef.current;
+
+    if (topoChanged) {
+      prevTopoRef.current = topo;
+      const freshNodes = buildNodes(agents);
+      const freshEdges = buildEdges(agents, ipcFlashes);
+      const { nodes: laid, edges: laidEdges } = getLayoutedElements(
+        freshNodes,
+        freshEdges,
         { direction: "TB" },
       );
-      setNodes(fresh.nodes);
-      setEdges(fresh.edges);
+      setNodes(laid);
+      setEdges(laidEdges);
     } else {
-      // Just update data (status, flash) without re-layout
-      setNodes((prev) =>
-        prev.map((n) => {
-          const match = rawNodes.find((r) => r.id === n.id);
-          return match ? { ...n, data: match.data } : n;
-        }),
-      );
-      setEdges(rawEdges);
+      // Data-only update: patch node.data in-place, preserving positions
+      setNodes((prev) => {
+        const agentMap = new Map(agents.map((a) => [a.id, a]));
+        return prev.map((n) => {
+          const a = agentMap.get(n.id);
+          if (!a) return n;
+          const next = agentToNodeData(a);
+          const cur = n.data as AgentNodeData;
+          // Only create a new object if something actually changed
+          if (
+            cur.status === next.status &&
+            cur.inProgressTaskCount === next.inProgressTaskCount &&
+            cur.name === next.name &&
+            cur.uiColor === next.uiColor
+          ) {
+            return n;
+          }
+          return { ...n, data: next };
+        });
+      });
+      setEdges(buildEdges(agents, ipcFlashes));
     }
-  }, [agents, ipcFlashes, rawNodes, rawEdges, setNodes, setEdges]);
+  }, [agents, ipcFlashes, setNodes, setEdges]);
 
   const onLayout = useCallback(
     (direction: "TB" | "LR") => {
@@ -208,7 +248,6 @@ export function SyndicateMap() {
     [nodes, edges, setNodes, setEdges],
   );
 
-  // Handle node click → open detail panel
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       selectAgent(node.id);
@@ -216,8 +255,10 @@ export function SyndicateMap() {
     [selectAgent],
   );
 
-  // Get selected agent data for the panel
-  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+  const selectedAgent = useMemo(
+    () => agents.find((a) => a.id === selectedAgentId),
+    [agents, selectedAgentId],
+  );
 
   return (
     <div style={containerStyle}>

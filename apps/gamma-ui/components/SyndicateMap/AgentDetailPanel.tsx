@@ -51,6 +51,9 @@ interface Props {
   onClose: () => void;
 }
 
+/** Max live trace entries kept in memory. Older entries are dropped. */
+const MAX_TRACE_ENTRIES = 500;
+
 // ── Styles ────────────────────────────────────────────────────────────────
 
 const panel: CSSProperties = {
@@ -318,6 +321,11 @@ function TraceTab({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Track which agentId the SSE stream is connected to, so we can
+  // discard stale events that arrive during reconnection transitions.
+  const activeAgentRef = useRef(agentId);
+  activeAgentRef.current = agentId;
+
   // Fetch historical trace
   useEffect(() => {
     const controller = new AbortController();
@@ -344,29 +352,38 @@ function TraceTab({ agentId }: { agentId: string }) {
   }, [agentId]);
 
   // SSE live stream for real-time trace
-  const handleStreamMessage = useCallback((ev: MessageEvent) => {
-    try {
-      const data = JSON.parse(ev.data as string) as Record<string, unknown>;
-      if (data.type === "keep_alive" || data.type === "trace_end") return;
+  const handleStreamMessage = useCallback(
+    (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data as string) as Record<string, unknown>;
+        if (data.type === "keep_alive" || data.type === "trace_end") return;
 
-      // SSE events from the agent's window stream have 'type' field;
-      // map them into our trace shape for display
-      const entry: TraceEntry = {
-        id: `live-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        sessionKey: "",
-        windowId: (data.windowId as string) ?? "",
-        kind: mapSseTypeToKind(data.type as string),
-        content: extractContent(data),
-        ts: Date.now(),
-        stepId: (data.runId as string) ?? "",
-      };
-      if (entry.kind === "unknown") return;
+        const kind = mapSseTypeToKind(data.type as string);
+        if (kind === "unknown") return;
 
-      setEntries((prev) => [...prev, entry]);
-    } catch {
-      // Ignore parse errors
-    }
-  }, []);
+        const entry: TraceEntry = {
+          id: `live-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          sessionKey: "",
+          windowId: (data.windowId as string) ?? "",
+          kind,
+          content: extractContent(data),
+          ts: Date.now(),
+          stepId: (data.runId as string) ?? "",
+        };
+
+        setEntries((prev) => {
+          const next = [...prev, entry];
+          // Cap entries to prevent unbounded memory growth
+          return next.length > MAX_TRACE_ENTRIES
+            ? next.slice(next.length - MAX_TRACE_ENTRIES)
+            : next;
+        });
+      } catch {
+        // Ignore parse errors
+      }
+    },
+    [], // stable — setEntries is stable, activeAgentRef is a ref
+  );
 
   useSecureSse({
     path: `/api/agents/${encodeURIComponent(agentId)}/trace/stream`,
@@ -377,7 +394,13 @@ function TraceTab({ agentId }: { agentId: string }) {
 
   // Auto-scroll on new entries
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const el = scrollRef.current;
+    if (!el) return;
+    // Only auto-scroll if already near the bottom (within 80px)
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (nearBottom) {
+      el.scrollTo({ top: el.scrollHeight });
+    }
   }, [entries.length]);
 
   if (loading) return <div style={loadingMsg}>Loading trace...</div>;
@@ -471,6 +494,13 @@ export function AgentDetailPanel({
 }: Props) {
   const [tab, setTab] = useState<Tab>("soul");
 
+  // Reset tab to "soul" when switching agents
+  const prevIdRef = useRef(agentId);
+  if (prevIdRef.current !== agentId) {
+    prevIdRef.current = agentId;
+    setTab("soul");
+  }
+
   return (
     <div style={panel}>
       {/* Header */}
@@ -509,8 +539,9 @@ export function AgentDetailPanel({
         ))}
       </div>
 
-      {/* Tab content */}
-      <div style={tabContent}>
+      {/* Tab content — key on agentId forces remount on agent switch,
+          ensuring each tab's internal state (fetch, SSE) is cleanly reset */}
+      <div style={tabContent} key={agentId}>
         {tab === "soul" && <SoulTab agentId={agentId} />}
         {tab === "tasks" && <TasksTab agentId={agentId} />}
         {tab === "trace" && <TraceTab agentId={agentId} />}

@@ -51,6 +51,8 @@ export interface IpcFlash {
 interface SyndicateStore {
   // ── State ─────────────────────────────────────────────────────────────
   agents: SyndicateAgent[];
+  /** True after the first successful fetchAgents() call. */
+  hydrated: boolean;
   /** Currently selected agent ID (opens detail panel). */
   selectedAgentId: string | null;
   /** Active IPC flashes (auto-expire after animation). */
@@ -63,7 +65,8 @@ interface SyndicateStore {
   applyRegistryUpdate: (entries: AgentRegistryEntry[]) => void;
   handleActivityEvent: (event: ActivityEvent) => void;
   selectAgent: (id: string | null) => void;
-  clearFlash: (source: string, target: string) => void;
+  /** Remove expired flashes. Called by the cleanup interval. */
+  pruneFlashes: () => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -77,10 +80,19 @@ function toLiveStatus(
 
 const IPC_FLASH_DURATION = 1200; // ms — matches CSS animation duration
 
+/**
+ * Queued SSE events that arrived before the initial fetch completed.
+ * Replayed once after hydration. Module-scoped because the store factory
+ * closure shouldn't hold mutable arrays.
+ */
+let pendingEvents: ActivityEvent[] = [];
+let pendingRegistryUpdates: AgentRegistryEntry[][] = [];
+
 // ── Store ─────────────────────────────────────────────────────────────────
 
 export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
   agents: [],
+  hydrated: false,
   selectedAgentId: null,
   ipcFlashes: [],
   loading: false,
@@ -126,7 +138,20 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
           };
         });
 
-      set({ agents, loading: false });
+      set({ agents, loading: false, hydrated: true });
+
+      // Replay any SSE events that arrived before hydration
+      const queuedEvents = pendingEvents;
+      const queuedRegistry = pendingRegistryUpdates;
+      pendingEvents = [];
+      pendingRegistryUpdates = [];
+
+      for (const entries of queuedRegistry) {
+        get().applyRegistryUpdate(entries);
+      }
+      for (const event of queuedEvents) {
+        get().handleActivityEvent(event);
+      }
     } catch (err) {
       set({
         loading: false,
@@ -136,6 +161,10 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
   },
 
   applyRegistryUpdate: (entries) => {
+    if (!get().hydrated) {
+      pendingRegistryUpdates.push(entries);
+      return;
+    }
     const byId = new Map(entries.map((e) => [e.agentId, e]));
     set((s) => ({
       agents: s.agents.map((a) => {
@@ -151,6 +180,11 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
   },
 
   handleActivityEvent: (event) => {
+    if (!get().hydrated) {
+      pendingEvents.push(event);
+      return;
+    }
+
     // Status changes
     if (event.kind === "agent_status_change" && event.payload) {
       set((s) => ({
@@ -162,7 +196,7 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
       }));
     }
 
-    // IPC message → flash edge
+    // IPC message → flash edge (timestamp-based expiry, cleaned by pruneFlashes)
     if (event.kind === "ipc_message_sent" && event.agentId && event.targetAgentId) {
       const flash: IpcFlash = {
         source: event.agentId,
@@ -170,24 +204,44 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
         ts: Date.now(),
       };
       set((s) => ({ ipcFlashes: [...s.ipcFlashes, flash] }));
-
-      // Auto-expire
-      setTimeout(() => {
-        get().clearFlash(flash.source, flash.target);
-      }, IPC_FLASH_DURATION);
     }
   },
 
   selectAgent: (id) => set({ selectedAgentId: id }),
 
-  clearFlash: (source, target) => {
-    set((s) => ({
-      ipcFlashes: s.ipcFlashes.filter(
-        (f) => !(f.source === source && f.target === target),
-      ),
-    }));
+  pruneFlashes: () => {
+    const now = Date.now();
+    set((s) => {
+      const live = s.ipcFlashes.filter((f) => now - f.ts < IPC_FLASH_DURATION);
+      // Skip setState if nothing changed — avoids unnecessary re-renders
+      return live.length === s.ipcFlashes.length ? s : { ipcFlashes: live };
+    });
   },
 }));
+
+// ── Flash cleanup interval ───────────────────────────────────────────────
+// Single interval that prunes expired flashes. This replaces per-flash
+// setTimeout calls which leaked when the component unmounted.
+
+let flashIntervalId: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the flash cleanup interval. Call once when SyndicateMap mounts.
+ * Returns a cleanup function for the useEffect teardown.
+ */
+export function startFlashPruner(): () => void {
+  if (flashIntervalId === null) {
+    flashIntervalId = setInterval(() => {
+      useSyndicateStore.getState().pruneFlashes();
+    }, 400);
+  }
+  return () => {
+    if (flashIntervalId !== null) {
+      clearInterval(flashIntervalId);
+      flashIntervalId = null;
+    }
+  };
+}
 
 // ── SSE event handler (called from useSecureSse onMessage callback) ──────
 

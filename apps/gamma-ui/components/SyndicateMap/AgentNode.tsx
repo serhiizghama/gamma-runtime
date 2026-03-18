@@ -7,6 +7,10 @@
  *  - Status indicator dot (running=green, idle=amber, offline=red)
  *  - Task badge (pill, hidden when 0, pulsing red when > 3)
  *  - Name + roleId label below the avatar
+ *
+ * Wrapped in React.memo with a custom comparator that checks the data
+ * fields we actually render, so node position changes from other nodes
+ * don't cause spurious re-renders.
  */
 
 import { memo, type CSSProperties } from "react";
@@ -183,4 +187,23 @@ function AgentNodeInner({ data }: NodeProps) {
   );
 }
 
-export const AgentNode = memo(AgentNodeInner);
+/**
+ * Custom comparator: only re-render when the data fields we display change.
+ * React Flow passes `selected`, `dragging`, `positionAbsoluteX/Y` etc. as
+ * top-level NodeProps — we ignore those to avoid re-renders when other nodes
+ * move or selection changes.
+ */
+function arePropsEqual(prev: NodeProps, next: NodeProps): boolean {
+  const p = prev.data as unknown as AgentNodeData;
+  const n = next.data as unknown as AgentNodeData;
+  return (
+    p.name === n.name &&
+    p.roleId === n.roleId &&
+    p.avatarEmoji === n.avatarEmoji &&
+    p.uiColor === n.uiColor &&
+    p.status === n.status &&
+    p.inProgressTaskCount === n.inProgressTaskCount
+  );
+}
+
+export const AgentNode = memo(AgentNodeInner, arePropsEqual);

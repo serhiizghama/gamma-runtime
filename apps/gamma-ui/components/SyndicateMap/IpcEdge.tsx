@@ -3,6 +3,9 @@
  *
  * Uses getSmoothStepPath for clean routing. When `data.flashing` is true,
  * renders a glowing particle that travels along the edge path.
+ *
+ * Keyframes are injected once by the parent SyndicateMap index.tsx —
+ * this component does NOT inject its own <style> tags.
  */
 
 import { memo } from "react";
@@ -18,17 +21,6 @@ export interface IpcEdgeData extends Record<string, unknown> {
   flashing?: boolean;
   color?: string;
 }
-
-// ── Styles ────────────────────────────────────────────────────────────────
-
-const PARTICLE_KEYFRAMES = `
-@keyframes ipcParticleTravel {
-  0%   { offset-distance: 0%; opacity: 0; }
-  5%   { opacity: 1; }
-  95%  { opacity: 1; }
-  100% { offset-distance: 100%; opacity: 0; }
-}
-`;
 
 // ── Component ─────────────────────────────────────────────────────────────
 
@@ -59,8 +51,6 @@ function IpcEdgeInner({
 
   return (
     <>
-      <style>{PARTICLE_KEYFRAMES}</style>
-
       {/* Base edge line */}
       <BaseEdge
         id={id}
@@ -85,7 +75,7 @@ function IpcEdgeInner({
         />
       )}
 
-      {/* Animated particle */}
+      {/* Animated particle traveling along the edge path */}
       {flashing && (
         <circle
           r={4}
