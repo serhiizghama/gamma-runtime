@@ -12,6 +12,7 @@ export function ChatInput({ status, placeholder = "Message Gamma…", onSend }: 
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const running = status === "running";
+  // Allow sending when idle OR in error state (so user can retry after transient errors)
   const canSend = text.trim().length > 0 && !running;
 
   const handleSend = useCallback(() => {

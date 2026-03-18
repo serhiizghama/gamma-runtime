@@ -669,11 +669,18 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (phase === 'error') {
+        const errorMessage = typeof data?.text === 'string' ? data.text : 'Run error';
+
+        // Detect transient API errors (overloaded / rate_limit) — these are
+        // recoverable and should not permanently brick the session.
+        const isTransient = /overloaded|rate.?limit|temporarily|try again/i.test(errorMessage);
+
         const eventId = await this.pushSSE(sseKey, {
           type: 'lifecycle_error',
           windowId,
           runId,
-          message: typeof data?.text === 'string' ? data.text : 'Run error',
+          message: errorMessage,
+          isTransient,
         });
 
         await this.redis.hset(
@@ -700,12 +707,57 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
           agentId: sessionKey,
           windowId,
           runId,
-          payload: typeof data?.text === 'string' ? data.text : 'Run error',
+          payload: errorMessage,
           severity: 'error',
         });
 
         this.runStepCounters.delete(runId);
         this.toolWatchdog.clearWindow(windowId);
+
+        // ── Auto-recovery for transient errors ──────────────────────────
+        // After 2s, flip status back to 'idle' so the user can immediately
+        // retry without needing a page refresh.  This prevents the session
+        // from being permanently bricked by a momentary API overload.
+        if (isTransient) {
+          this.logger.log(
+            `[AUTO-RECOVERY] Transient error for ${sessionKey} — scheduling idle reset in 2s`,
+          );
+          setTimeout(async () => {
+            try {
+              const currentStatus = await this.redis.hget(
+                `${REDIS_KEYS.STATE_PREFIX}${windowId}`,
+                'status',
+              );
+              // Only reset if still in error state (not if a new run started)
+              if (currentStatus === 'error') {
+                await this.redis.hset(
+                  `${REDIS_KEYS.STATE_PREFIX}${windowId}`,
+                  'status', 'idle',
+                );
+                await this.sessionRegistry.upsert({
+                  sessionKey,
+                  status: 'idle',
+                  lastActiveAt: Date.now(),
+                });
+                await this.agentRegistry.update(sessionKey, { status: 'idle' });
+                // Push SSE event so frontend knows the session is alive again
+                await this.pushSSE(sseKey, {
+                  type: 'lifecycle_end',
+                  windowId,
+                  runId,
+                  stopReason: 'auto_recovery',
+                });
+                this.logger.log(
+                  `[AUTO-RECOVERY] Session ${sessionKey} reset to idle`,
+                );
+              }
+            } catch (err: unknown) {
+              this.logger.warn(
+                `[AUTO-RECOVERY] Failed for ${sessionKey}: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          }, 2000);
+        }
 
         // Automated rollback for app-owner sessions on lifecycle error
         if (sessionKey.startsWith('app-owner-')) {

@@ -44,6 +44,9 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
   const toolIdRef     = useRef<string | null>(null);
   const answerIdRef   = useRef<string | null>(null);
 
+  // Auto-recovery timer ref for transient errors
+  const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ── Helpers ──────────────────────────────────────────────────────────
 
   /** Patch a specific message in the array by id */
@@ -113,15 +116,36 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
 
         case "lifecycle_error": {
           finalizeAllPhases();
+
+          // Detect transient errors (API overloaded / rate limit)
+          const errMsg = event.message ?? "";
+          const isTransient =
+            ("isTransient" in event && !!(event as Record<string, unknown>).isTransient) ||
+            /overloaded|rate.?limit|temporarily|try again/i.test(errMsg);
+
           setMessages((prev) => [...prev, {
             id: `err-${Date.now()}`,
             role: "assistant",
             kind: "answer",
-            text: `⚠️ Error: ${event.message}`,
+            text: isTransient
+              ? `⚠️ ${errMsg}\n\n_Сессия восстановится автоматически — можно повторить сообщение._`
+              : `⚠️ Error: ${errMsg}`,
             ts: Date.now(),
           }]);
           setStatus("error");
           setPendingToolLines([]);
+
+          // Auto-recover from transient errors: reset to idle after 3s
+          // so the user can immediately retry without refreshing.
+          if (isTransient) {
+            if (recoveryTimerRef.current) clearTimeout(recoveryTimerRef.current);
+            recoveryTimerRef.current = setTimeout(() => {
+              if (mountedRef.current) {
+                setStatus("idle");
+              }
+              recoveryTimerRef.current = null;
+            }, 3000);
+          }
           break;
         }
 
@@ -256,6 +280,10 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
       cancelled = true;
       mountedRef.current = false;
       es?.close();
+      if (recoveryTimerRef.current) {
+        clearTimeout(recoveryTimerRef.current);
+        recoveryTimerRef.current = null;
+      }
     };
   }, [windowId, patchMsg, finalizeMsg, finalizeAllPhases]);
 
