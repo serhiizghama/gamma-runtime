@@ -16,6 +16,7 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   BackgroundVariant,
   Controls,
@@ -163,7 +164,17 @@ const INJECTED_KEYFRAMES = `
 
 // ── Component ─────────────────────────────────────────────────────────────
 
+/** Outer wrapper — provides ReactFlowProvider context for hooks */
 export function SyndicateMap() {
+  return (
+    <ReactFlowProvider>
+      <SyndicateMapInner />
+    </ReactFlowProvider>
+  );
+}
+
+/** Inner component — all React Flow hooks live inside the provider */
+function SyndicateMapInner() {
   const agents = useSyndicateStore((s) => s.agents);
   const ipcFlashes = useSyndicateStore((s) => s.ipcFlashes);
   const selectedAgentId = useSyndicateStore((s) => s.selectedAgentId);
