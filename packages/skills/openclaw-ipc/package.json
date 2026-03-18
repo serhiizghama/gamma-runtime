@@ -1,0 +1,15 @@
+{
+  "name": "@gamma/openclaw-ipc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenClaw plugin for inter-agent task delegation via gamma-core IPC API",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

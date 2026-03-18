@@ -352,7 +352,10 @@ export type ActivityEventKind =
   | 'lifecycle_error'
   | 'hierarchy_change'
   | 'system_event'
-  | 'emergency_stop';
+  | 'emergency_stop'
+  | 'ipc_message_sent'
+  | 'ipc_task_completed'
+  | 'ipc_task_failed';
 
 export interface ActivityEvent {
   id: string;

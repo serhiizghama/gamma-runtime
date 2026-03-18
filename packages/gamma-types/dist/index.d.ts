@@ -323,7 +323,7 @@ export interface AgentMessage {
     replyTo?: string;
     ttl?: number;
 }
-export type ActivityEventKind = 'agent_registered' | 'agent_deregistered' | 'agent_status_change' | 'message_sent' | 'message_completed' | 'context_injected' | 'tool_call_start' | 'tool_call_end' | 'lifecycle_start' | 'lifecycle_end' | 'lifecycle_error' | 'hierarchy_change' | 'system_event' | 'emergency_stop';
+export type ActivityEventKind = 'agent_registered' | 'agent_deregistered' | 'agent_status_change' | 'message_sent' | 'message_completed' | 'context_injected' | 'tool_call_start' | 'tool_call_end' | 'lifecycle_start' | 'lifecycle_end' | 'lifecycle_error' | 'hierarchy_change' | 'system_event' | 'emergency_stop' | 'ipc_message_sent' | 'ipc_task_completed' | 'ipc_task_failed';
 export interface ActivityEvent {
     id: string;
     ts: number;

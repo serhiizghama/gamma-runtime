@@ -17,7 +17,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 // ---------------------------------------------------------------------------
 
 const DB_FILENAME = 'gamma-state.db';
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 /** Resolve DB path: env override → <repoRoot>/data/gamma-state.db */
 function resolveDbPath(): string {
@@ -107,6 +107,7 @@ function applyMigrations(db: DatabaseType): void {
 
   const migrate = db.transaction(() => {
     if (currentVersion < 1) migrateToV1(db);
+    if (currentVersion < 2) migrateToV2(db);
     setSchemaVersion(db, CURRENT_SCHEMA_VERSION);
   });
 
@@ -135,6 +136,31 @@ function migrateToV1(db: DatabaseType): void {
 
     `CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)`,
     `CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role_id)`,
+  ];
+
+  for (const sql of statements) {
+    db.exec(sql);
+  }
+}
+
+/** V2: Tasks table for IPC task state tracking. */
+function migrateToV2(db: DatabaseType): void {
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS tasks (
+      id               TEXT PRIMARY KEY,
+      source_agent_id  TEXT NOT NULL,
+      target_agent_id  TEXT NOT NULL,
+      status           TEXT NOT NULL DEFAULT 'pending'
+                       CHECK(status IN ('pending', 'in_progress', 'completed', 'failed')),
+      payload          TEXT NOT NULL DEFAULT '{}',
+      result           TEXT,
+      created_at       INTEGER NOT NULL,
+      updated_at       INTEGER NOT NULL
+    )`,
+
+    `CREATE INDEX IF NOT EXISTS idx_tasks_source ON tasks(source_agent_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_target ON tasks(target_agent_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`,
   ];
 
   for (const sql of statements) {

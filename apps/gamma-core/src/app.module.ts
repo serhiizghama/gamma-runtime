@@ -15,6 +15,7 @@ import { ContextInjectorModule } from './scaffold/context-injector.module';
 import { ToolsModule } from './tools/tools.module';
 import { StateModule } from './state/state.module';
 import { AgentsModule } from './agents/agents.module';
+import { IpcModule } from './ipc/ipc.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { AgentsModule } from './agents/agents.module';
     ToolsModule,
     StateModule,
     AgentsModule,
+    IpcModule,
   ],
   controllers: [AppController],
 })
