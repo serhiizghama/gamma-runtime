@@ -65,7 +65,9 @@ const DEFAULT_WIDTH = 420;
  */
 export function ArchitectWindow(): React.ReactElement | null {
   const architectOpen = useGammaStore((s) => s.architectOpen);
+  const architectZIndex = useGammaStore((s) => s.architectZIndex);
   const toggleArchitect = useGammaStore((s) => s.toggleArchitect);
+  const focusArchitect = useGammaStore((s) => s.focusArchitect);
   const { reInit } = useArchitectSession();
 
   const { messages, status, pendingToolLines, sendMessage } =
@@ -112,13 +114,14 @@ export function ArchitectWindow(): React.ReactElement | null {
   return (
     <div
       ref={containerRef}
+      onPointerDown={focusArchitect}
       style={{
         position: "fixed",
         top: MENU_HEIGHT,
         right: 0,
         width,
         height: `calc(100vh - ${MENU_HEIGHT}px)`,
-        zIndex: 9998,
+        zIndex: architectZIndex,
         display: "flex",
         flexDirection: "column",
         background: "var(--color-bg-secondary)",

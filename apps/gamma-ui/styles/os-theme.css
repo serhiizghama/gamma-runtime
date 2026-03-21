@@ -198,10 +198,11 @@
 /* Live background + boot screen keyframes removed for flat & fast design */
 
 .window {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   margin: 0;
+  pointer-events: auto;
   width: var(--win-w, 800px);
   height: var(--win-h, 560px);
   transform: translate(var(--win-x, 0px), var(--win-y, 0px));
@@ -214,12 +215,12 @@
 }
 
 .window--maximized {
-  top: var(--desktop-taskbar-height);
+  top: var(--desktop-taskbar-height, 0px);
   left: 0;
   margin: 0;
   margin-top: 0 !important;
   width: 100vw;
-  height: calc(100vh - var(--desktop-taskbar-height));
+  height: calc(100vh - var(--desktop-taskbar-height, 0px));
   transform: none;
   box-sizing: border-box;
 }

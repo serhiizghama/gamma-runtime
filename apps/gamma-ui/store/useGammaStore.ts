@@ -28,6 +28,7 @@ export const useGammaStore = create<OSStore>()(
     immer((set) => ({
       windows: {},
       zIndexCounter: INITIAL_Z,
+      architectZIndex: INITIAL_Z,
       focusedWindowId: null,
       launchpadOpen: false,
       architectOpen: false,
@@ -128,7 +129,21 @@ export const useGammaStore = create<OSStore>()(
         set((state) => { state.launchpadOpen = false; }),
 
       toggleArchitect: () =>
-        set((state) => { state.architectOpen = !state.architectOpen; }),
+        set((state) => {
+          state.architectOpen = !state.architectOpen;
+          if (state.architectOpen) {
+            const z = state.zIndexCounter + 1;
+            state.architectZIndex = z;
+            state.zIndexCounter = z;
+          }
+        }),
+
+      focusArchitect: () =>
+        set((state) => {
+          const z = state.zIndexCounter + 1;
+          state.architectZIndex = z;
+          state.zIndexCounter = z;
+        }),
 
       pushNotification: (n) =>
         set((state) => {
@@ -158,6 +173,7 @@ export const useGammaStore = create<OSStore>()(
       partialize: (state) => ({
         windows: state.windows,
         zIndexCounter: state.zIndexCounter,
+        architectZIndex: state.architectZIndex,
         focusedWindowId: state.focusedWindowId,
         uiSettings: state.uiSettings,
         windowAgentPanelOpen: state.windowAgentPanelOpen,

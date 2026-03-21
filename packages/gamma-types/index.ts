@@ -510,6 +510,8 @@ export interface OSStore {
 
   /** System Architect panel visibility */
   architectOpen: boolean;
+  architectZIndex: number;
+  focusArchitect: () => void;
 
   /** Generated app registry (from API + component_ready/removed SSE) */
   appRegistry: Record<string, AppRegistryEntry>;

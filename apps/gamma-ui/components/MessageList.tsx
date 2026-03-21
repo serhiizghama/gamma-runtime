@@ -443,70 +443,127 @@ export function MessageList({ messages, pendingToolLines, status }: MessageListP
           30%            { transform: translateY(-5px); opacity: 1; }
         }
 
-        /* ── Flashlight sweep — spotlight slides L ↔ R behind the bubble surface ── */
-        @keyframes flashlightSweep {
-          0%   { transform: translateX(-130%); opacity: 0; }
-          9%   { opacity: 1;                               }
-          50%  { transform: translateX(240%);  opacity: 1; }
-          91%  { opacity: 1;                               }
-          100% { transform: translateX(-130%); opacity: 0; }
+        /* ── Text shimmer — slow, bright wave sweeps across ALL streaming text ── */
+        @keyframes textShimmerWave {
+          0%   { background-position: 100% 50%; }
+          50%  { background-position: 0% 50%; }
+          100% { background-position: 100% 50%; }
         }
 
-        /* Structural base — needed for ::before clipping */
-        .agent-chat-bubble--streaming-answer,
-        .agent-chat-bubble--streaming-thinking,
-        .agent-chat-bubble--streaming-tool {
-          position: relative;
-          overflow: hidden;
+        /* ── Shimmer mixin: applied per-element, staggered by nth-child ── */
+
+        /* === ANSWER (cold white base → bright green highlight) === */
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > * {
+          color: transparent !important;
+          background-image: linear-gradient(
+            90deg,
+            rgba(225,235,245,0.85) 0%,
+            rgba(225,235,245,0.85) 32%,
+            rgba(100,245,160,1)    42%,
+            rgba(0,255,120,1)      50%,
+            rgba(100,245,160,1)    58%,
+            rgba(225,235,245,0.85) 68%,
+            rgba(225,235,245,0.85) 100%
+          ) !important;
+          background-size: 400% 100% !important;
+          -webkit-background-clip: text !important;
+          background-clip: text !important;
+          -webkit-text-fill-color: transparent !important;
+          animation: textShimmerWave 5s ease-in-out infinite !important;
+        }
+        /* Inline children inherit clip from parent block */
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > * * {
+          color: transparent !important;
+          background: inherit !important;
+          background-size: inherit !important;
+          -webkit-background-clip: text !important;
+          background-clip: text !important;
+          -webkit-text-fill-color: transparent !important;
+          animation: none !important;
+        }
+        /* Stagger each line: 0.6s offset per child */
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(2)  { animation-delay: -0.6s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(3)  { animation-delay: -1.2s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(4)  { animation-delay: -1.8s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(5)  { animation-delay: -2.4s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(6)  { animation-delay: -3.0s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(7)  { animation-delay: -3.6s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(8)  { animation-delay: -4.2s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(9)  { animation-delay: -0.3s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(10) { animation-delay: -0.9s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(11) { animation-delay: -1.5s !important; }
+        .agent-chat-bubble--streaming-answer .agent-chat-markdown > *:nth-child(12) { animation-delay: -2.1s !important; }
+
+        /* Preserve code blocks inside answer */
+        .agent-chat-bubble--streaming-answer pre,
+        .agent-chat-bubble--streaming-answer pre *,
+        .agent-chat-bubble--streaming-answer code {
+          color: rgba(180,220,255,0.85) !important;
+          -webkit-text-fill-color: rgba(180,220,255,0.85) !important;
+          background-image: none !important;
+          background: rgba(0,0,0,0.35) !important;
+          background-clip: border-box !important;
+          -webkit-background-clip: border-box !important;
+          animation: none !important;
+        }
+        .agent-chat-bubble--streaming-answer pre code {
+          background: none !important;
         }
 
-        /* The flashlight element itself */
-        .agent-chat-bubble--streaming-answer::before,
-        .agent-chat-bubble--streaming-thinking::before,
-        .agent-chat-bubble--streaming-tool::before {
-          content: '';
-          position: absolute;
-          top: -40%;
-          left: -20%;
-          width: 38%;
-          height: 180%;
-          border-radius: 50%;
-          pointer-events: none;
-          mix-blend-mode: screen;
-          animation: flashlightSweep ease-in-out infinite;
+        /* === THINKING (dim violet base → bright cyan highlight) === */
+        .agent-chat-bubble--streaming-thinking {
+          color: transparent !important;
+          background-image: linear-gradient(
+            90deg,
+            rgba(140,115,210,0.5)  0%,
+            rgba(140,115,210,0.5)  32%,
+            rgba(180,160,255,0.9)  40%,
+            rgba(160,240,255,1)    48%,
+            rgba(200,255,255,1)    50%,
+            rgba(160,240,255,1)    52%,
+            rgba(180,160,255,0.9)  60%,
+            rgba(140,115,210,0.5)  68%,
+            rgba(140,115,210,0.5)  100%
+          ) !important;
+          background-size: 400% 100% !important;
+          -webkit-background-clip: text !important;
+          background-clip: text !important;
+          -webkit-text-fill-color: transparent !important;
+          animation: textShimmerWave 4.5s ease-in-out infinite !important;
         }
 
-        /* Answer — blue flashlight */
-        .agent-chat-bubble--streaming-answer::before {
-          background: radial-gradient(ellipse at center,
-            rgba(59,130,246,0.62) 0%,
-            rgba(59,130,246,0.20) 44%,
-            transparent 70%
-          );
-          animation-duration: 4.2s;
+        /* === TOOL (green) === */
+        .agent-chat-bubble--streaming-tool > div {
+          color: transparent !important;
+          background-image: linear-gradient(
+            90deg,
+            rgba(60,160,100,0.5)   0%,
+            rgba(60,160,100,0.5)   32%,
+            rgba(120,220,150,0.9)  40%,
+            rgba(200,255,130,1)    48%,
+            rgba(240,255,200,1)    50%,
+            rgba(200,255,130,1)    52%,
+            rgba(120,220,150,0.9)  60%,
+            rgba(60,160,100,0.5)   68%,
+            rgba(60,160,100,0.5)   100%
+          ) !important;
+          background-size: 400% 100% !important;
+          -webkit-background-clip: text !important;
+          background-clip: text !important;
+          -webkit-text-fill-color: transparent !important;
+          animation: textShimmerWave 4s ease-in-out infinite !important;
         }
-
-        /* Thinking — violet flashlight, offset phase */
-        .agent-chat-bubble--streaming-thinking::before {
-          background: radial-gradient(ellipse at center,
-            rgba(139,92,246,0.65) 0%,
-            rgba(139,92,246,0.20) 44%,
-            transparent 70%
-          );
-          animation-duration: 3.7s;
-          animation-delay: -0.8s;
+        .agent-chat-bubble--streaming-tool > div span {
+          color: transparent !important;
+          background: inherit !important;
+          -webkit-background-clip: text !important;
+          background-clip: text !important;
+          -webkit-text-fill-color: transparent !important;
+          animation: none !important;
         }
-
-        /* Tool — green flashlight, shifted phase */
-        .agent-chat-bubble--streaming-tool::before {
-          background: radial-gradient(ellipse at center,
-            rgba(34,197,94,0.58) 0%,
-            rgba(34,197,94,0.18) 44%,
-            transparent 70%
-          );
-          animation-duration: 3.2s;
-          animation-delay: -1.5s;
-        }
+        .agent-chat-bubble--streaming-tool > div:nth-child(2) { animation-delay: -0.7s !important; }
+        .agent-chat-bubble--streaming-tool > div:nth-child(3) { animation-delay: -1.4s !important; }
+        .agent-chat-bubble--streaming-tool > div:nth-child(4) { animation-delay: -2.1s !important; }
 
         .agent-chat-message-list::-webkit-scrollbar { width: 4px; }
         .agent-chat-message-list::-webkit-scrollbar-track { background: transparent; }
