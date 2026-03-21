@@ -69,7 +69,9 @@ const STATUS_PAYLOAD_COLORS: Record<string, string> = {
  * Falls back to truncated raw payload when parsing isn't meaningful.
  */
 function renderPayloadDetail(ev: ActivityEvent): React.ReactNode {
-  const { kind, payload, toolName, targetAgentId, appId, severity } = ev;
+  const { kind, toolName, targetAgentId, appId, severity } = ev;
+  // payload can be an object from the server despite the string type annotation
+  const payload = safeStr(ev.payload);
 
   // ── tool_call_start: show tool name + key args ──────────────────────────
   if (kind === "tool_call_start" && payload) {
@@ -170,6 +172,53 @@ function tryParseJson(s: string): unknown {
   try { return JSON.parse(s); } catch { return undefined; }
 }
 
+/**
+ * Safely coerce any value to a renderable string.
+ * Prevents "Objects are not valid as a React child" crashes when the server
+ * sends an object where a string was expected (e.g. payload: {phase, endedAt}).
+ */
+function safeStr(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try { return JSON.stringify(v); } catch { return "[object]"; }
+}
+
+// ─── Date / dedup helpers ─────────────────────────────────────────────────────
+
+function isSameDay(a: number, b: number): boolean {
+  const da = new Date(a);
+  const db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function formatDateLabel(ts: number): string {
+  const now = Date.now();
+  if (isSameDay(ts, now)) return "Today";
+  if (isSameDay(ts, now - 86_400_000)) return "Yesterday";
+  return new Date(ts).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+/** Show date prefix when event is NOT from today */
+function fmtTimeSmart(ts: number): string {
+  const d = new Date(ts);
+  const time = fmtTime(ts);
+  if (!isSameDay(ts, Date.now())) {
+    const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return `${date} ${time}`;
+  }
+  return time;
+}
+
+/**
+ * Composite fingerprint for dedup — catches the case where the same event
+ * arrives via SSE (with a client-generated fallback id) AND via REST history
+ * (with the real server id). Using only `id` would miss this overlap.
+ */
+function eventFingerprint(e: ActivityEvent): string {
+  return `${e.kind}|${e.agentId}|${e.ts}|${e.toolCallId ?? ""}`;
+}
+
 // ─── Zustand store ────────────────────────────────────────────────────────────
 
 interface ActivityStore {
@@ -187,7 +236,7 @@ interface ActivityStore {
 
 const MAX_EVENTS = 500;
 
-const useActivityStore = create<ActivityStore>((set, get) => ({
+const useActivityStore = create<ActivityStore>((set, _get) => ({
   events: [],
   waitingAgents: new Set<string>(),
   toolStartTs: new Map(),
@@ -195,6 +244,10 @@ const useActivityStore = create<ActivityStore>((set, get) => ({
 
   push: (e) =>
     set((s) => {
+      // Dedup: skip if we already have this event (by id or fingerprint)
+      const fp = eventFingerprint(e);
+      if (s.events.some((x) => x.id === e.id || eventFingerprint(x) === fp)) return s;
+
       const events = [e, ...s.events].slice(0, MAX_EVENTS);
 
       // waitingAgents — O(1) incremental update
@@ -229,11 +282,15 @@ const useActivityStore = create<ActivityStore>((set, get) => ({
 
   // Bulk-load historical events (backfill on mount).
   // Events come oldest-first from the API; store is newest-first.
+  // Uses BOTH id AND fingerprint for dedup so SSE fallback-ids don't cause
+  // duplicates when the same event later arrives from REST with its real id.
   pushMany: (incoming) =>
     set((s) => {
-      // De-dup against already-stored ids (SSE may have arrived first)
       const existingIds = new Set(s.events.map((e) => e.id));
-      const fresh = incoming.filter((e) => !existingIds.has(e.id));
+      const existingPrints = new Set(s.events.map(eventFingerprint));
+      const fresh = incoming.filter(
+        (e) => !existingIds.has(e.id) && !existingPrints.has(eventFingerprint(e)),
+      );
       if (fresh.length === 0) return s;
 
       // Rebuild toolStartTs + toolDurations from historical batch
@@ -271,7 +328,7 @@ const useActivityStore = create<ActivityStore>((set, get) => ({
 
 async function fetchHistoricalActivity(): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/api/system/activity?limit=200`, {
+    const res = await fetch(`${API_BASE}/api/system/activity?limit=${MAX_EVENTS}`, {
       headers: systemAuthHeaders(),
     });
     if (!res.ok) return;
@@ -471,14 +528,35 @@ function ActivityFeed() {
               : "No events match the current filter."}
           </div>
         )}
-        {filtered.map((ev) => (
-          <EventRow
-            key={ev.id}
-            event={ev}
-            isExpanded={expandedId === ev.id}
-            onToggle={handleToggle}
-          />
-        ))}
+        {filtered.map((ev, i) => {
+          const prev = i > 0 ? filtered[i - 1] : null;
+          const showDaySep = !prev || !isSameDay(ev.ts, prev.ts);
+          return (
+            <React.Fragment key={ev.id}>
+              {showDaySep && (
+                <div
+                  style={{
+                    padding: "6px 12px 4px",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    color: "#d787ff",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    borderBottom: "1px solid rgba(215,135,255,0.12)",
+                    background: "rgba(215,135,255,0.04)",
+                  }}
+                >
+                  {formatDateLabel(ev.ts)}
+                </div>
+              )}
+              <EventRow
+                event={ev}
+                isExpanded={expandedId === ev.id}
+                onToggle={handleToggle}
+              />
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );
@@ -532,18 +610,18 @@ const EventRow = memo(function EventRow({
         <span style={{ color: "var(--color-text-muted)", fontSize: 8, flexShrink: 0, width: 8, opacity: 0.5 }}>
           {isExpanded ? "▾" : "▸"}
         </span>
-        {/* Timestamp */}
+        {/* Timestamp — shows date prefix for non-today events */}
         <span
           style={{
-            color: "var(--color-text-muted)",
+            color: isSameDay(ev.ts, Date.now()) ? "var(--color-text-muted)" : "#d7afff",
             flexShrink: 0,
             fontSize: 10,
             fontVariantNumeric: "tabular-nums",
-            minWidth: 56,
+            minWidth: isSameDay(ev.ts, Date.now()) ? 56 : 90,
           }}
           title={relativeTime(ev.ts)}
         >
-          {fmtTime(ev.ts)}
+          {fmtTimeSmart(ev.ts)}
         </span>
         {/* Icon */}
         <span style={{ color, flexShrink: 0, width: 12, textAlign: "center", fontSize: 10 }}>
@@ -655,19 +733,23 @@ const EventRow = memo(function EventRow({
 function ExpandedEventDetail({ event: ev, durMs }: { event: ActivityEvent; durMs?: number }) {
   const rows: { label: string; value: React.ReactNode; color?: string }[] = [];
 
-  if (ev.runId) rows.push({ label: "Run", value: ev.runId, color: "var(--color-text-muted)" });
-  if (ev.windowId) rows.push({ label: "Window", value: ev.windowId, color: "var(--color-text-muted)" });
-  if (ev.appId) rows.push({ label: "App", value: ev.appId });
-  if (ev.toolName) rows.push({ label: "Tool", value: ev.toolName, color: "#ffd787" });
-  if (ev.toolCallId) rows.push({ label: "Call ID", value: ev.toolCallId, color: "var(--color-text-muted)" });
+  if (ev.runId) rows.push({ label: "Run", value: safeStr(ev.runId), color: "var(--color-text-muted)" });
+  if (ev.windowId) rows.push({ label: "Window", value: safeStr(ev.windowId), color: "var(--color-text-muted)" });
+  if (ev.appId) rows.push({ label: "App", value: safeStr(ev.appId) });
+  if (ev.toolName) rows.push({ label: "Tool", value: safeStr(ev.toolName), color: "#ffd787" });
+  if (ev.toolCallId) rows.push({ label: "Call ID", value: safeStr(ev.toolCallId), color: "var(--color-text-muted)" });
   if (durMs !== undefined) {
     const col = durMs > 5000 ? "#ff9f43" : durMs > 1000 ? "#ffd787" : "#87ffd7";
     rows.push({ label: "Duration", value: durMs >= 1000 ? `${(durMs / 1000).toFixed(2)}s` : `${durMs}ms`, color: col });
   }
 
+  // Normalize payload to string — server may send objects (e.g. {phase, endedAt})
+  const payload = safeStr(ev.payload);
+
   // For tool events, try to pretty-print JSON payload
-  if ((ev.kind === "tool_call_start" || ev.kind === "tool_call_end") && ev.payload) {
-    const parsed = tryParseJson(ev.payload);
+  if ((ev.kind === "tool_call_start" || ev.kind === "tool_call_end") && payload) {
+    // Try parsing the stringified payload (it might be JSON inside a string, or already an object that safeStr serialized)
+    const parsed = typeof ev.payload === "object" && ev.payload !== null ? ev.payload : tryParseJson(payload);
     if (parsed && typeof parsed === "object") {
       rows.push({
         label: ev.kind === "tool_call_start" ? "Args" : "Result",
@@ -677,11 +759,11 @@ function ExpandedEventDetail({ event: ev, durMs }: { event: ActivityEvent; durMs
           </pre>
         ),
       });
-    } else if (ev.payload) {
-      rows.push({ label: ev.kind === "tool_call_start" ? "Args" : "Result", value: ev.payload });
+    } else if (payload) {
+      rows.push({ label: ev.kind === "tool_call_start" ? "Args" : "Result", value: payload });
     }
-  } else if (ev.payload && !["agent_status_change", "context_injected", "message_completed"].includes(ev.kind)) {
-    rows.push({ label: "Payload", value: ev.payload });
+  } else if (payload && !["agent_status_change", "context_injected", "message_completed"].includes(ev.kind)) {
+    rows.push({ label: "Payload", value: payload });
   }
 
   if (rows.length === 0) return null;
@@ -1052,7 +1134,7 @@ function AgentDetail({
       <DetailRow label="App" value={agent.appId || "—"} />
       <DetailRow label="Supervisor" value={agent.supervisorId || "(root)"} />
       <DetailRow label="Heartbeat" value={agent.lastHeartbeat ? relativeTime(agent.lastHeartbeat) : "—"} />
-      {agent.lastActivity && <DetailRow label="Activity" value={agent.lastActivity} />}
+      {agent.lastActivity && <DetailRow label="Activity" value={safeStr(agent.lastActivity)} />}
 
       <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}>
         <select
@@ -1280,8 +1362,19 @@ function useActivityStream(): { connected: boolean; eventCount: number } {
         if (data.type === "keep_alive" || !data.kind) return;
 
         const event = data as unknown as ActivityEvent;
-        if (!event.id) event.id = `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        if (!event.ts || typeof event.ts !== "number" || event.ts <= 0) event.ts = Date.now();
+        if (!event.id) event.id = `sse-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        // Validate timestamp: must be a reasonable Unix-ms (after 2020-01-01)
+        const MIN_TS = 1_577_836_800_000; // 2020-01-01
+        if (!event.ts || typeof event.ts !== "number" || event.ts < MIN_TS) {
+          // Could be seconds instead of ms — auto-correct
+          if (event.ts && event.ts > MIN_TS / 1000 && event.ts < Date.now() / 1000 + 86400) {
+            event.ts = event.ts * 1000;
+          } else {
+            event.ts = Date.now();
+          }
+        }
+
         if (!event.agentId) event.agentId = "unknown";
         if (!event.severity) event.severity = "info";
 

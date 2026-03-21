@@ -16,6 +16,11 @@ view of all agent activity, system events, and emergency controls.
 - Polls `GET /api/system/agents` every 5s for the live Agent Registry panel.
 - Exposes a PANIC button: `POST /api/system/panic` — kills all active sessions.
 - Uses Zustand store `useActivityStore` (max 500 events in memory, newest-first).
+- **Deduplication**: Uses both event ID and fingerprint (kind+agentId+ts+toolCallId)
+  to prevent duplicates between SSE and REST history backfill.
+- **Smart timestamps**: Shows date prefix (e.g. "Mar 16 14:02:33") for non-today events.
+- **Day separators**: Activity feed shows "Today" / "Yesterday" / date headers between days.
+- **Timestamp validation**: Auto-corrects seconds-vs-milliseconds timestamps from SSE.
 
 **Authorization**
 - All privileged endpoints require the `X-Gamma-System-Token` header.

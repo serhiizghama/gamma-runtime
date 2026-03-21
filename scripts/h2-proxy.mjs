@@ -24,8 +24,8 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..');
 
-const KEY_PATH  = path.join(REPO_ROOT, 'certs', 'localhost.key');
-const CERT_PATH = path.join(REPO_ROOT, 'certs', 'localhost.cert');
+const KEY_PATH  = path.join(REPO_ROOT, 'certs', 'tailscale.key');
+const CERT_PATH = path.join(REPO_ROOT, 'certs', 'tailscale.crt');
 
 if (!fs.existsSync(KEY_PATH) || !fs.existsSync(CERT_PATH)) {
   console.error('Certificates not found. Run ./scripts/generate-certs.sh first.');

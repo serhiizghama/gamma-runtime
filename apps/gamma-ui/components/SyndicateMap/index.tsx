@@ -374,6 +374,39 @@ function SyndicateMapInner() {
     [agents, selectedAgentId],
   );
 
+  // ── Empty state ────────────────────────────────────────────────────────
+  if (!loading && agents.length === 0 && !error) {
+    return (
+      <div style={{
+        ...containerStyle,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+      }}>
+        <span style={{ fontSize: 48 }}>🗺️</span>
+        <span style={{
+          fontSize: 16,
+          fontWeight: 600,
+          color: "rgba(255, 255, 255, 0.8)",
+          fontFamily: "var(--font-system)",
+        }}>
+          No agents yet
+        </span>
+        <span style={{
+          fontSize: 12,
+          color: "rgba(255, 255, 255, 0.4)",
+          fontFamily: "var(--font-system)",
+          textAlign: "center",
+          maxWidth: 280,
+        }}>
+          Create agents via the Agent Genesis API to see them here
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div style={containerStyle}>
       <style>{INJECTED_KEYFRAMES}</style>
