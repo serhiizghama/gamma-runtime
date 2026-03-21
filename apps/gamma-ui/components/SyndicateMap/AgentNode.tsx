@@ -1,19 +1,16 @@
 /**
  * AgentNode — Custom React Flow node for the Syndicate Map.
  *
- * Renders a compact agent avatar with:
+ * Design: Single avatar card with LED-diode border animation.
  *  - Emoji glyph centered in a rounded card
- *  - Border / glow derived from `data.uiColor`
- *  - Status indicator dot (running=green, idle=amber, offline=red)
+ *  - Border color = agent's `uiColor` (identity)
+ *  - When running: animated LED dots chase around the border perimeter
+ *  - Idle/error/offline: static border with status-tinted glow
  *  - Task badge (pill, hidden when 0, pulsing red when > 3)
  *  - Name + roleId label below the avatar
- *
- * Wrapped in React.memo with a custom comparator that checks the data
- * fields we actually render, so node position changes from other nodes
- * don't cause spurious re-renders.
  */
 
-import { memo, type CSSProperties } from "react";
+import { memo, useEffect, type CSSProperties } from "react";
 import { Handle, Position, useStore, type NodeProps } from "@xyflow/react";
 
 // ── Data contract ─────────────────────────────────────────────────────────
@@ -27,40 +24,109 @@ export interface AgentNodeData extends Record<string, unknown> {
   inProgressTaskCount: number;
 }
 
-// ── Status indicator mapping ──────────────────────────────────────────────
+// ── Status color mapping ──────────────────────────────────────────────────
 
-const STATUS_DOT: Record<string, string> = {
+const STATUS_COLOR: Record<string, string> = {
   running: "#28c840",
   idle:    "#febc2e",
   error:   "#ff5f57",
   aborted: "#ff5f57",
-  offline: "#666",
+  offline: "#555",
 };
 
-// ── Styles (inline, using CSS vars for theme coherence) ───────────────────
+// ── Inject keyframe animations once ───────────────────────────────────────
 
-const card: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: 8,
-  padding: 12,
-  minWidth: 100,
-  cursor: "grab",
-};
+let stylesInjected = false;
+function injectStyles() {
+  if (stylesInjected) return;
+  stylesInjected = true;
+  const sheet = document.createElement("style");
+  sheet.id = "agent-node-animations";
+  sheet.textContent = `
+    @keyframes agentLedChase {
+      0%   { stroke-dashoffset: 0; }
+      100% { stroke-dashoffset: -200; }
+    }
+    @keyframes agentLedGlow {
+      0%, 100% { filter: drop-shadow(0 0 2px var(--led-color, #28c840)); }
+      50%      { filter: drop-shadow(0 0 6px var(--led-color, #28c840)) drop-shadow(0 0 12px var(--led-color, #28c840)); }
+    }
+    @keyframes agentBreath {
+      0%, 100% { box-shadow: 0 0 6px var(--led-color, #28c840)22; }
+      50%      { box-shadow: 0 0 12px var(--led-color, #28c840)44, 0 0 24px var(--led-color, #28c840)22; }
+    }
+    @keyframes agentBadgePulse {
+      0%, 100% { transform: scale(1); }
+      50%      { transform: scale(1.15); }
+    }
+  `;
+  document.head.appendChild(sheet);
+}
 
-const avatarBase: CSSProperties = {
-  position: "relative",
-  width: 80,
-  height: 80,
-  borderRadius: 20,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 36,
-  lineHeight: 1,
-  background: "var(--color-surface-elevated)",
-  transition: "box-shadow var(--duration-fast) var(--ease-smooth)",
+// ── LED border overlay (SVG rounded rect with dashed stroke) ──────────────
+
+function LedBorder({
+  size,
+  radius,
+  color,
+  active,
+}: {
+  size: number;
+  radius: number;
+  color: string;
+  active: boolean;
+}) {
+  // Inset the rect by half the stroke width so it aligns with the CSS border
+  const sw = active ? 2.5 : 0;
+  if (!active) return null;
+
+  const inset = sw / 2 + 1; // +1 to sit just outside the CSS border
+  const rw = size - inset * 2;
+  const rh = size - inset * 2;
+  const r = Math.max(0, radius - inset / 2);
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        pointerEvents: "none",
+        zIndex: 3,
+        animation: "agentLedGlow 2.4s ease-in-out infinite",
+        "--led-color": color,
+      } as CSSProperties}
+    >
+      <rect
+        x={inset}
+        y={inset}
+        width={rw}
+        height={rh}
+        rx={r}
+        ry={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={sw}
+        strokeLinecap="round"
+        strokeDasharray="6 14"
+        style={{
+          animation: "agentLedChase 3s linear infinite",
+        }}
+      />
+    </svg>
+  );
+}
+
+// ── Shared styles ─────────────────────────────────────────────────────────
+
+const handleStyle: CSSProperties = {
+  width: 8,
+  height: 8,
+  background: "var(--color-border-subtle)",
+  border: "2px solid var(--color-bg-primary)",
 };
 
 const nameStyle: CSSProperties = {
@@ -83,20 +149,10 @@ const roleStyle: CSSProperties = {
   marginTop: -4,
 };
 
-const dotBase: CSSProperties = {
-  position: "absolute",
-  top: 4,
-  right: 4,
-  width: 10,
-  height: 10,
-  borderRadius: "50%",
-  border: "2px solid var(--color-bg-primary)",
-};
-
 const badgeBase: CSSProperties = {
   position: "absolute",
-  bottom: -4,
-  right: -4,
+  bottom: -6,
+  right: -6,
   minWidth: 20,
   height: 18,
   borderRadius: 9,
@@ -109,77 +165,18 @@ const badgeBase: CSSProperties = {
   color: "#fff",
   padding: "0 5px",
   border: "2px solid var(--color-bg-primary)",
-};
-
-const handleStyle: CSSProperties = {
-  width: 8,
-  height: 8,
-  background: "var(--color-border-subtle)",
-  border: "2px solid var(--color-bg-primary)",
-};
-
-// ── LOD-specific styles ───────────────────────────────────────────────────
-
-const compactCard: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  padding: 4,
-  cursor: "grab",
-};
-
-const compactAvatar: CSSProperties = {
-  position: "relative",
-  width: 48,
-  height: 48,
-  borderRadius: 14,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 22,
-  lineHeight: 1,
-  background: "var(--color-surface-elevated)",
-  transition: "box-shadow var(--duration-fast) var(--ease-smooth)",
-};
-
-const compactDot: CSSProperties = {
-  position: "absolute",
-  top: 2,
-  right: 2,
-  width: 8,
-  height: 8,
-  borderRadius: "50%",
-  border: "2px solid var(--color-bg-primary)",
-};
-
-const dotModeOuter: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 0,
-  cursor: "grab",
-};
-
-const dotModeCircle: CSSProperties = {
-  position: "relative",
-  width: 20,
-  height: 20,
-  borderRadius: "50%",
-  background: "var(--color-surface-elevated)",
-  transition: "box-shadow var(--duration-fast) var(--ease-smooth)",
-};
-
-const dotModeStatusDot: CSSProperties = {
-  position: "absolute",
-  top: -2,
-  right: -2,
-  width: 6,
-  height: 6,
-  borderRadius: "50%",
-  border: "1px solid var(--color-bg-primary)",
+  zIndex: 4,
 };
 
 type Lod = "full" | "compact" | "dot";
+
+// ── Sizing per LOD ────────────────────────────────────────────────────────
+
+const SIZES = {
+  full:    { avatar: 80, radius: 20, emoji: 36 },
+  compact: { avatar: 48, radius: 14, emoji: 22 },
+  dot:     { avatar: 20, radius: 10, emoji: 0  },
+} as const;
 
 // ── Component ─────────────────────────────────────────────────────────────
 
@@ -193,35 +190,56 @@ function AgentNodeInner({ data, selected }: NodeProps) {
     inProgressTaskCount,
   } = data as unknown as AgentNodeData;
 
+  useEffect(() => { injectStyles(); }, []);
+
   const zoom = useStore((s) => s.transform[2]);
   const lod: Lod = zoom >= 0.6 ? "full" : zoom >= 0.3 ? "compact" : "dot";
 
   const color = uiColor || "var(--color-accent-primary)";
-  const dotColor = STATUS_DOT[status] ?? STATUS_DOT.offline;
+  const statusColor = STATUS_COLOR[status] ?? STATUS_COLOR.offline;
   const taskCount = inProgressTaskCount ?? 0;
   const isPulsing = taskCount > 3;
+  const isRunning = status === "running";
 
-  // ── Dot mode: minimal colored circle ────────────────────────────────────
+  const sz = SIZES[lod];
+
+  // Border color: identity color normally, blends with status glow
+  const borderColor = color;
+
+  const avatarStyle: CSSProperties = {
+    position: "relative",
+    width: sz.avatar,
+    height: sz.avatar,
+    borderRadius: sz.radius,
+    border: `2px solid ${borderColor}`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: sz.emoji,
+    lineHeight: 1,
+    background: "var(--color-surface-elevated)",
+    transition: "box-shadow 200ms ease, transform 200ms ease",
+    boxShadow: selected
+      ? `0 0 20px ${color}88, 0 0 8px ${color}66, inset 0 0 4px ${color}22`
+      : isRunning
+        ? undefined // handled by breath animation
+        : `0 0 8px ${color}33`,
+    transform: selected ? "scale(1.05)" : undefined,
+    animation: isRunning ? "agentBreath 2.4s ease-in-out infinite" : undefined,
+    "--led-color": statusColor,
+  } as CSSProperties;
+
+  // ── Dot LOD ─────────────────────────────────────────────────────────────
   if (lod === "dot") {
     return (
       <>
         <Handle type="target" position={Position.Top} style={handleStyle} />
-        <div style={dotModeOuter}>
-          <div
-            style={{
-              ...dotModeCircle,
-              border: `2px solid ${color}`,
-              boxShadow: selected
-                ? `0 0 12px ${color}88`
-                : `0 0 6px ${color}44`,
-            }}
-          >
-            <span
-              style={{
-                ...dotModeStatusDot,
-                background: dotColor,
-              }}
-            />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "grab" }}>
+          <div style={{
+            ...avatarStyle,
+            opacity: status === "offline" ? 0.5 : 1,
+          }}>
+            <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
           </div>
         </div>
         <Handle type="source" position={Position.Bottom} style={handleStyle} />
@@ -229,31 +247,18 @@ function AgentNodeInner({ data, selected }: NodeProps) {
     );
   }
 
-  // ── Compact mode: avatar + emoji + status dot only ──────────────────────
+  // ── Compact LOD ─────────────────────────────────────────────────────────
   if (lod === "compact") {
     return (
       <>
         <Handle type="target" position={Position.Top} style={handleStyle} />
-        <div style={compactCard}>
-          <div
-            style={{
-              ...compactAvatar,
-              border: `2px solid ${color}`,
-              boxShadow: selected
-                ? `0 0 16px ${color}88, 0 0 6px ${color}66`
-                : `0 0 8px ${color}44`,
-              transform: selected ? "scale(1.05)" : undefined,
-              transition: "box-shadow 200ms ease, transform 200ms ease",
-            }}
-          >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: 4, cursor: "grab" }}>
+          <div style={{
+            ...avatarStyle,
+            opacity: status === "offline" ? 0.6 : 1,
+          }}>
             <span style={{ userSelect: "none" }}>{avatarEmoji}</span>
-            <span
-              style={{
-                ...compactDot,
-                background: dotColor,
-                boxShadow: status === "running" ? `0 0 4px ${dotColor}` : undefined,
-              }}
-            />
+            <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
           </div>
         </div>
         <Handle type="source" position={Position.Bottom} style={handleStyle} />
@@ -261,46 +266,39 @@ function AgentNodeInner({ data, selected }: NodeProps) {
     );
   }
 
-  // ── Full mode: current detailed rendering ───────────────────────────────
+  // ── Full LOD ────────────────────────────────────────────────────────────
   return (
     <>
       <Handle type="target" position={Position.Top} style={handleStyle} />
 
-      <div style={card}>
-        {/* Avatar */}
-        <div
-          style={{
-            ...avatarBase,
-            border: `2px solid ${color}`,
-            boxShadow: selected
-              ? `0 0 20px ${color}88, 0 0 8px ${color}66, inset 0 0 4px ${color}22`
-              : `0 0 12px ${color}44, 0 0 4px ${color}22`,
-            transform: selected ? "scale(1.05)" : undefined,
-            transition: "box-shadow 200ms ease, transform 200ms ease",
-          }}
-        >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 8,
+          padding: 12,
+          minWidth: 100,
+          cursor: "grab",
+        }}
+      >
+        {/* Avatar with LED diode border */}
+        <div style={{
+          ...avatarStyle,
+          opacity: status === "offline" ? 0.6 : 1,
+        }}>
           <span style={{ userSelect: "none" }}>{avatarEmoji}</span>
 
-          {/* Status dot */}
-          <span
-            style={{
-              ...dotBase,
-              background: dotColor,
-              boxShadow: status === "running" ? `0 0 6px ${dotColor}` : undefined,
-            }}
-          />
+          {/* LED chase overlay */}
+          <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
 
           {/* Task badge */}
           {taskCount > 0 && (
             <span
               style={{
                 ...badgeBase,
-                background: isPulsing
-                  ? "var(--color-accent-error)"
-                  : color,
-                animation: isPulsing
-                  ? "agentBadgePulse 1.2s ease-in-out infinite"
-                  : undefined,
+                background: isPulsing ? "var(--color-accent-error)" : color,
+                animation: isPulsing ? "agentBadgePulse 1.2s ease-in-out infinite" : undefined,
               }}
             >
               {taskCount}
@@ -320,9 +318,6 @@ function AgentNodeInner({ data, selected }: NodeProps) {
 
 /**
  * Custom comparator: only re-render when the data fields we display change.
- * React Flow passes `selected`, `dragging`, `positionAbsoluteX/Y` etc. as
- * top-level NodeProps — we ignore those to avoid re-renders when other nodes
- * move or selection changes.
  */
 function arePropsEqual(prev: NodeProps, next: NodeProps): boolean {
   if (prev.selected !== next.selected) return false;
