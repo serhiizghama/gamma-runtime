@@ -90,15 +90,20 @@ export class SessionsController {
     return { ok: true };
   }
 
-  /** Chat history — loads last N messages from Memory Bus for the given window. */
+  /** Chat history — loads last N messages from Memory Bus for the given window.
+   *  Supports cursor-based pagination: pass `before` (a timestamp in ms) to load
+   *  older messages. Omit `before` to load the most recent batch. */
   @Get(':windowId/history')
   async getHistory(
     @Param('windowId') windowId: string,
     @Query('limit') limitStr?: string,
+    @Query('before') beforeStr?: string,
   ): Promise<SessionHistoryResponse> {
-    const limit = Math.min(Math.max(parseInt(limitStr || '30', 10) || 30, 1), 100);
-    const messages = await this.sessions.getHistory(windowId, limit);
-    return { messages };
+    const limit = Math.min(Math.max(parseInt(limitStr || '10', 10) || 10, 1), 100);
+    const before = beforeStr ? parseInt(beforeStr, 10) || undefined : undefined;
+    const messages = await this.sessions.getHistory(windowId, limit, before);
+    const hasMore = messages.length === limit;
+    return { messages, hasMore };
   }
 
   // ── Standard session endpoints ────────────────────────────────────────

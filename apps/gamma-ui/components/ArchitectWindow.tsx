@@ -70,7 +70,7 @@ export function ArchitectWindow(): React.ReactElement | null {
   const focusArchitect = useGammaStore((s) => s.focusArchitect);
   const { reInit } = useArchitectSession();
 
-  const { messages, status, pendingToolLines, sendMessage } =
+  const { messages, status, pendingToolLines, sendMessage, hasMoreHistory, loadMoreHistory, loadingMore } =
     useAgentStream(ARCHITECT_WINDOW_ID, { onSessionMissing: reInit });
 
   const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -157,6 +157,9 @@ export function ArchitectWindow(): React.ReactElement | null {
         pendingToolLines={pendingToolLines}
         onSend={sendMessage}
         onClose={toggleArchitect}
+        hasMoreHistory={hasMoreHistory}
+        loadMoreHistory={loadMoreHistory}
+        loadingMore={loadingMore}
       />
     </div>
   );

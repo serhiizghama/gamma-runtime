@@ -139,6 +139,7 @@ export interface ChatHistoryMessage {
 }
 export interface SessionHistoryResponse {
     messages: ChatHistoryMessage[];
+    hasMore?: boolean;
 }
 export interface WindowStateSyncSnapshot {
     windowId: string;

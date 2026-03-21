@@ -22,6 +22,9 @@ interface AgentChatLiveProps extends AgentChatBaseProps {
   status: AgentStatus;
   pendingToolLines: string[];
   onSend: (text: string) => void;
+  hasMoreHistory?: boolean;
+  loadMoreHistory?: () => void;
+  loadingMore?: boolean;
 }
 
 /** Mock mode — self-contained with demo data */
@@ -90,6 +93,9 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
   const messages = isLive ? (props as AgentChatLiveProps).messages : mockMessages;
   const status = isLive ? (props as AgentChatLiveProps).status : mockStatus;
   const pendingToolLines = isLive ? (props as AgentChatLiveProps).pendingToolLines : [];
+  const hasMoreHistory = isLive ? (props as AgentChatLiveProps).hasMoreHistory : false;
+  const loadMoreHistory = isLive ? (props as AgentChatLiveProps).loadMoreHistory : undefined;
+  const loadingMore = isLive ? (props as AgentChatLiveProps).loadingMore : false;
 
   const handleSend = useCallback(
     (text: string) => {
@@ -124,6 +130,9 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
 
   const isEmbedded = variant === "embedded";
 
+  // Decorative SVG pattern — code glyphs, brackets, dots, puzzle pieces
+  const patternSvg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cdefs%3E%3Cstyle%3Etext%7Bfont-family:monospace;fill:rgba(255,255,255,0.025);font-size:13px%7D%3C/style%3E%3C/defs%3E%3Ctext x='10' y='20'%3E%7B%7D%3C/text%3E%3Ctext x='140' y='25'%3Eλ%3C/text%3E%3Ctext x='55' y='55'%3E()=%3E%3C/text%3E%3Ctext x='170' y='60'%3E⚡%3C/text%3E%3Ctext x='20' y='90'%3E//✦%3C/text%3E%3Ctext x='115' y='95'%3E%3C/%3E%3C/text%3E%3Ctext x='80' y='130'%3E⬡%3C/text%3E%3Ctext x='10' y='140'%3E%5B…%5D%3C/text%3E%3Ctext x='160' y='135'%3E✧%3C/text%3E%3Ctext x='40' y='175'%3E0x%3C/text%3E%3Ctext x='125' y='170'%3E⟨Γ⟩%3C/text%3E%3Ctext x='185' y='190'%3E§%3C/text%3E%3Ctext x='75' y='210'%3E※%3C/text%3E%3Ccircle cx='195' cy='18' r='2' fill='rgba(59,130,246,0.04)'/%3E%3Ccircle cx='100' cy='75' r='1.5' fill='rgba(139,92,246,0.04)'/%3E%3Ccircle cx='35' cy='115' r='2' fill='rgba(34,197,94,0.03)'/%3E%3Ccircle cx='180' cy='155' r='1.5' fill='rgba(59,130,246,0.04)'/%3E%3Crect x='150' y='95' width='8' height='8' rx='2' fill='none' stroke='rgba(255,255,255,0.02)' stroke-width='0.8'/%3E%3Crect x='5' y='55' width='6' height='6' rx='1' fill='none' stroke='rgba(255,255,255,0.018)' stroke-width='0.7'/%3E%3Cpath d='M200 40 L206 46 L200 52' fill='none' stroke='rgba(255,255,255,0.02)' stroke-width='0.8'/%3E%3Cpath d='M60 155 L54 161 L60 167' fill='none' stroke='rgba(255,255,255,0.02)' stroke-width='0.8'/%3E%3C/svg%3E")`;
+
   return (
     <div
       style={{
@@ -136,8 +145,23 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
         border: isEmbedded ? `1px solid rgba(255,255,255,0.07)` : "none",
         overflow: "hidden",
         minHeight: 0,
+        position: "relative",
       }}
     >
+      {/* Decorative background pattern */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: patternSvg,
+          backgroundRepeat: "repeat",
+          backgroundSize: "220px 220px",
+          pointerEvents: "none",
+          zIndex: 0,
+          opacity: 1,
+        }}
+      />
+      <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", height: "100%" }}>
       <ChatHeader title={title} status={status} accentColor={accentColor} onClose={onClose} />
       <div
         style={{
@@ -153,6 +177,9 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
           pendingToolLines={pendingToolLines}
           status={status}
           accentColor={accentColor}
+          hasMoreHistory={hasMoreHistory}
+          loadMoreHistory={loadMoreHistory}
+          loadingMore={loadingMore}
         />
       </div>
       <ChatInput
@@ -234,6 +261,7 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
           font-style: italic;
         }
       `}</style>
+      </div>
     </div>
   );
 }

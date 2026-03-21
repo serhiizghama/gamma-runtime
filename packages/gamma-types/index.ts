@@ -132,6 +132,7 @@ export interface ChatHistoryMessage {
 
 export interface SessionHistoryResponse {
   messages: ChatHistoryMessage[];
+  hasMore?: boolean;
 }
 
 // ── §3.7 Session Sync Snapshot ───────────────────────────────────────────

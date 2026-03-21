@@ -12,6 +12,9 @@ interface AgentStreamState {
   pendingToolLines: string[];
   sendMessage: (text: string) => void;
   historyLoaded: boolean;
+  hasMoreHistory: boolean;
+  loadMoreHistory: () => void;
+  loadingMore: boolean;
 }
 
 interface AgentStreamOptions {
@@ -50,7 +53,10 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
 
   // History loading state
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const historyTsSetRef = useRef<Set<number>>(new Set());
+  const oldestTsRef = useRef<number | null>(null);
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -77,46 +83,67 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
     answerIdRef.current   = null;
   }, []);
 
-  // ── History Loading ─────────────────────────────────────────────────
+  // ── History Loading (paginated) ──────────────────────────────────────
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchHistoryPage = useCallback(async (before?: number): Promise<ChatMessage[]> => {
+    const qs = before
+      ? `?limit=10&before=${before}`
+      : `?limit=10`;
+    const res = await fetch(
+      `${API_BASE}/api/sessions/${windowId}/history${qs}`,
+      { headers: systemAuthHeaders() },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { messages: ChatHistoryMessage[]; hasMore?: boolean };
+    setHasMoreHistory(!!data.hasMore);
 
-    async function loadHistory() {
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/sessions/${windowId}/history?limit=30`,
-          { headers: systemAuthHeaders() },
-        );
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { messages: ChatHistoryMessage[] };
-        if (cancelled || data.messages.length === 0) return;
+    const mapped: ChatMessage[] = data.messages.map((m) => {
+      historyTsSetRef.current.add(m.ts);
+      return {
+        id: m.id,
+        role: m.role,
+        kind: m.kind === "user" ? undefined : "answer",
+        text: m.text,
+        ts: m.ts,
+      } as ChatMessage;
+    });
 
-        // Build dedup set from history timestamps
-        const tsSet = new Set<number>();
-        const mapped: ChatMessage[] = data.messages.map((m) => {
-          tsSet.add(m.ts);
-          return {
-            id: m.id,
-            role: m.role,
-            kind: m.kind === "user" ? undefined : "answer",
-            text: m.text,
-            ts: m.ts,
-          } as ChatMessage;
-        });
-
-        historyTsSetRef.current = tsSet;
-        setMessages(mapped);
-      } catch {
-        // Best-effort — history load failure must never block chat
-      } finally {
-        if (!cancelled) setHistoryLoaded(true);
+    // Track oldest timestamp for pagination cursor
+    if (mapped.length > 0) {
+      const oldest = mapped[0].ts;
+      if (oldestTsRef.current === null || oldest < oldestTsRef.current) {
+        oldestTsRef.current = oldest;
       }
     }
 
-    void loadHistory();
-    return () => { cancelled = true; };
+    return mapped;
   }, [windowId]);
+
+  // Initial load — last 10 messages
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const msgs = await fetchHistoryPage();
+        if (!cancelled && msgs.length > 0) setMessages(msgs);
+      } catch { /* best-effort */ }
+      finally { if (!cancelled) setHistoryLoaded(true); }
+    })();
+    return () => { cancelled = true; };
+  }, [fetchHistoryPage]);
+
+  // Load more — called when user scrolls to top
+  const loadMoreHistory = useCallback(async () => {
+    if (loadingMore || !hasMoreHistory || oldestTsRef.current === null) return;
+    setLoadingMore(true);
+    try {
+      const older = await fetchHistoryPage(oldestTsRef.current);
+      if (older.length > 0) {
+        setMessages((prev) => [...older, ...prev]);
+      }
+    } catch { /* best-effort */ }
+    finally { setLoadingMore(false); }
+  }, [loadingMore, hasMoreHistory, fetchHistoryPage]);
 
   // ── SSE Connection ───────────────────────────────────────────────────
 
@@ -381,5 +408,5 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
     }
   }, [windowId, opts]);
 
-  return { messages, status, pendingToolLines, sendMessage, historyLoaded };
+  return { messages, status, pendingToolLines, sendMessage, historyLoaded, hasMoreHistory, loadMoreHistory, loadingMore };
 }

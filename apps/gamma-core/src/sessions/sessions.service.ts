@@ -449,13 +449,15 @@ export class SessionsService {
    * Scans XREVRANGE to get the most recent entries, filters by sessionKey,
    * and returns only user messages (kind='text') and assistant answers (kind='answer').
    */
-  async getHistory(windowId: string, limit = 30): Promise<ChatHistoryMessage[]> {
+  async getHistory(windowId: string, limit = 10, before?: number): Promise<ChatHistoryMessage[]> {
     const session = await this.findByWindowId(windowId);
     if (!session) return [];
 
     const targetKey = session.sessionKey;
     const messages: ChatHistoryMessage[] = [];
-    let cursor = '+';
+    // If `before` is given, start scanning from just before that timestamp.
+    // Redis stream IDs are `<ms>-<seq>`, so `<before-1>-99999` excludes the boundary.
+    let cursor = before ? `${before - 1}-99999` : '+';
     let iterations = 0;
     const BATCH_SIZE = 500;
     const MAX_ITERATIONS = 20;

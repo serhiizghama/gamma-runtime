@@ -35,6 +35,9 @@ interface MessageListProps {
   pendingToolLines: string[];
   accentColor: string;
   status: AgentStatus;
+  hasMoreHistory?: boolean;
+  loadMoreHistory?: () => void;
+  loadingMore?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -370,7 +373,7 @@ function TypingIndicator({ toolLines }: { toolLines?: string[] }): React.ReactEl
 
 // ── MessageList ──────────────────────────────────────────────────────────
 
-export function MessageList({ messages, pendingToolLines, status }: MessageListProps): React.ReactElement {
+export function MessageList({ messages, pendingToolLines, status, hasMoreHistory, loadMoreHistory, loadingMore }: MessageListProps): React.ReactElement {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -381,11 +384,17 @@ export function MessageList({ messages, pendingToolLines, status }: MessageListP
 
   // Detect manual scroll: if user scrolls up, stop auto-scroll.
   // If user scrolls back near the bottom (within 80px), re-enable it.
+  // Also trigger loadMoreHistory when scrolled near the top.
   const handleScroll = () => {
     const el = listRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     userScrolledUp.current = distanceFromBottom > 80;
+
+    // Load older messages when scrolled near the top (within 60px)
+    if (el.scrollTop < 60 && hasMoreHistory && loadMoreHistory && !loadingMore) {
+      loadMoreHistory();
+    }
   };
 
   useEffect(() => {
@@ -427,6 +436,17 @@ export function MessageList({ messages, pendingToolLines, status }: MessageListP
       className="agent-chat-message-list"
       style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "16px 14px 8px", display: "flex", flexDirection: "column" }}
     >
+      {/* Loading indicator for older messages */}
+      {loadingMore && (
+        <div style={{ textAlign: "center", padding: "8px 0", fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
+          Loading older messages…
+        </div>
+      )}
+      {hasMoreHistory && !loadingMore && (
+        <div style={{ textAlign: "center", padding: "6px 0", fontSize: 10, color: "rgba(255,255,255,0.15)" }}>
+          ↑ scroll up for more
+        </div>
+      )}
       {messages.map((msg) => (
         <MessageBubble key={msg.id} msg={msg} />
       ))}
