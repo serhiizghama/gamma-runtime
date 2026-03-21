@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { AgentStatus, GammaSSEEvent } from "@gamma/types";
+import type { AgentStatus, GammaSSEEvent, ChatHistoryMessage } from "@gamma/types";
 import type { ChatMessage, ToolCallEntry } from "../components/MessageList";
 import { API_BASE } from "../constants/api";
 import { fetchSseTicket, systemAuthHeaders } from "../lib/auth";
@@ -11,6 +11,7 @@ interface AgentStreamState {
   status: AgentStatus;
   pendingToolLines: string[];
   sendMessage: (text: string) => void;
+  historyLoaded: boolean;
 }
 
 interface AgentStreamOptions {
@@ -47,6 +48,10 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
   // Auto-recovery timer ref for transient errors
   const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // History loading state
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const historyTsSetRef = useRef<Set<number>>(new Set());
+
   // ── Helpers ──────────────────────────────────────────────────────────
 
   /** Patch a specific message in the array by id */
@@ -71,6 +76,47 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
     toolIdRef.current     = null;
     answerIdRef.current   = null;
   }, []);
+
+  // ── History Loading ─────────────────────────────────────────────────
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHistory() {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/sessions/${windowId}/history?limit=30`,
+          { headers: systemAuthHeaders() },
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { messages: ChatHistoryMessage[] };
+        if (cancelled || data.messages.length === 0) return;
+
+        // Build dedup set from history timestamps
+        const tsSet = new Set<number>();
+        const mapped: ChatMessage[] = data.messages.map((m) => {
+          tsSet.add(m.ts);
+          return {
+            id: m.id,
+            role: m.role,
+            kind: m.kind === "user" ? undefined : "answer",
+            text: m.text,
+            ts: m.ts,
+          } as ChatMessage;
+        });
+
+        historyTsSetRef.current = tsSet;
+        setMessages(mapped);
+      } catch {
+        // Best-effort — history load failure must never block chat
+      } finally {
+        if (!cancelled) setHistoryLoaded(true);
+      }
+    }
+
+    void loadHistory();
+    return () => { cancelled = true; };
+  }, [windowId]);
 
   // ── SSE Connection ───────────────────────────────────────────────────
 
@@ -257,12 +303,16 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
         // ── User message echo ────────────────────────────────────────
 
         case "user_message": {
-          setMessages((prev) => [...prev, {
-            id: `u-${event.ts}`,
-            role: "user",
-            text: event.text,
-            ts: event.ts,
-          }]);
+          setMessages((prev) => {
+            // Deduplicate: skip if this timestamp was already loaded from history
+            if (historyTsSetRef.current.has(event.ts)) return prev;
+            return [...prev, {
+              id: `u-${event.ts}`,
+              role: "user",
+              text: event.text,
+              ts: event.ts,
+            }];
+          });
           break;
         }
 
@@ -331,5 +381,5 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
     }
   }, [windowId, opts]);
 
-  return { messages, status, pendingToolLines, sendMessage };
+  return { messages, status, pendingToolLines, sendMessage, historyLoaded };
 }

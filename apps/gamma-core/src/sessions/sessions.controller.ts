@@ -4,6 +4,7 @@ import {
   Post,
   Delete,
   Param,
+  Query,
   Body,
   HttpCode,
   HttpStatus,
@@ -18,6 +19,7 @@ import type {
   WindowSession,
   WindowStateSyncSnapshot,
   SessionRecord,
+  SessionHistoryResponse,
 } from '@gamma/types';
 import { CreateSessionBody } from '../dto/create-session.dto';
 import { SendMessageBody } from '../dto/send-message.dto';
@@ -86,6 +88,17 @@ export class SessionsController {
       throw new NotFoundException(`No session found for sessionKey ${sessionKey}`);
     }
     return { ok: true };
+  }
+
+  /** Chat history — loads last N messages from Memory Bus for the given window. */
+  @Get(':windowId/history')
+  async getHistory(
+    @Param('windowId') windowId: string,
+    @Query('limit') limitStr?: string,
+  ): Promise<SessionHistoryResponse> {
+    const limit = Math.min(Math.max(parseInt(limitStr || '30', 10) || 30, 1), 100);
+    const messages = await this.sessions.getHistory(windowId, limit);
+    return { messages };
   }
 
   // ── Standard session endpoints ────────────────────────────────────────

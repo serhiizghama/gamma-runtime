@@ -9,6 +9,7 @@ import { ToolWatchdogService } from '../gateway/tool-watchdog.service';
 import { ActivityStreamService } from '../activity/activity-stream.service';
 import type {
   AgentStatus,
+  ChatHistoryMessage,
   MemoryBusEntry,
   WindowSession,
   CreateSessionDto,
@@ -44,7 +45,7 @@ function parseAppIdFromKey(sessionKey: string): string | null {
 }
 
 // Shared Redis stream helpers
-import { flattenEntry, pascal } from '../redis/redis-stream.util';
+import { flattenEntry, parseStreamFields, pascal } from '../redis/redis-stream.util';
 
 export interface SendMessageResult {
   ok: boolean;
@@ -441,6 +442,77 @@ export class SessionsService {
       lastEventAt: raw.lastEventAt ? Number(raw.lastEventAt) : null,
       lastEventId: raw.lastEventId || null,
     };
+  }
+
+  /**
+   * Load chat history for a window from the Memory Bus.
+   * Scans XREVRANGE to get the most recent entries, filters by sessionKey,
+   * and returns only user messages (kind='text') and assistant answers (kind='answer').
+   */
+  async getHistory(windowId: string, limit = 30): Promise<ChatHistoryMessage[]> {
+    const session = await this.findByWindowId(windowId);
+    if (!session) return [];
+
+    const targetKey = session.sessionKey;
+    const messages: ChatHistoryMessage[] = [];
+    let cursor = '+';
+    let iterations = 0;
+    const BATCH_SIZE = 500;
+    const MAX_ITERATIONS = 20;
+
+    // XREVRANGE scans from newest to oldest
+    while (messages.length < limit && iterations < MAX_ITERATIONS) {
+      iterations++;
+
+      const batch = (await this.redis.xrevrange(
+        REDIS_KEYS.MEMORY_BUS,
+        cursor,
+        '-',
+        'COUNT',
+        BATCH_SIZE,
+      )) as [string, string[]][];
+
+      if (!batch || batch.length === 0) break;
+
+      for (const [, fields] of batch) {
+        const parsed = parseStreamFields(fields) as unknown as MemoryBusEntry;
+
+        if (parsed.sessionKey !== targetKey) continue;
+
+        // Only include user messages and assistant answers
+        if (parsed.kind === 'text') {
+          messages.push({
+            id: `h-${parsed.ts}-${messages.length}`,
+            role: 'user',
+            kind: 'user',
+            text: parsed.content,
+            ts: parsed.ts,
+            fromHistory: true,
+          });
+        } else if (parsed.kind === 'answer') {
+          messages.push({
+            id: `h-${parsed.ts}-${messages.length}`,
+            role: 'assistant',
+            kind: 'answer',
+            text: parsed.content,
+            ts: parsed.ts,
+            fromHistory: true,
+          });
+        }
+
+        if (messages.length >= limit) break;
+      }
+
+      // Decrement the last stream ID to avoid re-reading
+      const lastId = batch[batch.length - 1][0];
+      const [ms, seq] = lastId.split('-').map(Number);
+      cursor = seq > 0 ? `${ms}-${seq - 1}` : `${ms - 1}-99999`;
+
+      if (batch.length < BATCH_SIZE) break;
+    }
+
+    // Reverse to get oldest-first order
+    return messages.reverse();
   }
 
   // ── v1.6: Send user message to agent ──────────────────────────────────

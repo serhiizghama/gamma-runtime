@@ -110,11 +110,28 @@ export interface MemoryBusEntry {
   id: string;
   sessionKey: string;
   windowId: string;
-  kind: 'thought' | 'tool_call' | 'tool_result' | 'text';
+  kind: 'thought' | 'tool_call' | 'tool_result' | 'text' | 'answer';
   content: string;
   ts: number;
   stepId: string;
   parentId?: string;
+}
+
+// ── §3.6b Chat History ──────────────────────────────────────────────
+
+/** A single message returned by the chat history endpoint. */
+export interface ChatHistoryMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  kind: 'answer' | 'user';
+  text: string;
+  ts: number;
+  /** Marks this message as loaded from history (not from live SSE). */
+  fromHistory: true;
+}
+
+export interface SessionHistoryResponse {
+  messages: ChatHistoryMessage[];
 }
 
 // ── §3.7 Session Sync Snapshot ───────────────────────────────────────────

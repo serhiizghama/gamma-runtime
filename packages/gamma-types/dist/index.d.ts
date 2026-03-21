@@ -121,11 +121,24 @@ export interface MemoryBusEntry {
     id: string;
     sessionKey: string;
     windowId: string;
-    kind: 'thought' | 'tool_call' | 'tool_result' | 'text';
+    kind: 'thought' | 'tool_call' | 'tool_result' | 'text' | 'answer';
     content: string;
     ts: number;
     stepId: string;
     parentId?: string;
+}
+/** A single message returned by the chat history endpoint. */
+export interface ChatHistoryMessage {
+    id: string;
+    role: 'user' | 'assistant';
+    kind: 'answer' | 'user';
+    text: string;
+    ts: number;
+    /** Marks this message as loaded from history (not from live SSE). */
+    fromHistory: true;
+}
+export interface SessionHistoryResponse {
+    messages: ChatHistoryMessage[];
 }
 export interface WindowStateSyncSnapshot {
     windowId: string;
@@ -456,6 +469,8 @@ export interface OSStore {
     uiSettings: UISettings;
     /** System Architect panel visibility */
     architectOpen: boolean;
+    architectZIndex: number;
+    focusArchitect: () => void;
     /** Generated app registry (from API + component_ready/removed SSE) */
     appRegistry: Record<string, AppRegistryEntry>;
     setAppRegistry: (registry: Record<string, AppRegistryEntry>) => void;

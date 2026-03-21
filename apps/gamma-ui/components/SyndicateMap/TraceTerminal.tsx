@@ -23,6 +23,7 @@ const KIND_COLORS: Record<MemoryBusEntry["kind"], string> = {
   tool_call: "#ffd787",
   tool_result: "#87d7ff",
   text: "#5fff87",
+  answer: "#87afff",
 };
 
 const KIND_LABELS: Record<MemoryBusEntry["kind"], string> = {
@@ -30,6 +31,7 @@ const KIND_LABELS: Record<MemoryBusEntry["kind"], string> = {
   tool_call: "TOOL",
   tool_result: "RESULT",
   text: "TEXT",
+  answer: "ANSWER",
 };
 
 const MONO_FONT = "'SF Mono', 'Fira Code', 'Cascadia Code', monospace";
