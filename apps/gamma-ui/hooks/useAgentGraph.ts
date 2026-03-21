@@ -40,6 +40,7 @@ function agentToNodeData(a: SyndicateAgent): AgentNodeData {
     uiColor: a.uiColor,
     status: a.liveStatus,
     inProgressTaskCount: a.inProgressTaskCount,
+    teamName: a.teamName ?? null,
   };
 }
 

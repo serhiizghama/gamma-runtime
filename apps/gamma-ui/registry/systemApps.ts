@@ -86,6 +86,22 @@ const _registry = new Map<string, LazyApp>([
       })),
     ),
   ],
+  [
+    "kanban",
+    lazy(() =>
+      import("../components/KanbanBoard").then((m) => ({
+        default: m.KanbanBoard,
+      })),
+    ),
+  ],
+  [
+    "ceo-dashboard",
+    lazy(() =>
+      import("../components/CeoDashboard").then((m) => ({
+        default: m.CeoDashboard,
+      })),
+    ),
+  ],
 ]);
 
 /** Returns the lazy-loaded component for a built-in system app, or undefined. */

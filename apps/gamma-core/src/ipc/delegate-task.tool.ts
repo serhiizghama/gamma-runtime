@@ -25,13 +25,29 @@ export class DelegateTaskTool implements IToolExecutor {
       parameters: {
         targetAgentId: {
           type: 'string',
-          description: 'Agent ID of the target agent to delegate the task to.',
-          required: true,
+          description: 'Agent ID of the target agent to delegate the task to. Optional if teamId is provided.',
+        },
+        teamId: {
+          type: 'string',
+          description: 'Team ID to assign task to team backlog. Use instead of targetAgentId for team-based delegation.',
+        },
+        projectId: {
+          type: 'string',
+          description: 'Parent project ID to link the task to.',
+        },
+        title: {
+          type: 'string',
+          description: 'Short human-readable task title.',
         },
         taskDescription: {
           type: 'string',
           description: 'Description of the task to delegate.',
           required: true,
+        },
+        kind: {
+          type: 'string',
+          description: 'Task kind for role-based matching.',
+          enum: ['generic', 'design', 'backend', 'frontend', 'qa', 'devops', 'content', 'research'],
         },
         priority: {
           type: 'number',
@@ -52,13 +68,21 @@ export class DelegateTaskTool implements IToolExecutor {
     args: Record<string, unknown>,
     context: ToolExecutionContext,
   ): Promise<ToolResult> {
-    const targetAgentId = args.targetAgentId as string;
+    const targetAgentId = args.targetAgentId as string | undefined;
+    const teamId = args.teamId as string | undefined;
+    const projectId = args.projectId as string | undefined;
+    const title = args.title as string | undefined;
     const taskDescription = args.taskDescription as string;
+    const kind = args.kind as string | undefined;
     const priority = args.priority as number | undefined;
 
     const result = await this.ipcRouting.delegateTask(context.agentId, {
       targetAgentId,
+      teamId,
+      projectId,
+      title,
       taskDescription,
+      kind,
       priority,
     });
 
@@ -76,7 +100,8 @@ export class DelegateTaskTool implements IToolExecutor {
       toolName: this.toolName,
       data: {
         taskId: result.taskId,
-        targetAgentId,
+        targetAgentId: targetAgentId ?? null,
+        teamId: teamId ?? null,
         delegatedBy: context.agentId,
       },
       durationMs: 0,

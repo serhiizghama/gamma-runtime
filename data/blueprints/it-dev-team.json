@@ -1,0 +1,11 @@
+{
+  "id": "it-dev-team",
+  "name": "IT Development Team",
+  "description": "Full-stack development team for building software applications",
+  "members": [
+    { "roleId": "dev/system-architect", "name": "Lead Architect", "count": 1 },
+    { "roleId": "dev/frontend-developer", "name": "Frontend Dev", "count": 1 },
+    { "roleId": "dev/backend-developer", "name": "Backend Dev", "count": 1 },
+    { "roleId": "dev/qa-engineer", "name": "QA Engineer", "count": 1 }
+  ]
+}

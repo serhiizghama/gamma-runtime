@@ -1,7 +1,7 @@
 {
   "name": "@gamma/core",
   "version": "1.4.0",
-  "description": "Gamma Agent Runtime \u2014 Backend Integration Server",
+  "description": "Gamma Agent Runtime — Backend Integration Server",
   "private": true,
   "scripts": {
     "build": "rm -f tsconfig.build.tsbuildinfo && nest build",
@@ -17,10 +17,12 @@
   "dependencies": {
     "@fastify/cors": "^9.0.1",
     "@fastify/static": "^6.12.0",
+    "@gamma/openclaw-knowledge": "workspace:*",
     "@gamma/types": "workspace:*",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.4.15",
+    "@nestjs/event-emitter": "^3.0.1",
     "@nestjs/platform-fastify": "^10.4.15",
     "@nestjs/schedule": "^6.1.1",
     "@noble/ed25519": "^3.0.0",
@@ -36,8 +38,7 @@
     "rxjs": "^7.8.1",
     "simple-git": "^3.32.3",
     "ulid": "^3.0.2",
-    "ws": "^8.19.0",
-    "@gamma/openclaw-knowledge": "workspace:*"
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",

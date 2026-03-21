@@ -13,4 +13,6 @@ export const INSTALLED_APPS: AppDefinition[] = [
   { id: "sentinel", name: "Sentinel", icon: "🛡️" },
   { id: "director", name: "Director", icon: "🎬" },
   { id: "syndicate-map", name: "Syndicate Map", icon: "🗺️" },
+  { id: "kanban", name: "Kanban Board", icon: "📋" },
+  { id: "ceo-dashboard", name: "CEO Dashboard", icon: "🏢" },
 ];

@@ -23,6 +23,7 @@ export interface AgentStateRecord {
   uiColor: string;
   status: AgentStatus;
   workspacePath: string;
+  teamId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -36,6 +37,7 @@ interface AgentRow {
   ui_color: string;
   status: AgentStatus;
   workspace_path: string;
+  team_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -47,7 +49,7 @@ interface AgentRow {
 @Injectable()
 export class AgentStateRepository implements OnModuleDestroy {
   private readonly logger = new Logger(AgentStateRepository.name);
-  private readonly db: DatabaseType;
+  public readonly db: DatabaseType;
 
   // Prepared statements (lazy-init for testability)
   private _stmtUpsert!: Statement;
@@ -55,6 +57,7 @@ export class AgentStateRepository implements OnModuleDestroy {
   private _stmtFindAllActive!: Statement;
   private _stmtFindAll!: Statement;
   private _stmtUpdateStatus!: Statement;
+  private _stmtFindByTeam!: Statement;
 
   constructor() {
     this.db = getStateDb();
@@ -71,8 +74,8 @@ export class AgentStateRepository implements OnModuleDestroy {
 
   private prepareStatements(): void {
     this._stmtUpsert = this.db.prepare(`
-      INSERT INTO agents (id, name, role_id, avatar_emoji, ui_color, status, workspace_path, created_at, updated_at)
-      VALUES (@id, @name, @role_id, @avatar_emoji, @ui_color, @status, @workspace_path, @created_at, @updated_at)
+      INSERT INTO agents (id, name, role_id, avatar_emoji, ui_color, status, workspace_path, team_id, created_at, updated_at)
+      VALUES (@id, @name, @role_id, @avatar_emoji, @ui_color, @status, @workspace_path, @team_id, @created_at, @updated_at)
       ON CONFLICT(id) DO UPDATE SET
         name           = excluded.name,
         role_id        = excluded.role_id,
@@ -80,6 +83,7 @@ export class AgentStateRepository implements OnModuleDestroy {
         ui_color       = excluded.ui_color,
         status         = excluded.status,
         workspace_path = excluded.workspace_path,
+        team_id        = excluded.team_id,
         updated_at     = excluded.updated_at
     `);
 
@@ -98,6 +102,10 @@ export class AgentStateRepository implements OnModuleDestroy {
     this._stmtUpdateStatus = this.db.prepare(`
       UPDATE agents SET status = ?, updated_at = ? WHERE id = ?
     `);
+
+    this._stmtFindByTeam = this.db.prepare(`
+      SELECT * FROM agents WHERE team_id = ? ORDER BY created_at ASC
+    `);
   }
 
   // ── Public API ───────────────────────────────────────────────────────
@@ -112,6 +120,7 @@ export class AgentStateRepository implements OnModuleDestroy {
       ui_color: record.uiColor,
       status: record.status,
       workspace_path: record.workspacePath,
+      team_id: record.teamId,
       created_at: record.createdAt,
       updated_at: record.updatedAt,
     });
@@ -145,6 +154,12 @@ export class AgentStateRepository implements OnModuleDestroy {
     return rows.map((r) => this.toRecord(r));
   }
 
+  /** Return all agents belonging to a team. */
+  findByTeam(teamId: string): AgentStateRecord[] {
+    const rows = this._stmtFindByTeam.all(teamId) as AgentRow[];
+    return rows.map((r) => this.toRecord(r));
+  }
+
   // ── Row mapping ──────────────────────────────────────────────────────
 
   private toRecord(row: AgentRow): AgentStateRecord {
@@ -156,6 +171,7 @@ export class AgentStateRepository implements OnModuleDestroy {
       uiColor: row.ui_color,
       status: row.status,
       workspacePath: row.workspace_path,
+      teamId: row.team_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

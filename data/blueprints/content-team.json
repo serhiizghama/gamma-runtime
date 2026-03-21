@@ -1,0 +1,10 @@
+{
+  "id": "content-team",
+  "name": "Content Creation Team",
+  "description": "Creative team for content production and marketing",
+  "members": [
+    { "roleId": "content/writer", "name": "Content Writer", "count": 1 },
+    { "roleId": "content/editor", "name": "Editor", "count": 1 },
+    { "roleId": "creative/designer", "name": "Graphic Designer", "count": 1 }
+  ]
+}

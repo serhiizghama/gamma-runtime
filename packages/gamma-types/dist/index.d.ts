@@ -337,7 +337,7 @@ export interface AgentMessage {
     replyTo?: string;
     ttl?: number;
 }
-export type ActivityEventKind = 'agent_registered' | 'agent_deregistered' | 'agent_status_change' | 'message_sent' | 'message_completed' | 'context_injected' | 'tool_call_start' | 'tool_call_end' | 'lifecycle_start' | 'lifecycle_end' | 'lifecycle_error' | 'hierarchy_change' | 'system_event' | 'emergency_stop' | 'ipc_message_sent' | 'ipc_task_completed' | 'ipc_task_failed';
+export type ActivityEventKind = 'agent_registered' | 'agent_deregistered' | 'agent_status_change' | 'message_sent' | 'message_completed' | 'context_injected' | 'tool_call_start' | 'tool_call_end' | 'lifecycle_start' | 'lifecycle_end' | 'lifecycle_error' | 'hierarchy_change' | 'system_event' | 'emergency_stop' | 'ipc_message_sent' | 'ipc_task_completed' | 'ipc_task_failed' | 'team_created' | 'team_spawned' | 'project_created' | 'project_status_change' | 'task_claimed' | 'task_status_change';
 export interface ActivityEvent {
     id: string;
     ts: number;
@@ -351,6 +351,41 @@ export interface ActivityEvent {
     runId?: string;
     payload?: string;
     severity: 'info' | 'warn' | 'error';
+}
+export type TaskKind = 'generic' | 'design' | 'backend' | 'frontend' | 'qa' | 'devops' | 'content' | 'research';
+export type TaskStatus = 'backlog' | 'pending' | 'in_progress' | 'review' | 'done' | 'failed';
+export interface TeamRecord {
+    id: string;
+    name: string;
+    description: string;
+    blueprint: string | null;
+    created_at: number;
+    updated_at: number;
+}
+export interface ProjectRecord {
+    id: string;
+    name: string;
+    description: string;
+    type: 'epic' | 'continuous';
+    status: 'planning' | 'active' | 'paused' | 'completed' | 'cancelled';
+    team_id: string | null;
+    created_at: number;
+    updated_at: number;
+}
+export interface TaskRecord {
+    id: string;
+    title: string;
+    source_agent_id: string;
+    target_agent_id: string | null;
+    team_id: string | null;
+    project_id: string | null;
+    kind: TaskKind;
+    priority: number;
+    status: TaskStatus;
+    payload: string;
+    result: string | null;
+    created_at: number;
+    updated_at: number;
 }
 export declare const REDIS_KEYS: {
     readonly SESSIONS: "gamma:sessions";
@@ -494,5 +529,16 @@ export interface OSStore {
     dismissToast: (id: string) => void;
     updateUISettings: (patch: Partial<UISettings>) => void;
     resetAll: () => void;
+    /** Kanban board filter state */
+    kanbanFilters: {
+        teamId: string | null;
+        projectId: string | null;
+        kind: string | null;
+    };
+    setKanbanFilters: (filters: Partial<{
+        teamId: string | null;
+        projectId: string | null;
+        kind: string | null;
+    }>) => void;
 }
 //# sourceMappingURL=index.d.ts.map

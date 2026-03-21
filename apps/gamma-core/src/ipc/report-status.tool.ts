@@ -16,7 +16,7 @@ export class ReportStatusTool implements IToolExecutor {
     name: 'report_status',
     description:
       'Report the status of a delegated task back to the supervisor. ' +
-      'Use this when you have completed or failed a task that was delegated to you. ' +
+      'Use this when you have finished or failed a task that was delegated to you. ' +
       'The supervisor will be notified and woken up if idle.',
     type: 'internal',
     category: 'agent',
@@ -31,7 +31,7 @@ export class ReportStatusTool implements IToolExecutor {
         status: {
           type: 'string',
           description: 'Task outcome status.',
-          enum: ['completed', 'failed'],
+          enum: ['done', 'failed'],
           required: true,
         },
         message: {
@@ -58,7 +58,7 @@ export class ReportStatusTool implements IToolExecutor {
     context: ToolExecutionContext,
   ): Promise<ToolResult> {
     const taskId = args.taskId as string;
-    const status = args.status as 'completed' | 'failed';
+    const status = args.status as 'done' | 'failed';
     const message = args.message as string;
     const data = args.data as unknown;
 

@@ -59,6 +59,7 @@ export interface CreateAgentOptions {
   roleId: string;
   name: string;
   customDirectives?: string;
+  teamId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +132,7 @@ export class AgentFactoryService {
   // ── Agent Creation ─────────────────────────────────────────────────
 
   async createAgent(opts: CreateAgentOptions): Promise<AgentInstanceDto> {
-    const { roleId, name, customDirectives } = opts;
+    const { roleId, name, customDirectives, teamId } = opts;
 
     // 1. Validate role exists in manifest
     const role = this.findRole(roleId);
@@ -170,6 +171,7 @@ export class AgentFactoryService {
       uiColor: role.color,
       status: 'configuring',
       workspacePath,
+      teamId: teamId ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -276,4 +278,16 @@ export class AgentFactoryService {
     return this.agentStateRepo.findById(id);
   }
 
+  /** Update an agent's team assignment. Pass null to unassign. */
+  updateTeamId(agentId: string, teamId: string | null): void {
+    const record = this.agentStateRepo.findById(agentId);
+    if (!record) {
+      throw new NotFoundException(`Agent not found: ${agentId}`);
+    }
+    this.agentStateRepo.upsert({
+      ...record,
+      teamId,
+      updatedAt: Date.now(),
+    });
+  }
 }

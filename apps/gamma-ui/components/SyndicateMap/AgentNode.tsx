@@ -22,6 +22,7 @@ export interface AgentNodeData extends Record<string, unknown> {
   uiColor: string;
   status: "running" | "idle" | "offline" | "error" | "aborted";
   inProgressTaskCount: number;
+  teamName: string | null;
 }
 
 // ── Status color mapping ──────────────────────────────────────────────────
@@ -188,6 +189,7 @@ function AgentNodeInner({ data, selected }: NodeProps) {
     uiColor,
     status,
     inProgressTaskCount,
+    teamName,
   } = data as unknown as AgentNodeData;
 
   useEffect(() => { injectStyles(); }, []);
@@ -309,6 +311,27 @@ function AgentNodeInner({ data, selected }: NodeProps) {
         {/* Labels */}
         <span style={nameStyle}>{name}</span>
         <span style={roleStyle}>{roleId}</span>
+        {teamName && (
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 600,
+              fontFamily: "var(--font-system)",
+              color: "var(--color-accent-primary)",
+              background: "rgba(59, 130, 246, 0.12)",
+              padding: "1px 6px",
+              borderRadius: 8,
+              textAlign: "center",
+              maxWidth: 120,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              marginTop: -4,
+            }}
+          >
+            {teamName}
+          </span>
+        )}
       </div>
 
       <Handle type="source" position={Position.Bottom} style={handleStyle} />
@@ -329,7 +352,8 @@ function arePropsEqual(prev: NodeProps, next: NodeProps): boolean {
     p.avatarEmoji === n.avatarEmoji &&
     p.uiColor === n.uiColor &&
     p.status === n.status &&
-    p.inProgressTaskCount === n.inProgressTaskCount
+    p.inProgressTaskCount === n.inProgressTaskCount &&
+    p.teamName === n.teamName
   );
 }
 

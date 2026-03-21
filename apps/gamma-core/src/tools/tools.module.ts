@@ -6,9 +6,12 @@ import { SpawnSubAgentTool } from './internal/spawn-sub-agent.tool';
 import { SendMessageTool } from './internal/send-message.tool';
 import { MessagingModule } from '../messaging/messaging.module';
 import { ActivityModule } from '../activity/activity.module';
+import { StateModule } from '../state/state.module';
 import { IpcModule } from '../ipc/ipc.module';
 import { DelegateTaskTool } from '../ipc/delegate-task.tool';
 import { ReportStatusTool } from '../ipc/report-status.tool';
+import { CreateTeamTaskTool } from './create-team-task.tool';
+import { UpdateTaskStatusTool } from './update-task-status.tool';
 
 // SessionsModule removed from imports to break circular:
 // GatewayModule → ToolsModule → SessionsModule → GatewayModule.
@@ -17,6 +20,7 @@ import { ReportStatusTool } from '../ipc/report-status.tool';
   imports: [
     MessagingModule,
     ActivityModule,
+    StateModule,
     IpcModule,
   ],
   providers: [
@@ -25,6 +29,8 @@ import { ReportStatusTool } from '../ipc/report-status.tool';
     SpawnSubAgentTool,
     SendMessageTool,
     ReportStatusTool,
+    CreateTeamTaskTool,
+    UpdateTaskStatusTool,
     {
       provide: TOOL_EXECUTORS,
       useFactory: (
@@ -32,8 +38,17 @@ import { ReportStatusTool } from '../ipc/report-status.tool';
         sendMessage: SendMessageTool,
         delegateTask: DelegateTaskTool,
         reportStatus: ReportStatusTool,
-      ) => [spawnSubAgent, sendMessage, delegateTask, reportStatus],
-      inject: [SpawnSubAgentTool, SendMessageTool, DelegateTaskTool, ReportStatusTool],
+        createTeamTask: CreateTeamTaskTool,
+        updateTaskStatus: UpdateTaskStatusTool,
+      ) => [spawnSubAgent, sendMessage, delegateTask, reportStatus, createTeamTask, updateTaskStatus],
+      inject: [
+        SpawnSubAgentTool,
+        SendMessageTool,
+        DelegateTaskTool,
+        ReportStatusTool,
+        CreateTeamTaskTool,
+        UpdateTaskStatusTool,
+      ],
     },
   ],
   exports: [ToolRegistryService, ToolExecutorService],

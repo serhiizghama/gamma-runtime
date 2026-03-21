@@ -373,7 +373,13 @@ export type ActivityEventKind =
   | 'emergency_stop'
   | 'ipc_message_sent'
   | 'ipc_task_completed'
-  | 'ipc_task_failed';
+  | 'ipc_task_failed'
+  | 'team_created'
+  | 'team_spawned'
+  | 'project_created'
+  | 'project_status_change'
+  | 'task_claimed'
+  | 'task_status_change';
 
 export interface ActivityEvent {
   id: string;
@@ -388,6 +394,48 @@ export interface ActivityEvent {
   runId?: string;
   payload?: string;
   severity: 'info' | 'warn' | 'error';
+}
+
+// ── §20 Corporation — Teams, Projects, Tasks (Phase 8) ──────────────────
+
+export type TaskKind = 'generic' | 'design' | 'backend' | 'frontend' | 'qa' | 'devops' | 'content' | 'research';
+
+export type TaskStatus = 'backlog' | 'pending' | 'in_progress' | 'review' | 'done' | 'failed';
+
+export interface TeamRecord {
+  id: string;
+  name: string;
+  description: string;
+  blueprint: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ProjectRecord {
+  id: string;
+  name: string;
+  description: string;
+  type: 'epic' | 'continuous';
+  status: 'planning' | 'active' | 'paused' | 'completed' | 'cancelled';
+  team_id: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface TaskRecord {
+  id: string;
+  title: string;
+  source_agent_id: string;
+  target_agent_id: string | null;
+  team_id: string | null;
+  project_id: string | null;
+  kind: TaskKind;
+  priority: number;
+  status: TaskStatus;
+  payload: string;
+  result: string | null;
+  created_at: number;
+  updated_at: number;
 }
 
 // ── Redis Key Constants ──────────────────────────────────────────────────
@@ -559,4 +607,12 @@ export interface OSStore {
 
   updateUISettings: (patch: Partial<UISettings>) => void;
   resetAll: () => void;
+
+  /** Kanban board filter state */
+  kanbanFilters: {
+    teamId: string | null;
+    projectId: string | null;
+    kind: string | null;
+  };
+  setKanbanFilters: (filters: Partial<{ teamId: string | null; projectId: string | null; kind: string | null }>) => void;
 }

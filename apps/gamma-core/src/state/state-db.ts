@@ -17,7 +17,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 // ---------------------------------------------------------------------------
 
 const DB_FILENAME = 'gamma-state.db';
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 /** Resolve DB path: env override → <repoRoot>/data/gamma-state.db */
 function resolveDbPath(): string {
@@ -108,6 +108,7 @@ function applyMigrations(db: DatabaseType): void {
   const migrate = db.transaction(() => {
     if (currentVersion < 1) migrateToV1(db);
     if (currentVersion < 2) migrateToV2(db);
+    if (currentVersion < 3) migrateToV3(db);
     setSchemaVersion(db, CURRENT_SCHEMA_VERSION);
   });
 
@@ -166,4 +167,83 @@ function migrateToV2(db: DatabaseType): void {
   for (const sql of statements) {
     db.exec(sql);
   }
+}
+
+/** V3: Teams, Projects, expanded Tasks schema for Corporation feature. */
+function migrateToV3(db: DatabaseType): void {
+  db.pragma('foreign_keys = OFF');
+
+  db.exec(`
+    CREATE TABLE teams (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      blueprint TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_teams_name ON teams(name);
+
+    CREATE TABLE projects (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      type TEXT NOT NULL CHECK(type IN ('epic', 'continuous')),
+      status TEXT NOT NULL DEFAULT 'planning'
+        CHECK(status IN ('planning', 'active', 'paused', 'completed', 'cancelled')),
+      team_id TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id)
+    );
+    CREATE INDEX idx_projects_status ON projects(status);
+    CREATE INDEX idx_projects_team ON projects(team_id);
+  `);
+
+  db.exec(`
+    ALTER TABLE agents ADD COLUMN team_id TEXT REFERENCES teams(id);
+    CREATE INDEX idx_agents_team ON agents(team_id);
+  `);
+
+  db.exec(`
+    ALTER TABLE tasks RENAME TO _tasks_v2;
+
+    CREATE TABLE tasks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      source_agent_id TEXT NOT NULL,
+      target_agent_id TEXT,
+      team_id TEXT,
+      project_id TEXT,
+      kind TEXT NOT NULL DEFAULT 'generic'
+        CHECK(kind IN ('generic','design','backend','frontend','qa','devops','content','research')),
+      priority INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'backlog'
+        CHECK(status IN ('backlog','pending','in_progress','review','done','failed')),
+      payload TEXT NOT NULL DEFAULT '{}',
+      result TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (team_id) REFERENCES teams(id),
+      FOREIGN KEY (project_id) REFERENCES projects(id)
+    );
+
+    INSERT INTO tasks (id, title, source_agent_id, target_agent_id, status, payload, result, created_at, updated_at)
+      SELECT id, '', source_agent_id, target_agent_id,
+        CASE status WHEN 'completed' THEN 'done' ELSE status END,
+        payload, result, created_at, updated_at
+      FROM _tasks_v2;
+
+    DROP TABLE _tasks_v2;
+
+    CREATE INDEX idx_tasks_source ON tasks(source_agent_id);
+    CREATE INDEX idx_tasks_target ON tasks(target_agent_id);
+    CREATE INDEX idx_tasks_status ON tasks(status);
+    CREATE INDEX idx_tasks_team ON tasks(team_id);
+    CREATE INDEX idx_tasks_project ON tasks(project_id);
+    CREATE INDEX idx_tasks_kind ON tasks(kind);
+  `);
+
+  const fkCheck = db.pragma('foreign_key_check') as unknown[];
+  if (fkCheck.length > 0) {
+    throw new Error(`V3 migration FK violation: ${JSON.stringify(fkCheck)}`);
+  }
+
+  db.pragma('foreign_keys = ON');
 }

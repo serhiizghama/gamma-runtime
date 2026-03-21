@@ -162,6 +162,16 @@ export const useGammaStore = create<OSStore>()(
           Object.assign(state.uiSettings, patch);
         }),
 
+      kanbanFilters: {
+        teamId: null,
+        projectId: null,
+        kind: null,
+      },
+      setKanbanFilters: (filters) =>
+        set((state) => {
+          Object.assign(state.kanbanFilters, filters);
+        }),
+
       resetAll: () => {
         localStorage.removeItem("gamma-session");
         window.location.reload();
@@ -177,6 +187,7 @@ export const useGammaStore = create<OSStore>()(
         focusedWindowId: state.focusedWindowId,
         uiSettings: state.uiSettings,
         windowAgentPanelOpen: state.windowAgentPanelOpen,
+        kanbanFilters: state.kanbanFilters,
       }),
     }
   )

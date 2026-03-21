@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ulid } from 'ulid';
 import type { AgentRegistryEntry } from '@gamma/types';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
@@ -26,13 +27,17 @@ const MAX_DESCRIPTION_LENGTH = 8_000;
 const MAX_PAYLOAD_SIZE = 64_000;
 
 /** Task statuses that are terminal — no further transitions allowed. */
-const TERMINAL_STATUSES = new Set(['completed', 'failed']);
+const TERMINAL_STATUSES = new Set(['done', 'failed']);
 
 // ── Interfaces ────────────────────────────────────────────────────────────
 
 export interface DelegateTaskPayload {
-  targetAgentId: string;
+  targetAgentId?: string;     // Optional — if absent, uses teamId
+  teamId?: string;            // Assign to team backlog
+  projectId?: string;         // Link to project
+  title?: string;             // Human-readable task title
   taskDescription: string;
+  kind?: string;              // Task type for role matching
   priority?: number;
 }
 
@@ -44,7 +49,7 @@ export interface DelegateTaskResult {
 
 export interface ReportStatusPayload {
   taskId: string;
-  status: 'completed' | 'failed';
+  status: 'done' | 'failed';
   message: string;
   data?: unknown;
 }
@@ -80,6 +85,7 @@ export class IpcRoutingService {
     private readonly activityStream: ActivityStreamService,
     private readonly sessions: SessionsService,
     private readonly taskRepo: TaskStateRepository,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -98,10 +104,15 @@ export class IpcRoutingService {
     sourceAgentId: string,
     payload: DelegateTaskPayload,
   ): Promise<DelegateTaskResult> {
-    const { targetAgentId, taskDescription, priority } = payload;
+    const { targetAgentId, teamId, projectId, title, taskDescription, kind, priority } = payload;
+
+    // ── At least one target must be specified ──────────────────────────
+    if (!targetAgentId && !teamId) {
+      return { ok: false, error: 'At least one of targetAgentId or teamId must be provided' };
+    }
 
     // ── Self-delegation guard ──────────────────────────────────────────
-    if (sourceAgentId === targetAgentId) {
+    if (targetAgentId && sourceAgentId === targetAgentId) {
       return { ok: false, error: 'An agent cannot delegate a task to itself' };
     }
 
@@ -111,35 +122,6 @@ export class IpcRoutingService {
         ok: false,
         error: `taskDescription exceeds maximum length of ${MAX_DESCRIPTION_LENGTH} characters`,
       };
-    }
-
-    // ── Resolve both agents ────────────────────────────────────────────
-    const source = await this.agentRegistry.getOne(sourceAgentId);
-    if (!source) {
-      return { ok: false, error: `Source agent '${sourceAgentId}' not found in registry` };
-    }
-
-    const target = await this.agentRegistry.getOne(targetAgentId);
-    if (!target) {
-      return { ok: false, error: `Target agent '${targetAgentId}' not found in registry` };
-    }
-
-    // ── Role eligibility ───────────────────────────────────────────────
-    if (!DELEGATION_ALLOWED_ROLES.has(source.role)) {
-      return {
-        ok: false,
-        error: `Agent '${sourceAgentId}' with role '${source.role}' is not permitted to delegate tasks. ` +
-          `Allowed roles: ${[...DELEGATION_ALLOWED_ROLES].join(', ')}`,
-      };
-    }
-
-    // ── Validate hierarchy ─────────────────────────────────────────────
-    const hierarchyResult = this.validateHierarchy(source, target);
-    if (!hierarchyResult.allowed) {
-      this.logger.warn(
-        `IPC hierarchy denied: ${sourceAgentId} (${source.role}) → ${targetAgentId} (${target.role}): ${hierarchyResult.reason}`,
-      );
-      return { ok: false, error: hierarchyResult.reason };
     }
 
     // ── Generate task ID ───────────────────────────────────────────────
@@ -156,10 +138,80 @@ export class IpcRoutingService {
       return { ok: false, error: 'Serialized task payload exceeds maximum allowed size' };
     }
 
+    // ── Team-based delegation (backlog flow) ───────────────────────────
+    if (teamId && !targetAgentId) {
+      this.taskRepo.insert({
+        id: taskId,
+        title: title ?? taskDescription.slice(0, 200),
+        sourceAgentId,
+        targetAgentId: null,
+        teamId,
+        projectId: projectId ?? null,
+        kind: (kind as any) ?? 'generic',
+        priority: priority ?? 0,
+        status: 'backlog',
+        payload: serializedPayload,
+        result: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      this.activityStream.emit({
+        kind: 'ipc_message_sent',
+        agentId: sourceAgentId,
+        payload: JSON.stringify({ taskId, teamId, taskKind: kind ?? 'generic', status: 'backlog' }),
+        severity: 'info',
+      });
+
+      this.eventEmitter.emit('backlog.task.created', { taskId, teamId, kind: kind ?? 'generic' });
+
+      this.logger.log(
+        `IPC delegate (team backlog): ${sourceAgentId} → team ${teamId} taskId=${taskId}`,
+      );
+
+      return { ok: true, taskId };
+    }
+
+    // ── Point-to-point delegation (existing flow) ──────────────────────
+
+    // Resolve both agents
+    const source = await this.agentRegistry.getOne(sourceAgentId);
+    if (!source) {
+      return { ok: false, error: `Source agent '${sourceAgentId}' not found in registry` };
+    }
+
+    const target = await this.agentRegistry.getOne(targetAgentId!);
+    if (!target) {
+      return { ok: false, error: `Target agent '${targetAgentId}' not found in registry` };
+    }
+
+    // Role eligibility
+    if (!DELEGATION_ALLOWED_ROLES.has(source.role)) {
+      return {
+        ok: false,
+        error: `Agent '${sourceAgentId}' with role '${source.role}' is not permitted to delegate tasks. ` +
+          `Allowed roles: ${[...DELEGATION_ALLOWED_ROLES].join(', ')}`,
+      };
+    }
+
+    // Validate hierarchy
+    const hierarchyResult = this.validateHierarchy(source, target);
+    if (!hierarchyResult.allowed) {
+      this.logger.warn(
+        `IPC hierarchy denied: ${sourceAgentId} (${source.role}) → ${targetAgentId} (${target.role}): ${hierarchyResult.reason}`,
+      );
+      return { ok: false, error: hierarchyResult.reason };
+    }
+
     this.taskRepo.insert({
       id: taskId,
+      title: title ?? taskDescription.slice(0, 200),
       sourceAgentId,
-      targetAgentId,
+      targetAgentId: targetAgentId!,
+      teamId: teamId ?? null,
+      projectId: projectId ?? null,
+      kind: (kind as any) ?? 'generic',
+      priority: priority ?? 0,
       status: 'pending',
       payload: serializedPayload,
       result: null,
@@ -167,7 +219,7 @@ export class IpcRoutingService {
       updatedAt: now,
     });
 
-    // ── Deliver via MessageBusService ──────────────────────────────────
+    // Deliver via MessageBusService
     const messagePayload = {
       taskId,
       description: taskDescription,
@@ -177,17 +229,17 @@ export class IpcRoutingService {
 
     await this.messageBus.send(
       sourceAgentId,
-      targetAgentId,
+      targetAgentId!,
       'task_request',
       `Delegated task [${taskId}]`,
       messagePayload,
     );
 
-    // ── Emit activity event ────────────────────────────────────────────
+    // Emit activity event
     this.activityStream.emit({
       kind: 'ipc_message_sent',
       agentId: sourceAgentId,
-      targetAgentId,
+      targetAgentId: targetAgentId!,
       payload: JSON.stringify({ taskId, priority: priority ?? 0 }),
       severity: 'info',
     });
@@ -196,7 +248,7 @@ export class IpcRoutingService {
       `IPC delegate: ${sourceAgentId} → ${targetAgentId} taskId=${taskId}`,
     );
 
-    // ── Wake target if IDLE or OFFLINE ─────────────────────────────────
+    // Wake target if IDLE or OFFLINE
     await this.ensureAgentAwake(target, taskId, sourceAgentId, taskDescription);
 
     return { ok: true, taskId };
@@ -285,7 +337,7 @@ export class IpcRoutingService {
     }
 
     // ── Emit activity event ────────────────────────────────────────────
-    const activityKind = status === 'completed' ? 'ipc_task_completed' : 'ipc_task_failed';
+    const activityKind = status === 'done' ? 'ipc_task_completed' : 'ipc_task_failed';
     this.activityStream.emit({
       kind: activityKind,
       agentId: reportingAgentId,

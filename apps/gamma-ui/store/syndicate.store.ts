@@ -9,7 +9,7 @@
  */
 
 import { create } from "zustand";
-import type { AgentRegistryEntry, ActivityEvent, GammaSSEEvent } from "@gamma/types";
+import type { AgentRegistryEntry, ActivityEvent, GammaSSEEvent, TeamRecord } from "@gamma/types";
 import { systemAuthHeaders } from "../lib/auth";
 import { API_BASE } from "../constants/api";
 
@@ -24,6 +24,7 @@ export interface AgentRecord {
   uiColor: string;
   status: string;
   workspacePath: string;
+  teamId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -39,6 +40,8 @@ export interface SyndicateAgent {
   liveStatus: "running" | "idle" | "offline" | "error" | "aborted";
   supervisorId: string | null;
   inProgressTaskCount: number;
+  /** Team name (resolved from teamId via teams API). */
+  teamName: string | null;
 }
 
 /** An IPC flash: source → target edge should animate. */
@@ -157,6 +160,20 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
         // Registry unavailable — proceed with DB status only
       }
 
+      // Fetch teams for name resolution
+      let teamNameMap = new Map<string, string>();
+      try {
+        const teamsRes = await fetch(`${API_BASE}/api/teams`, {
+          headers: systemAuthHeaders(),
+        });
+        if (teamsRes.ok) {
+          const teams = (await teamsRes.json()) as TeamRecord[];
+          teamNameMap = new Map(teams.map((t) => [t.id, t.name]));
+        }
+      } catch {
+        // Teams unavailable — proceed without team names
+      }
+
       // 1. Start with DB agents (enriched with live registry data)
       const seenIds = new Set<string>();
       const agents: SyndicateAgent[] = agentRecords
@@ -173,6 +190,7 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
             liveStatus: reg ? toLiveStatus(reg.status) : "offline",
             supervisorId: reg?.supervisorId ?? null,
             inProgressTaskCount: 0,
+            teamName: r.teamId ? (teamNameMap.get(r.teamId) ?? null) : null,
           };
         });
 
@@ -188,6 +206,7 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
           liveStatus: toLiveStatus(reg.status),
           supervisorId: reg.supervisorId ?? null,
           inProgressTaskCount: 0,
+          teamName: null,
         });
       }
 
@@ -245,6 +264,7 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
           liveStatus: toLiveStatus(reg.status),
           supervisorId: reg.supervisorId ?? null,
           inProgressTaskCount: 0,
+          teamName: null,
         });
       }
 

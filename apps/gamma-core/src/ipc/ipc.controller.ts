@@ -38,7 +38,7 @@ interface DelegateRequestBody {
 interface ReportRequestBody {
   agentId: string;
   taskId: string;
-  status: 'completed' | 'failed';
+  status: 'done' | 'failed';
   message: string;
   data?: unknown;
 }
@@ -133,10 +133,10 @@ export class IpcController {
       return { ok: false, error: 'Missing or invalid required field: message' };
     }
 
-    if (status !== 'completed' && status !== 'failed') {
+    if (status !== 'done' && status !== 'failed') {
       return {
         ok: false,
-        error: `Invalid status '${String(status)}'. Must be 'completed' or 'failed'.`,
+        error: `Invalid status '${String(status)}'. Must be 'done' or 'failed'.`,
       };
     }
 

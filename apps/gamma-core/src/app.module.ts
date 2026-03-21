@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AppController } from './app.controller';
 import { RedisModule } from './redis/redis.module';
 import { GatewayModule } from './gateway/gateway.module';
@@ -15,6 +16,8 @@ import { ContextInjectorModule } from './scaffold/context-injector.module';
 import { ToolsModule } from './tools/tools.module';
 import { StateModule } from './state/state.module';
 import { AgentsModule } from './agents/agents.module';
+import { TeamsModule } from './teams/teams.module';
+import { ProjectsModule } from './projects/projects.module';
 import { IpcModule } from './ipc/ipc.module';
 
 @Module({
@@ -24,6 +27,7 @@ import { IpcModule } from './ipc/ipc.module';
       envFilePath: '.env',
     }),
     ScheduleModule.forRoot(),
+    EventEmitterModule.forRoot(),
     SystemEventLogModule,
     RedisModule,
     GatewayModule,
@@ -37,6 +41,8 @@ import { IpcModule } from './ipc/ipc.module';
     ToolsModule,
     StateModule,
     AgentsModule,
+    TeamsModule,
+    ProjectsModule,
     IpcModule,
   ],
   controllers: [AppController],

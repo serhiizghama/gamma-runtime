@@ -1,7 +1,9 @@
 import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { ActivityStreamService } from '../activity/activity-stream.service';
+import { AgentStateRepository } from '../state/agent-state.repository';
 import type { AgentRegistryEntry, AgentRole, AgentStatus } from '@gamma/types';
 import { REDIS_KEYS } from '@gamma/types';
 
@@ -22,6 +24,8 @@ export class AgentRegistryService {
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @Optional() private readonly activityStream?: ActivityStreamService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
+    @Optional() private readonly agentStateRepo?: AgentStateRepository,
   ) {}
 
   // ── Public API ────────────────────────────────────────────────────────
@@ -103,6 +107,16 @@ export class AgentRegistryService {
         payload: fields.status,
         severity: fields.status === 'error' ? 'error' : 'info',
       });
+
+      // Emit agent.idle event for task claim system
+      if (fields.status === 'idle' && this.eventEmitter) {
+        const agentState = this.agentStateRepo?.findById(agentId);
+        this.eventEmitter.emit('agent.idle', {
+          agentId,
+          teamId: agentState?.teamId ?? undefined,
+          roleId: agentState?.roleId ?? undefined,
+        });
+      }
     }
 
     this.broadcastUpdate();
@@ -145,6 +159,8 @@ export class AgentRegistryService {
       agentId,
       severity: 'info',
     });
+
+    this.eventEmitter?.emit('agent.offline', { agentId });
 
     this.broadcastUpdate();
   }
