@@ -73,7 +73,16 @@ export function ArchitectWindow(): React.ReactElement | null {
   const { messages, status, pendingToolLines, sendMessage, hasMoreHistory, loadMoreHistory, loadingMore } =
     useAgentStream(ARCHITECT_WINDOW_ID, { onSessionMissing: reInit });
 
-  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [width, setWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem("gamma-architect-width");
+      if (saved) {
+        const n = parseInt(saved, 10);
+        if (n >= MIN_WIDTH && n <= MAX_WIDTH) return n;
+      }
+    } catch { /* ignore */ }
+    return DEFAULT_WIDTH;
+  });
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const startXRef = useRef(0);
@@ -107,6 +116,14 @@ export function ArchitectWindow(): React.ReactElement | null {
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp, { once: true });
+  }, [width]);
+
+  // Persist width to localStorage (debounced to avoid thrashing during drag)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try { localStorage.setItem("gamma-architect-width", String(width)); } catch { /* ignore */ }
+    }, 300);
+    return () => clearTimeout(timer);
   }, [width]);
 
   if (!architectOpen) return null;
