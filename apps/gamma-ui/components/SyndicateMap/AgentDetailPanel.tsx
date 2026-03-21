@@ -7,10 +7,14 @@
  *  - Trace: Console-style log view (GET /api/agents/:id/trace + SSE stream)
  */
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { systemAuthHeaders } from "../../lib/auth";
 import { API_BASE } from "../../constants/api";
-import { useSecureSse } from "../../hooks/useSecureSse";
+import { useAgentTrace } from "../../hooks/useAgentTrace";
+import { TraceTerminal } from "./TraceTerminal";
+import { ActivityFeed } from "./ActivityFeed";
+import { useActivityStream } from "../../hooks/useActivityStream";
+import { TaskList } from "./TaskList";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -19,29 +23,8 @@ interface SoulData {
   soul: string;
 }
 
-interface TaskRecord {
-  id: string;
-  sourceAgentId: string;
-  targetAgentId: string;
-  status: string;
-  payload: string;
-  result: string | null;
-  createdAt: number;
-  updatedAt: number;
-}
 
-interface TraceEntry {
-  id: string;
-  sessionKey: string;
-  windowId: string;
-  kind: string;
-  content: string;
-  ts: number;
-  stepId: string;
-  parentId?: string;
-}
-
-type Tab = "tasks" | "trace";
+type Tab = "tasks" | "trace" | "activity";
 
 /** Check if agentId matches backend's strict ULID format: agent.<26-char ULID> */
 const AGENT_ULID_RE = /^agent\.[A-Z0-9]{26}$/;
@@ -56,9 +39,6 @@ interface Props {
   agentColor: string;
   onClose: () => void;
 }
-
-/** Max live trace entries kept in memory. Older entries are dropped. */
-const MAX_TRACE_ENTRIES = 500;
 
 // ── Styles ────────────────────────────────────────────────────────────────
 
@@ -202,308 +182,21 @@ function _SoulTab({ agentId }: { agentId: string }) {
   );
 }
 
-// ── Tasks Tab ─────────────────────────────────────────────────────────────
-
-const taskPill: CSSProperties = {
-  display: "inline-block",
-  padding: "2px 8px",
-  borderRadius: 10,
-  fontSize: 10,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.03em",
-};
-
-const TASK_STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  pending: { bg: "rgba(254, 188, 46, 0.15)", fg: "#febc2e" },
-  in_progress: { bg: "rgba(59, 130, 246, 0.15)", fg: "#60a5fa" },
-  completed: { bg: "rgba(40, 200, 64, 0.15)", fg: "#28c840" },
-  failed: { bg: "rgba(255, 95, 87, 0.15)", fg: "#ff5f57" },
-};
-
-function TasksTab({ agentId }: { agentId: string }) {
-  const [tasks, setTasks] = useState<TaskRecord[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Skip fetch for registry-only agents (non-ULID IDs fail backend validation)
-    if (!isValidUlidAgentId(agentId)) {
-      setLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-
-    fetch(
-      `${API_BASE}/api/agents/${encodeURIComponent(agentId)}/tasks?limit=50`,
-      { headers: systemAuthHeaders(), signal: controller.signal },
-    )
-      .then((res) => {
-        if (!res.ok) throw new Error(`${res.status}`);
-        return res.json() as Promise<{ ok: boolean; tasks: TaskRecord[] }>;
-      })
-      .then((data) => setTasks(data.tasks))
-      .catch((err) => {
-        if (err instanceof Error && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Failed to load");
-      })
-      .finally(() => setLoading(false));
-
-    return () => controller.abort();
-  }, [agentId]);
-
-  if (loading) return <div style={loadingMsg}>Loading tasks...</div>;
-  if (error) return <div style={errorMsg}>Could not load tasks: {error}</div>;
-  if (tasks.length === 0) return <div style={emptyMsg}>No tasks assigned.</div>;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {tasks.map((t) => {
-        const sc = TASK_STATUS_COLORS[t.status] ?? TASK_STATUS_COLORS.pending;
-        return (
-          <div
-            key={t.id}
-            style={{
-              background: "var(--color-surface-elevated)",
-              border: "1px solid var(--color-border-subtle)",
-              borderRadius: 8,
-              padding: "10px 12px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 4,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "var(--color-text-primary)",
-                  fontWeight: 600,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  maxWidth: 220,
-                }}
-              >
-                {t.id.slice(0, 16)}...
-              </span>
-              <span style={{ ...taskPill, background: sc.bg, color: sc.fg }}>
-                {t.status.replace("_", " ")}
-              </span>
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "var(--color-text-secondary)",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                maxHeight: 60,
-                overflow: "hidden",
-              }}
-            >
-              {truncate(t.payload, 120)}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + "..." : s;
-}
-
 // ── Trace Tab ─────────────────────────────────────────────────────────────
 
-const TRACE_KIND_COLORS: Record<string, string> = {
-  thought: "#c9a0ff",   // brighter purple for legibility
-  tool_call: "#ffd787",
-  tool_result: "#40e0d0", // teal — distinct from thought purple
-  text: "#87d7ff",
-};
-
 function TraceTab({ agentId }: { agentId: string }) {
-  const [entries, setEntries] = useState<TraceEntry[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Track which agentId the SSE stream is connected to, so we can
-  // discard stale events that arrive during reconnection transitions.
-  const activeAgentRef = useRef(agentId);
-  activeAgentRef.current = agentId;
-
-  // Fetch historical trace
-  useEffect(() => {
-    // Skip fetch for registry-only agents (non-ULID IDs fail backend validation)
-    if (!isValidUlidAgentId(agentId)) {
-      setLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    setEntries([]);
-
-    fetch(
-      `${API_BASE}/api/agents/${encodeURIComponent(agentId)}/trace?count=200`,
-      { headers: systemAuthHeaders(), signal: controller.signal },
-    )
-      .then((res) => {
-        if (!res.ok) throw new Error(`${res.status}`);
-        return res.json() as Promise<{ ok: boolean; trace: TraceEntry[] }>;
-      })
-      .then((data) => setEntries(data.trace))
-      .catch((err) => {
-        if (err instanceof Error && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Failed to load");
-      })
-      .finally(() => setLoading(false));
-
-    return () => controller.abort();
-  }, [agentId]);
-
-  // SSE live stream for real-time trace
-  const handleStreamMessage = useCallback(
-    (ev: MessageEvent) => {
-      try {
-        const data = JSON.parse(ev.data as string) as Record<string, unknown>;
-        if (data.type === "keep_alive" || data.type === "trace_end") return;
-
-        const kind = mapSseTypeToKind(data.type as string);
-        if (kind === "unknown") return;
-
-        const entry: TraceEntry = {
-          id: `live-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          sessionKey: "",
-          windowId: (data.windowId as string) ?? "",
-          kind,
-          content: extractContent(data),
-          ts: Date.now(),
-          stepId: (data.runId as string) ?? "",
-        };
-
-        setEntries((prev) => {
-          const next = [...prev, entry];
-          // Cap entries to prevent unbounded memory growth
-          return next.length > MAX_TRACE_ENTRIES
-            ? next.slice(next.length - MAX_TRACE_ENTRIES)
-            : next;
-        });
-      } catch {
-        // Ignore parse errors
-      }
-    },
-    [], // stable — setEntries is stable, activeAgentRef is a ref
-  );
-
-  // Only connect SSE for agents with valid ULID IDs (backend rejects others)
-  useSecureSse({
-    path: `/api/agents/${encodeURIComponent(agentId)}/trace/stream`,
-    onMessage: handleStreamMessage,
-    reconnectMs: 5000,
-    label: "Trace",
-    enabled: isValidUlidAgentId(agentId),
+  const { entries, loading, connected } = useAgentTrace({
+    agentId: isValidUlidAgentId(agentId) ? agentId : null,
+    enabled: true,
   });
-
-  // Auto-scroll on new entries
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    // Only auto-scroll if already near the bottom (within 80px)
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (nearBottom) {
-      el.scrollTo({ top: el.scrollHeight });
-    }
-  }, [entries.length]);
-
-  if (loading) return <div style={loadingMsg}>Loading trace...</div>;
-  if (error) return <div style={errorMsg}>Could not load trace: {error}</div>;
-  if (entries.length === 0)
-    return <div style={emptyMsg}>No trace events recorded yet.</div>;
-
-  return (
-    <div
-      ref={scrollRef}
-      style={{
-        fontFamily: "ui-monospace, 'SF Mono', monospace",
-        fontSize: 11,
-        lineHeight: 1.5,
-        color: "var(--color-text-primary)",
-        overflow: "auto",
-        flex: 1,
-        padding: 0,
-      }}
-    >
-      {entries.map((e) => (
-        <div
-          key={e.id}
-          style={{
-            display: "flex",
-            gap: 8,
-            padding: "4px 4px",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
-          }}
-        >
-          <span style={{ color: "var(--color-text-secondary)", flexShrink: 0, width: 56 }}>
-            {formatTs(e.ts)}
-          </span>
-          <span
-            style={{
-              color: TRACE_KIND_COLORS[e.kind] ?? "var(--color-text-secondary)",
-              flexShrink: 0,
-              width: 72,
-              fontWeight: 600,
-            }}
-          >
-            {e.kind}
-          </span>
-          <span
-            style={{
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              opacity: 0.9,
-            }}
-          >
-            {truncate(e.content, 300)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
+  return <TraceTerminal entries={entries} loading={loading} connected={connected} />;
 }
 
-function mapSseTypeToKind(type: string): string {
-  if (type === "thinking") return "thought";
-  if (type === "tool_call") return "tool_call";
-  if (type === "tool_result") return "tool_result";
-  if (type === "assistant_delta" || type === "assistant_update") return "text";
-  return "unknown";
-}
+// ── Activity Tab ──────────────────────────────────────────────────────────
 
-function extractContent(data: Record<string, unknown>): string {
-  if (typeof data.text === "string") return data.text.slice(-200);
-  if (typeof data.tool === "string") return data.tool;
-  if (typeof data.content === "string") return data.content;
-  return JSON.stringify(data).slice(0, 200);
-}
-
-function formatTs(ts: number): string {
-  const d = new Date(ts);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function pad(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
+function ActivityTab({ agentId }: { agentId: string }) {
+  const { events } = useActivityStream();
+  return <ActivityFeed events={events} agentId={agentId} />;
 }
 
 // ── Main Panel ────────────────────────────────────────────────────────────
@@ -550,7 +243,7 @@ export function AgentDetailPanel({
 
       {/* Tabs — Soul tab hidden pending backend data migration */}
       <div style={tabBar}>
-        {(["tasks", "trace"] as const).map((t) => (
+        {(["tasks", "trace", "activity"] as const).map((t) => (
           <button
             key={t}
             style={{
@@ -568,8 +261,9 @@ export function AgentDetailPanel({
           ensuring each tab's internal state (fetch, SSE) is cleanly reset */}
       <div style={tabContent} key={agentId}>
         {/* {tab === "soul" && <SoulTab agentId={agentId} />} */}
-        {tab === "tasks" && <TasksTab agentId={agentId} />}
+        {tab === "tasks" && <TaskList agentId={agentId} />}
         {tab === "trace" && <TraceTab agentId={agentId} />}
+        {tab === "activity" && <ActivityTab agentId={agentId} />}
       </div>
     </div>
   );

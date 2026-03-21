@@ -14,7 +14,7 @@
  */
 
 import { memo, type CSSProperties } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, Position, useStore, type NodeProps } from "@xyflow/react";
 
 // ── Data contract ─────────────────────────────────────────────────────────
 
@@ -118,6 +118,69 @@ const handleStyle: CSSProperties = {
   border: "2px solid var(--color-bg-primary)",
 };
 
+// ── LOD-specific styles ───────────────────────────────────────────────────
+
+const compactCard: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  padding: 4,
+  cursor: "grab",
+};
+
+const compactAvatar: CSSProperties = {
+  position: "relative",
+  width: 48,
+  height: 48,
+  borderRadius: 14,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 22,
+  lineHeight: 1,
+  background: "var(--color-surface-elevated)",
+  transition: "box-shadow var(--duration-fast) var(--ease-smooth)",
+};
+
+const compactDot: CSSProperties = {
+  position: "absolute",
+  top: 2,
+  right: 2,
+  width: 8,
+  height: 8,
+  borderRadius: "50%",
+  border: "2px solid var(--color-bg-primary)",
+};
+
+const dotModeOuter: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
+  cursor: "grab",
+};
+
+const dotModeCircle: CSSProperties = {
+  position: "relative",
+  width: 20,
+  height: 20,
+  borderRadius: "50%",
+  background: "var(--color-surface-elevated)",
+  transition: "box-shadow var(--duration-fast) var(--ease-smooth)",
+};
+
+const dotModeStatusDot: CSSProperties = {
+  position: "absolute",
+  top: -2,
+  right: -2,
+  width: 6,
+  height: 6,
+  borderRadius: "50%",
+  border: "1px solid var(--color-bg-primary)",
+};
+
+type Lod = "full" | "compact" | "dot";
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 function AgentNodeInner({ data, selected }: NodeProps) {
@@ -130,11 +193,75 @@ function AgentNodeInner({ data, selected }: NodeProps) {
     inProgressTaskCount,
   } = data as unknown as AgentNodeData;
 
+  const zoom = useStore((s) => s.transform[2]);
+  const lod: Lod = zoom >= 0.6 ? "full" : zoom >= 0.3 ? "compact" : "dot";
+
   const color = uiColor || "var(--color-accent-primary)";
   const dotColor = STATUS_DOT[status] ?? STATUS_DOT.offline;
   const taskCount = inProgressTaskCount ?? 0;
   const isPulsing = taskCount > 3;
 
+  // ── Dot mode: minimal colored circle ────────────────────────────────────
+  if (lod === "dot") {
+    return (
+      <>
+        <Handle type="target" position={Position.Top} style={handleStyle} />
+        <div style={dotModeOuter}>
+          <div
+            style={{
+              ...dotModeCircle,
+              border: `2px solid ${color}`,
+              boxShadow: selected
+                ? `0 0 12px ${color}88`
+                : `0 0 6px ${color}44`,
+            }}
+          >
+            <span
+              style={{
+                ...dotModeStatusDot,
+                background: dotColor,
+              }}
+            />
+          </div>
+        </div>
+        <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      </>
+    );
+  }
+
+  // ── Compact mode: avatar + emoji + status dot only ──────────────────────
+  if (lod === "compact") {
+    return (
+      <>
+        <Handle type="target" position={Position.Top} style={handleStyle} />
+        <div style={compactCard}>
+          <div
+            style={{
+              ...compactAvatar,
+              border: `2px solid ${color}`,
+              boxShadow: selected
+                ? `0 0 16px ${color}88, 0 0 6px ${color}66`
+                : `0 0 8px ${color}44`,
+              transform: selected ? "scale(1.05)" : undefined,
+              transition: "box-shadow 200ms ease, transform 200ms ease",
+            }}
+          >
+            <span style={{ userSelect: "none" }}>{avatarEmoji}</span>
+            <span
+              style={{
+                ...compactDot,
+                background: dotColor,
+                boxShadow: status === "running" ? `0 0 4px ${dotColor}` : undefined,
+              }}
+            />
+          </div>
+        </div>
+        <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      </>
+    );
+  }
+
+  // ── Full mode: current detailed rendering ───────────────────────────────
   return (
     <>
       <Handle type="target" position={Position.Top} style={handleStyle} />

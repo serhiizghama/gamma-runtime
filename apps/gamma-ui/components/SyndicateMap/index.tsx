@@ -13,7 +13,7 @@
  *    preserving existing positions so nodes don't jump.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, Component, type ErrorInfo, type ReactNode } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, Component, type ErrorInfo, type ReactNode } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -28,95 +28,30 @@ import {
   type Node,
   type Edge,
   type FitViewOptions,
+  type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { AgentNode, type AgentNodeData } from "./AgentNode";
-import { IpcEdge, type IpcEdgeData } from "./IpcEdge";
+import { AgentNode } from "./AgentNode";
+import { AgentClusterNode, type AgentClusterNodeData } from "./AgentClusterNode";
+import { IpcEdge } from "./IpcEdge";
 import { AgentDetailPanel } from "./AgentDetailPanel";
+import { MapToolbar } from "./MapToolbar";
 import { getLayoutedElements } from "../../lib/layout";
 import {
   useSyndicateStore,
   handleSyndicateSseEvent,
   startFlashPruner,
-  type SyndicateAgent,
-  type IpcFlash,
 } from "../../store/syndicate.store";
 import { useSecureSse } from "../../hooks/useSecureSse";
+import { useLayoutPersistence } from "../../hooks/useLayoutPersistence";
+import { useAgentGraph } from "../../hooks/useAgentGraph";
 
 // ── Node / edge type registries (stable refs — never recreate) ────────────
 
-const nodeTypes: NodeTypes = { agent: AgentNode } as const;
+const nodeTypes: NodeTypes = { agent: AgentNode, cluster: AgentClusterNode } as const;
 const edgeTypes: EdgeTypes = { ipc: IpcEdge } as const;
 const fitViewOptions: FitViewOptions = { padding: 0.25 };
-
-// ── Build React Flow elements from store data ─────────────────────────────
-
-function agentToNodeData(a: SyndicateAgent): AgentNodeData {
-  return {
-    name: a.name,
-    roleId: a.roleId,
-    avatarEmoji: a.avatarEmoji,
-    uiColor: a.uiColor,
-    status: a.liveStatus,
-    inProgressTaskCount: a.inProgressTaskCount,
-  };
-}
-
-function buildNodes(agents: SyndicateAgent[]): Node[] {
-  return agents.map((a) => ({
-    id: a.id,
-    type: "agent" as const,
-    position: { x: 0, y: 0 },
-    data: agentToNodeData(a),
-  }));
-}
-
-function buildEdges(agents: SyndicateAgent[], flashes: IpcFlash[]): Edge[] {
-  // Build flash lookup — check both directions so a→b flash matches b→a edge
-  const flashSet = new Set<string>();
-  for (const f of flashes) {
-    flashSet.add(`${f.source}:${f.target}`);
-    flashSet.add(`${f.target}:${f.source}`);
-  }
-
-  const edges: Edge[] = [];
-  const agentIds = new Set(agents.map((a) => a.id));
-
-  for (const a of agents) {
-    if (!a.supervisorId) continue;
-    if (!agentIds.has(a.supervisorId)) continue;
-
-    const key = `${a.supervisorId}:${a.id}`;
-    const isFlashing = flashSet.has(key);
-
-    edges.push({
-      id: `e-${a.supervisorId}-${a.id}`,
-      source: a.supervisorId,
-      target: a.id,
-      type: "ipc",
-      animated: !isFlashing,
-      data: {
-        flashing: isFlashing,
-        color: "var(--color-border-subtle)",
-      } satisfies IpcEdgeData,
-    });
-  }
-
-  return edges;
-}
-
-/**
- * Topology fingerprint — a string that changes ONLY when graph structure
- * changes (agent added/removed, supervisor link changed). Status, flash,
- * and data-only changes do NOT affect this fingerprint.
- */
-function topologyFingerprint(agents: SyndicateAgent[]): string {
-  return agents
-    .map((a) => `${a.id}:${a.supervisorId ?? ""}`)
-    .sort()
-    .join("|");
-}
 
 // ── Styles ────────────────────────────────────────────────────────────────
 
@@ -127,26 +62,6 @@ const containerStyle: React.CSSProperties = {
   background: "var(--color-bg-primary)",
 };
 
-const toolbarStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 12,
-  left: 12,
-  display: "flex",
-  gap: 6,
-  zIndex: 5,
-};
-
-const toolbarBtn: React.CSSProperties = {
-  padding: "4px 10px",
-  fontSize: 11,
-  fontWeight: 600,
-  fontFamily: "var(--font-system)",
-  color: "var(--color-text-secondary)",
-  background: "var(--color-surface-elevated)",
-  border: "1px solid var(--color-border-subtle)",
-  borderRadius: 6,
-  cursor: "pointer",
-};
 
 // Keyframes injected once into the DOM. Covers AgentNode badge pulse
 // and IpcEdge particle animation — no per-component <style> tags needed.
@@ -242,7 +157,17 @@ class SyndicateMapErrorBoundary extends Component<EBProps, EBState> {
             <code style={{ fontSize: 11, opacity: 0.7 }}>{this.state.error.message}</code>
           </span>
           <button
-            style={toolbarBtn}
+            style={{
+              padding: "4px 10px",
+              fontSize: 11,
+              fontWeight: 600,
+              fontFamily: "var(--font-system)",
+              color: "var(--color-text-secondary)",
+              background: "var(--color-surface-elevated)",
+              border: "1px solid var(--color-border-subtle)",
+              borderRadius: 6,
+              cursor: "pointer",
+            }}
             onClick={() => this.setState({ error: null })}
           >
             Retry
@@ -278,7 +203,18 @@ function SyndicateMapInner() {
   const error = useSyndicateStore((s) => s.error);
   const { fitView } = useReactFlow();
 
+  const {
+    restorePositions,
+    savePositions,
+    clearPositions,
+    layoutMode,
+  } = useLayoutPersistence({ storageKey: "syndicate-map" });
+
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const prevTopoRef = useRef("");
+
+  // Build graph elements from store data via the useAgentGraph hook
+  const graph = useAgentGraph({ agents, ipcFlashes, collapsedIds });
 
   // Fetch agents on mount + start flash pruner
   useEffect(() => {
@@ -301,57 +237,77 @@ function SyndicateMapInner() {
     label: "SyndicateRegistry",
   });
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  // Wrap onNodesChange to persist positions after drag
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      onNodesChangeBase(changes);
+      const hasDragEnd = changes.some(
+        (c) => c.type === "position" && !c.dragging,
+      );
+      if (hasDragEnd) {
+        // Read latest nodes via setNodes identity trick
+        setNodes((current) => {
+          savePositions(current);
+          return current;
+        });
+      }
+    },
+    [onNodesChangeBase, setNodes, savePositions],
+  );
 
   // Sync store → React Flow state.
   // Split into two paths: topology change (re-layout) vs data-only (in-place).
   useEffect(() => {
-    const topo = topologyFingerprint(agents);
-    const topoChanged = topo !== prevTopoRef.current;
+    const topoChanged = graph.topologyKey !== prevTopoRef.current;
 
     if (topoChanged) {
-      prevTopoRef.current = topo;
-      const freshNodes = buildNodes(agents);
-      const freshEdges = buildEdges(agents, ipcFlashes);
-      const { nodes: laid, edges: laidEdges } = getLayoutedElements(
-        freshNodes,
-        freshEdges,
-        { direction: "TB" },
-      );
-      setNodes(laid);
-      setEdges(laidEdges);
+      prevTopoRef.current = graph.topologyKey;
+
+      // Try restoring saved positions first; fall back to dagre layout
+      const restored = restorePositions(graph.nodes);
+      if (restored) {
+        setNodes(restored);
+        setEdges(graph.edges);
+      } else {
+        const { nodes: laid, edges: laidEdges } = getLayoutedElements(
+          graph.nodes,
+          graph.edges,
+          { direction: "TB" },
+        );
+        setNodes(laid);
+        setEdges(laidEdges);
+      }
       // Ensure fitView runs after React Flow has rendered the new nodes
       requestAnimationFrame(() => {
         fitView(fitViewOptions);
       });
     } else {
       // Data-only update: patch node.data in-place, preserving positions
-      setNodes((prev) => {
-        const agentMap = new Map(agents.map((a) => [a.id, a]));
-        return prev.map((n) => {
-          const a = agentMap.get(n.id);
-          if (!a) return n;
-          const next = agentToNodeData(a);
-          const cur = n.data as AgentNodeData;
-          // Only create a new object if something actually changed
-          if (
-            cur.status === next.status &&
-            cur.inProgressTaskCount === next.inProgressTaskCount &&
-            cur.name === next.name &&
-            cur.uiColor === next.uiColor
-          ) {
-            return n;
-          }
-          return { ...n, data: next };
-        });
-      });
-      setEdges(buildEdges(agents, ipcFlashes));
+      const freshById = new Map(graph.nodes.map((n) => [n.id, n]));
+
+      setNodes((prev) =>
+        prev.map((n) => {
+          const fresh = freshById.get(n.id);
+          if (!fresh) return n;
+
+          // Shallow-compare data to avoid unnecessary re-renders
+          const cur = n.data as Record<string, unknown>;
+          const next = fresh.data as Record<string, unknown>;
+          const keys = Object.keys(next);
+          const changed = keys.some((k) => cur[k] !== next[k]);
+          return changed ? { ...n, data: fresh.data } : n;
+        }),
+      );
+      setEdges(graph.edges);
     }
-  }, [agents, ipcFlashes, setNodes, setEdges]);
+  }, [graph, setNodes, setEdges]);
 
   const onLayout = useCallback(
     (direction: "TB" | "LR") => {
+      clearPositions();
       const result = getLayoutedElements(nodes, edges, { direction });
       setNodes(result.nodes);
       setEdges(result.edges);
@@ -359,14 +315,53 @@ function SyndicateMapInner() {
         fitView(fitViewOptions);
       });
     },
-    [nodes, edges, setNodes, setEdges, fitView],
+    [nodes, edges, setNodes, setEdges, fitView, clearPositions],
   );
+
+  const onResetPositions = useCallback(() => {
+    clearPositions();
+    const result = getLayoutedElements(nodes, edges, { direction: "TB" });
+    setNodes(result.nodes);
+    setEdges(result.edges);
+    requestAnimationFrame(() => {
+      fitView(fitViewOptions);
+    });
+  }, [nodes, edges, setNodes, setEdges, fitView, clearPositions]);
+
+  const onFitView = useCallback(() => {
+    fitView(fitViewOptions);
+  }, [fitView]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      selectAgent(node.id);
+      if (node.id.startsWith("cluster-")) {
+        // Expand the cluster: remove from collapsedIds and select root agent
+        const clusterId = (node.data as unknown as AgentClusterNodeData).clusterId;
+        setCollapsedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(clusterId);
+          return next;
+        });
+        selectAgent(clusterId);
+      } else {
+        selectAgent(node.id);
+      }
     },
     [selectAgent],
+  );
+
+  const onNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      // Double-click on an agent node → collapse its subtree
+      if (!node.id.startsWith("cluster-")) {
+        setCollapsedIds((prev) => {
+          const next = new Set(prev);
+          next.add(node.id);
+          return next;
+        });
+      }
+    },
+    [],
   );
 
   const selectedAgent = useMemo(
@@ -417,6 +412,7 @@ function SyndicateMapInner() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
@@ -438,35 +434,15 @@ function SyndicateMapInner() {
       </ReactFlow>
 
       {/* Layout toolbar */}
-      <div style={toolbarStyle}>
-        <button style={toolbarBtn} onClick={() => onLayout("TB")}>
-          ↕ Vertical
-        </button>
-        <button style={toolbarBtn} onClick={() => onLayout("LR")}>
-          ↔ Horizontal
-        </button>
-        {loading && (
-          <span style={{ fontSize: 11, color: "var(--color-text-secondary)", alignSelf: "center", marginLeft: 8 }}>
-            Loading…
-          </span>
-        )}
-        {error && !loading && (
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--color-accent-error, #ff5f57)",
-              alignSelf: "center",
-              marginLeft: 8,
-              cursor: "pointer",
-              textDecoration: "underline",
-            }}
-            onClick={() => void fetchAgents()}
-            title="Click to retry"
-          >
-            ⚠ {error} — retry
-          </span>
-        )}
-      </div>
+      <MapToolbar
+        onLayout={onLayout}
+        onFitView={onFitView}
+        onResetPositions={onResetPositions}
+        layoutMode={layoutMode}
+        loading={loading}
+        error={error}
+        onRetry={() => void fetchAgents()}
+      />
 
       {/* Agent detail sidebar */}
       {selectedAgent && (
