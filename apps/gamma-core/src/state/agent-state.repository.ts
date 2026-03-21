@@ -13,7 +13,7 @@ import { getStateDb, closeStateDb } from './state-db';
 // Types
 // ---------------------------------------------------------------------------
 
-export type AgentStatus = 'active' | 'archived' | 'corrupted';
+export type AgentStatus = 'active' | 'archived' | 'corrupted' | 'configuring' | 'failed';
 
 export interface AgentStateRecord {
   id: string;

@@ -1,16 +1,18 @@
 /**
- * agent-creator.service.ts — LLM-powered workspace generator
+ * agent-creator.service.ts — IPC-delegated workspace generator
  *
- * Given a community role template + user directives, calls the Anthropic API
- * in JSON mode to synthesize the full OpenClaw agent workspace files:
- *   SOUL.md, IDENTITY.md, TOOLS.md, USER.md, BOOTSTRAP.md, HEARTBEAT.md, AGENTS.md
+ * Instead of calling the Anthropic API directly, delegates workspace generation
+ * to the system-architect agent via its chat session. This keeps gamma-core
+ * free of direct LLM coupling — all LLM interactions go through OpenClaw agents.
  *
- * This is a pure "brain" service — it does not touch the filesystem or database.
+ * Flow:
+ *   1. createAgent → delegateWorkspaceGeneration() → message to system-architect
+ *   2. system-architect generates files via its own LLM + tools (fs_write)
+ *   3. Agent record transitions from 'configuring' → 'active' once workspace is ready
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
+import { SessionsService } from '../sessions/sessions.service';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,8 +28,8 @@ export interface AgentWorkspaceFiles {
   'AGENTS.md': string;
 }
 
-/** All keys that must be present in the LLM response */
-const REQUIRED_KEYS: (keyof AgentWorkspaceFiles)[] = [
+/** All keys that must be present in the workspace */
+export const REQUIRED_WORKSPACE_FILES: (keyof AgentWorkspaceFiles)[] = [
   'SOUL.md',
   'IDENTITY.md',
   'TOOLS.md',
@@ -37,11 +39,17 @@ const REQUIRED_KEYS: (keyof AgentWorkspaceFiles)[] = [
   'AGENTS.md',
 ];
 
-export interface GenerateWorkspaceParams {
+export interface DelegateGenesisParams {
   roleMarkdown: string;
   agentName: string;
   agentId: string;
+  workspacePath: string;
   customDirectives?: string;
+}
+
+export interface GenesisTaskResult {
+  ok: boolean;
+  error?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,119 +59,89 @@ export interface GenerateWorkspaceParams {
 @Injectable()
 export class AgentCreatorService {
   private readonly logger = new Logger(AgentCreatorService.name);
-  private readonly client: Anthropic;
-  private readonly model: string;
 
-  /** Max time (ms) to wait for the LLM to generate a workspace. */
-  private readonly timeoutMs: number;
+  /** Window ID of the system architect session. */
+  private readonly architectWindowId = 'system-architect-window';
 
-  constructor(private readonly config: ConfigService) {
-    const apiKey = this.config.get<string>('ANTHROPIC_API_KEY', '');
-    if (!apiKey) {
-      this.logger.error('ANTHROPIC_API_KEY is not set — agent creation will fail');
-    }
-    this.client = new Anthropic({
-      apiKey,
-      timeout: 120_000, // 120s connection-level timeout
-    });
-    this.model = this.config.get<string>('AGENT_CREATOR_MODEL', 'claude-sonnet-4-20250514');
-    this.timeoutMs = this.config.get<number>('AGENT_CREATOR_TIMEOUT_MS', 120_000);
-  }
+  constructor(private readonly sessions: SessionsService) {}
 
   /**
-   * Call the LLM to generate workspace files from a role template.
-   * Uses Anthropic's tool-use pattern for structured JSON output.
+   * Delegate workspace generation to the system-architect agent.
+   *
+   * Sends a structured message to the architect's chat session. The architect
+   * uses its own LLM + tools (fs_write) to generate and write workspace files.
+   *
+   * This is fire-and-forget from the caller's perspective — the agent record
+   * is created immediately with status 'configuring', and workspace files
+   * are written by the architect asynchronously.
    */
-  async generateWorkspace(params: GenerateWorkspaceParams): Promise<AgentWorkspaceFiles> {
-    const { roleMarkdown, agentName, agentId, customDirectives } = params;
+  async delegateWorkspaceGeneration(
+    params: DelegateGenesisParams,
+  ): Promise<GenesisTaskResult> {
+    const { roleMarkdown, agentName, agentId, workspacePath, customDirectives } = params;
 
-    const systemPrompt = this.buildSystemPrompt();
-    const userPrompt = this.buildUserPrompt(roleMarkdown, agentName, agentId, customDirectives);
+    const taskDescription = this.buildTaskDescription(
+      roleMarkdown,
+      agentName,
+      agentId,
+      workspacePath,
+      customDirectives,
+    );
 
-    this.logger.log(`Generating workspace for agent "${agentName}" (${agentId}) via ${this.model}`);
+    this.logger.log(
+      `Delegating workspace generation for "${agentName}" (${agentId}) to system-architect`,
+    );
 
-    const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), this.timeoutMs);
+    // Send the genesis task as a structured message to the architect's chat
+    // session. This wakes the architect if idle and triggers LLM processing.
+    const result = await this.sessions.sendMessage(
+      this.architectWindowId,
+      taskDescription,
+    );
 
-    let response: Anthropic.Message;
-    try {
-      response = await this.client.messages.create(
-        {
-          model: this.model,
-          max_tokens: 8192,
-          system: systemPrompt,
-          tools: [
-            {
-              name: 'emit_workspace',
-              description: 'Emit the generated agent workspace files as structured JSON.',
-              input_schema: {
-                type: 'object' as const,
-                properties: {
-                  'SOUL.md': { type: 'string', description: 'Core persona & behaviour — the agent\'s soul.' },
-                  'IDENTITY.md': { type: 'string', description: 'Backstory, traits, cognitive style.' },
-                  'TOOLS.md': { type: 'string', description: 'Tool contract — MUST include vector_store.' },
-                  'USER.md': { type: 'string', description: 'Guidelines for the human user interacting with this agent.' },
-                  'BOOTSTRAP.md': { type: 'string', description: 'Steps the agent should execute on first activation.' },
-                  'HEARTBEAT.md': { type: 'string', description: 'Idle / periodic check behaviour.' },
-                  'AGENTS.md': { type: 'string', description: 'Awareness of other agents in the Gamma ecosystem.' },
-                },
-                required: REQUIRED_KEYS,
-              },
-            },
-          ],
-          tool_choice: { type: 'tool', name: 'emit_workspace' },
-          messages: [{ role: 'user', content: userPrompt }],
-        },
-        { signal: abort.signal },
-      );
-    } finally {
-      clearTimeout(timer);
+    if (!result || !result.ok) {
+      const errMsg = result?.error?.message ?? 'unknown error';
+      this.logger.error(`Failed to send genesis task for ${agentId}: ${errMsg}`);
+      return { ok: false, error: errMsg };
     }
 
-    // Extract the tool call result
-    const toolBlock = response.content.find((b) => b.type === 'tool_use');
-    if (!toolBlock || toolBlock.type !== 'tool_use') {
-      throw new Error('LLM did not return a tool_use block — generation failed');
-    }
+    this.logger.log(
+      `Genesis task sent to system-architect for "${agentName}" (${agentId})`,
+    );
 
-    const raw = toolBlock.input as Record<string, unknown>;
-    return this.validateAndNormalize(raw);
+    return { ok: true };
   }
 
-  // ── Prompt builders ────────────────────────────────────────────────
+  // ── Task description builder ──────────────────────────────────────
 
-  private buildSystemPrompt(): string {
-    return [
-      'You are the **Gamma Agent Creator** — an expert AI systems architect.',
-      'Your task is to synthesize a complete set of agent workspace files from a community role template.',
-      '',
-      'Rules:',
-      '- Maintain the original role\'s **vibe**, personality, and domain expertise.',
-      '- Each file must be valid Markdown.',
-      '- TOOLS.md MUST include a `## vector_store` section describing the agent\'s ability to store and retrieve knowledge.',
-      '- TOOLS.md should also list other relevant Gamma tools: `fs_read`, `fs_write`, `shell_exec`, `send_direct_message` — include only tools that make sense for this role.',
-      '- IDENTITY.md should give the agent a unique personality grounded in the role, not a generic bio.',
-      '- BOOTSTRAP.md should describe what the agent does on first activation (e.g., load prior knowledge, establish goals).',
-      '- HEARTBEAT.md should describe idle/periodic behaviour suited to the role.',
-      '- AGENTS.md should describe awareness of other agents in a multi-agent ecosystem.',
-      '- USER.md should guide the human on how to interact effectively with this agent.',
-      '',
-      'Output ONLY via the emit_workspace tool. Do not include preamble or commentary.',
-    ].join('\n');
-  }
-
-  private buildUserPrompt(
+  private buildTaskDescription(
     roleMarkdown: string,
     agentName: string,
     agentId: string,
+    workspacePath: string,
     customDirectives?: string,
   ): string {
     const parts = [
-      `## Agent Configuration`,
+      '# Agent Genesis Task',
+      '',
+      'Generate the workspace files for a new Gamma agent.',
+      '',
+      '## Agent Configuration',
       `- **Agent Name:** ${agentName}`,
       `- **Agent ID:** ${agentId}`,
+      `- **Workspace Path:** ${workspacePath}`,
       '',
-      `## Role Template`,
+      '## Required Files',
+      'Generate each of these Markdown files and write them to the workspace path using `fs_write`:',
+      '- `SOUL.md` — Core persona & behaviour',
+      '- `IDENTITY.md` — Backstory, traits, cognitive style',
+      '- `TOOLS.md` — Tool contract (MUST include vector_store section)',
+      '- `USER.md` — Guidelines for the human user',
+      '- `BOOTSTRAP.md` — Steps on first activation',
+      '- `HEARTBEAT.md` — Idle/periodic check behaviour',
+      '- `AGENTS.md` — Awareness of other agents in the Gamma ecosystem',
+      '',
+      '## Role Template',
       '```markdown',
       roleMarkdown,
       '```',
@@ -175,36 +153,16 @@ export class AgentCreatorService {
 
     parts.push(
       '',
-      '## Task',
-      'Generate the 7 workspace files for this agent. Use the emit_workspace tool to return them.',
+      '## Rules',
+      '- Maintain the role\'s personality, vibe, and domain expertise.',
+      '- Each file must be valid Markdown.',
+      '- TOOLS.md MUST include a `## vector_store` section.',
+      '- IDENTITY.md should give the agent a unique personality, not a generic bio.',
+      '- Write each file to `<workspacePath>/<filename>` using the fs_write tool.',
+      '- After writing all 7 files, confirm completion.',
+      '- Also create an empty `memory/` subdirectory inside the workspace path.',
     );
 
     return parts.join('\n');
-  }
-
-  // ── Validation ─────────────────────────────────────────────────────
-
-  private validateAndNormalize(raw: Record<string, unknown>): AgentWorkspaceFiles {
-    const result: Record<string, string> = {};
-
-    for (const key of REQUIRED_KEYS) {
-      const value = raw[key];
-      if (typeof value !== 'string' || value.trim().length === 0) {
-        throw new Error(`LLM output missing or empty for required file: ${key}`);
-      }
-      result[key] = value;
-    }
-
-    // Enforce vector_store presence in TOOLS.md
-    const toolsMd = result['TOOLS.md'];
-    if (!toolsMd.toLowerCase().includes('vector_store')) {
-      this.logger.warn('TOOLS.md missing vector_store — appending minimal section');
-      result['TOOLS.md'] +=
-        '\n\n## vector_store\n\nPersistent knowledge storage. Use to store and retrieve information across sessions.\n' +
-        '- `upsert` — Store a knowledge chunk with metadata.\n' +
-        '- `search` — Semantic search across stored knowledge.\n';
-    }
-
-    return result as unknown as AgentWorkspaceFiles;
   }
 }

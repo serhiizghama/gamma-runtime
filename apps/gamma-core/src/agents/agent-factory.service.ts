@@ -3,10 +3,13 @@
  *
  * Orchestrates the full agent creation pipeline:
  *   1. Validate role from manifest
- *   2. Generate workspace files via LLM (AgentCreatorService)
- *   3. Write workspace to disk (~/.openclaw/agents/<agentId>/)
- *   4. Persist agent metadata in gamma-state.db
- *   5. Register agent in the Redis agent registry
+ *   2. Create base workspace directory (~/.openclaw/agents/<agentId>/)
+ *   3. Persist agent metadata in gamma-state.db (status: 'configuring')
+ *   4. Register agent in the Redis agent registry
+ *   5. Delegate workspace file generation to system-architect via IPC
+ *
+ * The system-architect generates SOUL.md, IDENTITY.md, etc. asynchronously
+ * using its own LLM + tools. gamma-core never calls LLMs directly.
  *
  * Also handles soft-delete (archive) with session teardown.
  *
@@ -18,11 +21,11 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ulid } from 'ulid';
-import { resolve, join, basename } from 'node:path';
-import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 
-import { AgentCreatorService, type AgentWorkspaceFiles } from './agent-creator.service';
+import { AgentCreatorService } from './agent-creator.service';
 import { AgentStateRepository, type AgentStateRecord } from '../state/agent-state.repository';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { SessionsService } from '../sessions/sessions.service';
@@ -57,20 +60,6 @@ export interface CreateAgentOptions {
   name: string;
   customDirectives?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Workspace file list — order for disk writes
-// ---------------------------------------------------------------------------
-
-const WORKSPACE_FILES = [
-  'SOUL.md',
-  'IDENTITY.md',
-  'TOOLS.md',
-  'USER.md',
-  'BOOTSTRAP.md',
-  'HEARTBEAT.md',
-  'AGENTS.md',
-] as const;
 
 // ---------------------------------------------------------------------------
 // Service
@@ -166,64 +155,61 @@ export class AgentFactoryService {
 
     this.logger.log(`Creating agent "${name}" (${agentId}) from role "${roleId}"`);
 
-    // 4. Call LLM to synthesize workspace files
-    let files: AgentWorkspaceFiles;
-    try {
-      files = await this.creator.generateWorkspace({
-        roleMarkdown,
-        agentName: name,
-        agentId,
-        customDirectives,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`LLM workspace generation failed for ${agentId}: ${message}`);
-      throw new BadRequestException(`Agent creation failed — LLM error: ${message}`);
-    }
-
-    // 5. Write workspace to disk, persist to DB + registry.
-    //    If any step after disk write fails, clean up the orphaned workspace.
-    this.writeWorkspace(workspacePath, files);
+    // 4. Create base workspace directory structure
+    mkdirSync(workspacePath, { recursive: true });
+    mkdirSync(join(workspacePath, 'memory'), { recursive: true });
 
     const now = Date.now();
-    try {
-      // 6. Persist in gamma-state.db
-      const record: AgentStateRecord = {
-        id: agentId,
-        name,
-        roleId,
-        avatarEmoji: role.emoji,
-        uiColor: role.color,
-        status: 'active',
-        workspacePath,
-        createdAt: now,
-        updatedAt: now,
-      };
-      this.agentStateRepo.upsert(record);
 
-      // 7. Register in Redis agent registry
-      await this.agentRegistry.register({
-        agentId,
-        role: 'daemon',
-        sessionKey: agentId,
-        windowId: '',
-        appId: '',
-        status: 'idle',
-        capabilities: [],
-        lastHeartbeat: now,
-        lastActivity: 'created',
-        acceptsMessages: true,
-        createdAt: now,
-        supervisorId: null,
+    // 5. Persist in gamma-state.db with status 'configuring'
+    const record: AgentStateRecord = {
+      id: agentId,
+      name,
+      roleId,
+      avatarEmoji: role.emoji,
+      uiColor: role.color,
+      status: 'configuring',
+      workspacePath,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.agentStateRepo.upsert(record);
+
+    // 6. Register in Redis agent registry
+    await this.agentRegistry.register({
+      agentId,
+      role: 'daemon',
+      sessionKey: agentId,
+      windowId: '',
+      appId: '',
+      status: 'idle',
+      capabilities: [],
+      lastHeartbeat: now,
+      lastActivity: 'configuring — workspace generation delegated',
+      acceptsMessages: false,
+      createdAt: now,
+      supervisorId: null,
+    });
+
+    // 7. Delegate workspace generation to system-architect (fire-and-forget)
+    this.creator.delegateWorkspaceGeneration({
+      roleMarkdown,
+      agentName: name,
+      agentId,
+      workspacePath,
+      customDirectives,
+    }).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Genesis delegation failed for ${agentId}: ${message}`);
+      // Mark as failed in DB so UI can show the error
+      this.agentStateRepo.upsert({
+        ...record,
+        status: 'failed',
+        updatedAt: Date.now(),
       });
-    } catch (err) {
-      // Rollback: remove workspace directory to avoid orphaned files
-      this.logger.error(`Post-write step failed for ${agentId}, rolling back workspace: ${err}`);
-      try { rmSync(workspacePath, { recursive: true, force: true }); } catch { /* best-effort */ }
-      throw err;
-    }
+    });
 
-    this.logger.log(`Agent "${name}" (${agentId}) created successfully`);
+    this.logger.log(`Agent "${name}" (${agentId}) created — workspace generation delegated to architect`);
 
     return {
       agentId,
@@ -232,7 +218,7 @@ export class AgentFactoryService {
       avatarEmoji: role.emoji,
       uiColor: role.color,
       workspacePath,
-      status: 'active',
+      status: 'configuring',
       createdAt: now,
     };
   }
@@ -290,27 +276,4 @@ export class AgentFactoryService {
     return this.agentStateRepo.findById(id);
   }
 
-  // ── Workspace disk operations ──────────────────────────────────────
-
-  private writeWorkspace(workspacePath: string, files: AgentWorkspaceFiles): void {
-    // Ensure workspace root is under the configured agents root
-    const resolvedWs = resolve(workspacePath);
-    if (!resolvedWs.startsWith(this.agentsRoot + '/')) {
-      throw new Error(`Workspace path escapes agents root: ${resolvedWs}`);
-    }
-
-    mkdirSync(resolvedWs, { recursive: true });
-
-    for (const fileName of WORKSPACE_FILES) {
-      // basename() prevents any path component in the filename
-      const safeName = basename(fileName);
-      const filePath = join(resolvedWs, safeName);
-      writeFileSync(filePath, files[fileName], 'utf-8');
-    }
-
-    // Create empty memory/ directory
-    mkdirSync(join(resolvedWs, 'memory'), { recursive: true });
-
-    this.logger.log(`Workspace written to ${resolvedWs}`);
-  }
 }
