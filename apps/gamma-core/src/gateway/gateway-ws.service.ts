@@ -1664,16 +1664,29 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     });
 
     // Send the result back to the Gateway so the agent receives it
-    this.send({
-      type: 'req',
-      id: ulid(),
-      method: 'tools.reject',
-      params: {
-        sessionKey: this.toOpenClawKey(sessionKey),
-        toolCallId,
-        error: resultPayload,
-      },
-    });
+    if (isError) {
+      this.send({
+        type: 'req',
+        id: ulid(),
+        method: 'tools.reject',
+        params: {
+          sessionKey: this.toOpenClawKey(sessionKey),
+          toolCallId,
+          error: resultPayload,
+        },
+      });
+    } else {
+      this.send({
+        type: 'req',
+        id: ulid(),
+        method: 'tools.result',
+        params: {
+          sessionKey: this.toOpenClawKey(sessionKey),
+          toolCallId,
+          result: resultPayload,
+        },
+      });
+    }
 
     // Update live state
     const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
@@ -1786,16 +1799,29 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     });
 
     // Send the result back to the Gateway so the agent receives it
-    this.send({
-      type: 'req',
-      id: ulid(),
-      method: 'tools.reject',
-      params: {
-        sessionKey: this.toOpenClawKey(sessionKey),
-        toolCallId,
-        error: resultPayload,
-      },
-    });
+    if (isError) {
+      this.send({
+        type: 'req',
+        id: ulid(),
+        method: 'tools.reject',
+        params: {
+          sessionKey: this.toOpenClawKey(sessionKey),
+          toolCallId,
+          error: resultPayload,
+        },
+      });
+    } else {
+      this.send({
+        type: 'req',
+        id: ulid(),
+        method: 'tools.result',
+        params: {
+          sessionKey: this.toOpenClawKey(sessionKey),
+          toolCallId,
+          result: resultPayload,
+        },
+      });
+    }
 
     // Update live state
     const raw = await this.redis.hget(`${REDIS_KEYS.STATE_PREFIX}${windowId}`, 'pendingToolLines');
