@@ -823,7 +823,7 @@ function AgentHierarchy() {
 
   useEffect(() => {
     fetchAgents();
-    const t = setInterval(fetchAgents, 5000);
+    const t = setInterval(fetchAgents, 15_000); // perf: was 5s
     return () => clearInterval(t);
   }, [fetchAgents]);
 

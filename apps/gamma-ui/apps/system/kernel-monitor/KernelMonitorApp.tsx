@@ -231,7 +231,7 @@ export function KernelMonitorApp(): React.ReactElement {
 
     const startPolling = () => {
       if (iv) return;
-      iv = setInterval(fetchSessions, 5000);
+      iv = setInterval(fetchSessions, 15_000); // perf: was 5s
     };
     const stopPolling = () => {
       if (iv) {

@@ -85,8 +85,8 @@ export function AboutModal({ onClose }: Props): React.ReactElement {
         style={{
           width: 310,
           background: "rgba(10, 14, 28, 0.82)",
-          backdropFilter: "blur(28px) saturate(180%)",
-          WebkitBackdropFilter: "blur(28px) saturate(180%)",
+          backdropFilter: "none",
+          WebkitBackdropFilter: "none",
           border: "1px solid rgba(255,255,255,0.08)",
           borderRadius: 14,
           boxShadow: "0 24px 64px rgba(0,0,0,0.7), 0 0 0 0.5px rgba(255,255,255,0.04) inset",

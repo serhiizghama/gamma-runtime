@@ -8,11 +8,13 @@ export function WindowManager(): React.ReactElement {
 
   return (
     <>
-      {Object.values(windows).map((win) => (
-        <WindowErrorBoundary key={win.id} windowId={win.id} appId={win.appId}>
-          <WindowNode id={win.id} />
-        </WindowErrorBoundary>
-      ))}
+      {Object.values(windows)
+        .filter((win) => !win.isMinimized)
+        .map((win) => (
+          <WindowErrorBoundary key={win.id} windowId={win.id} appId={win.appId}>
+            <WindowNode id={win.id} />
+          </WindowErrorBoundary>
+        ))}
     </>
   );
 }

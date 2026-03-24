@@ -330,7 +330,7 @@ function useBackupInventory() {
 
   // Auto-refresh every 10s
   useEffect(() => {
-    const id = setInterval(() => setRefreshTick((t) => t + 1), 10_000);
+    const id = setInterval(() => setRefreshTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
   }, []);
 
@@ -427,7 +427,7 @@ function useAgentRegistry() {
 
   // Auto-refresh every 10s as fallback when SSE is silent or unavailable
   useEffect(() => {
-    const id = setInterval(() => setRefreshTick((t) => t + 1), 10_000);
+    const id = setInterval(() => setRefreshTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
   }, []);
 
@@ -587,7 +587,7 @@ function AgentsView({
   // TODO(perf): scope this interval to a dedicated RelativeTime component
   // so only timestamp cells re-render rather than the full agent table.
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 5_000);
+    const id = setInterval(() => setTick((t) => t + 1), 15_000);
     return () => clearInterval(id);
   }, []);
 

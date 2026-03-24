@@ -57,7 +57,7 @@
   /* ── Glass morphism (Twilight Blue) ───────────────────────── */
   --glass-bg: rgba(15, 23, 42, 0.65);
   --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-blur: blur(16px) saturate(180%);
+  --glass-blur: none; /* perf: disabled — was blur(16px) saturate(180%) */
   --glass-shadow: var(--shadow-elevated);
 
   /* ── macOS window chrome ──────────────────────────────────── */
@@ -71,7 +71,7 @@
 
   /* ── Dock ─────────────────────────────────────────────────── */
   --dock-bg: rgba(15, 23, 42, 0.65);
-  --dock-blur: blur(16px) saturate(180%);
+  --dock-blur: none; /* perf: disabled — was blur(16px) saturate(180%) */
   --dock-radius: 20px;
   --dock-icon-size: 56px;
   --dock-padding: 8px 14px;
@@ -207,11 +207,7 @@
   height: var(--win-h, 560px);
   transform: translate(var(--win-x, 0px), var(--win-y, 0px));
   box-sizing: border-box;
-  transition:
-    top 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    height 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    left 300ms,
-    width 300ms;
+  transition: none; /* perf: removed — was fighting rAF drag */
 }
 
 .window--maximized {
@@ -223,6 +219,13 @@
   height: calc(100vh - var(--desktop-taskbar-height, 0px));
   transform: none;
   box-sizing: border-box;
+  /* Only animate geometry when maximizing/restoring */
+  transition:
+    top 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    left 300ms,
+    width 300ms,
+    transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* ── Bottom Dock (auto-hide) ─────────────────────────────────── */
@@ -264,14 +267,10 @@
   border-radius: var(--window-radius);
   animation: windowOpen var(--duration-normal) var(--spring-fast) forwards;
   transform-origin: center center;
-  will-change: transform, opacity, box-shadow;
-  transition:
-    transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 300ms ease-out,
-    opacity 300ms ease-out,
-    border-color 300ms ease-out;
-  transform: scale(0.985);
-  opacity: 0.85;
+  will-change: auto; /* perf: removed forced GPU layers for every window */
+  transition: none; /* perf: removed 4 concurrent transitions per window */
+  transform: none;
+  opacity: 1;
   box-shadow: var(--shadow-window-subtle);
   border: 1px solid transparent;
 }
@@ -284,10 +283,7 @@
 }
 
 .window--focused .window__frame {
-  transform: scale(1);
-  opacity: 1;
   box-shadow: var(--shadow-window);
-  border-color: transparent;
 }
 
 .window--minimized { visibility: hidden; pointer-events: none; }
@@ -362,8 +358,8 @@
 
 .app-icon__glyph {
   font-size: 34px; line-height: 1; display: block;
-  will-change: transform;
-  transform: translateY(0px) scale(1);
+  will-change: auto;
+  transform: none;
   transition: transform var(--duration-normal) var(--spring-fast);
   filter: drop-shadow(0 2px 8px rgba(0,0,0,0.45));
 }

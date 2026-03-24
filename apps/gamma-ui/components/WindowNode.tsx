@@ -147,10 +147,16 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
   useEffect(() => {
     const el = shellRef.current;
     if (!el || !win) return;
+    const MENU_BAR_H = 32;
+    const clampedY = Math.max(MENU_BAR_H, win.coordinates.y);
     el.style.setProperty("--win-x", `${win.coordinates.x}px`);
-    el.style.setProperty("--win-y", `${win.coordinates.y}px`);
+    el.style.setProperty("--win-y", `${clampedY}px`);
     el.style.setProperty("--win-w", `${win.dimensions.width}px`);
     el.style.setProperty("--win-h", `${win.dimensions.height}px`);
+    // Fix persisted position if it was above MenuBar
+    if (win.coordinates.y < MENU_BAR_H) {
+      useGammaStore.getState().updateWindowPosition(id, { x: win.coordinates.x, y: clampedY });
+    }
   }, [win?.coordinates.x, win?.coordinates.y, win?.dimensions.width, win?.dimensions.height]);
 
   // ─── Drag ────────────────────────────────────────────────────────────────
@@ -172,9 +178,11 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
       let currentY = initY;
       let rafPending = false;
 
+      const MENU_BAR_H = 32; // --desktop-taskbar-height
+
       const onMove = (ev: PointerEvent) => {
         currentX = initX + (ev.clientX - startClientX);
-        currentY = initY + (ev.clientY - startClientY);
+        currentY = Math.max(MENU_BAR_H, initY + (ev.clientY - startClientY));
         if (rafPending) return;
         rafPending = true;
         requestAnimationFrame(() => {
@@ -186,6 +194,7 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
 
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
+        currentY = Math.max(MENU_BAR_H, currentY);
         el.style.setProperty("--win-x", `${currentX}px`);
         el.style.setProperty("--win-y", `${currentY}px`);
         useGammaStore.getState().updateWindowPosition(id, { x: currentX, y: currentY });
@@ -238,10 +247,15 @@ export function WindowNode({ id }: WindowNodeProps): React.ReactElement | null {
           newW = Math.max(MIN_W, initW - dx);
           newX = initX + (initW - newW); // keep right edge fixed
         }
-        // North edge: taller upward, shift Y
+        // North edge: taller upward, shift Y — clamp to MenuBar
         if (edge.includes("n")) {
+          const MENU_BAR_H = 32;
           newH = Math.max(MIN_H, initH - dy);
-          newY = initY + (initH - newH); // keep bottom edge fixed
+          newY = initY + (initH - newH);
+          if (newY < MENU_BAR_H) {
+            newY = MENU_BAR_H;
+            newH = initY + initH - MENU_BAR_H;
+          }
         }
 
         curW = newW;
