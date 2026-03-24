@@ -24,3 +24,13 @@ apps/gamma-ui/apps/system/*.bak_session/
 agency-agents
 .pnpm-store
 .claude
+# Runtime state databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Ingest manifests (generated)
+.gamma-ingest.manifest.json
