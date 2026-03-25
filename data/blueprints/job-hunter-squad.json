@@ -1,0 +1,12 @@
+{
+  "id": "job-hunter-squad",
+  "name": "Job Hunter Squad",
+  "description": "Multi-agent pipeline for automated job search: Scout finds vacancies, Analyst scores matches, Tailor adapts CV, Reporter compiles results",
+  "members": [
+    { "roleId": "job-hunting/job-hunting-squad-leader", "name": "Squad Leader", "count": 1 },
+    { "roleId": "job-hunting/job-hunting-scout", "name": "Scout", "count": 1 },
+    { "roleId": "job-hunting/job-hunting-analyst", "name": "Analyst", "count": 1 },
+    { "roleId": "job-hunting/job-hunting-tailor", "name": "Tailor", "count": 1 },
+    { "roleId": "job-hunting/job-hunting-reporter", "name": "Reporter", "count": 1 }
+  ]
+}

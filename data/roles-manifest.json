@@ -504,6 +504,51 @@
     "vibe": "Builds seamless open worlds with World Partition, Nanite, and procedural foliage."
   },
   {
+    "id": "job-hunting/job-hunting-analyst",
+    "fileName": "job-hunting/job-hunting-analyst.md",
+    "name": "Analyst",
+    "description": "Vacancy evaluator who scores job-to-profile match and provides structured assessments",
+    "color": "#3b82f6",
+    "emoji": "🧠",
+    "vibe": "Every vacancy tells a story — I read between the lines."
+  },
+  {
+    "id": "job-hunting/job-hunting-reporter",
+    "fileName": "job-hunting/job-hunting-reporter.md",
+    "name": "Reporter",
+    "description": "Pipeline reporter who compiles final analytics, summaries, and actionable recommendations",
+    "color": "#ec4899",
+    "emoji": "📊",
+    "vibe": "Data without a story is just noise — I turn pipeline output into decisions."
+  },
+  {
+    "id": "job-hunting/job-hunting-scout",
+    "fileName": "job-hunting/job-hunting-scout.md",
+    "name": "Scout",
+    "description": "Job vacancy researcher who finds and filters relevant openings from provided data sources",
+    "color": "#10b981",
+    "emoji": "🔭",
+    "vibe": "First eyes on the ground — I find what others miss."
+  },
+  {
+    "id": "job-hunting/job-hunting-squad-leader",
+    "fileName": "job-hunting/job-hunting-squad-leader.md",
+    "name": "Squad Leader",
+    "description": "Pipeline orchestrator who coordinates the job hunting workflow between specialized agents",
+    "color": "#8b5cf6",
+    "emoji": "🎯",
+    "vibe": "I connect the dots between scouts, analysts, and tailors — every pipeline step matters."
+  },
+  {
+    "id": "job-hunting/job-hunting-tailor",
+    "fileName": "job-hunting/job-hunting-tailor.md",
+    "name": "Tailor",
+    "description": "CV and cover letter specialist who adapts application materials for specific vacancies",
+    "color": "#f59e0b",
+    "emoji": "✍️",
+    "vibe": "One size never fits all — every application deserves a custom fit."
+  },
+  {
     "id": "marketing/marketing-ai-citation-strategist",
     "fileName": "marketing/marketing-ai-citation-strategist.md",
     "name": "AI Citation Strategist",
