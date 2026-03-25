@@ -363,6 +363,70 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     this.reconnectDelay = 1000;
     this.logger.log('Connected and authenticated');
     this.broadcastGatewayStatus('connected');
+
+    // On reconnect: close any runs that were left in 'running' state due to
+    // the previous disconnect. Without this, the UI shows permanent spinner
+    // because lifecycle_end was never received for the interrupted run.
+    this.recoverStuckRuns().catch((err: unknown) => {
+      this.logger.warn(`recoverStuckRuns failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
+  /**
+   * Recover stuck runs after a Gateway reconnect.
+   * Scans all known session state keys in Redis. Any session with status=running
+   * gets a synthetic lifecycle_end pushed to its SSE stream so the UI can
+   * commit the partial message and stop spinning.
+   */
+  private async recoverStuckRuns(): Promise<void> {
+    const nowMs = Date.now();
+    // Scan all gamma:state:* keys
+    let cursor = '0';
+    const statePrefix = REDIS_KEYS.STATE_PREFIX; // e.g. "gamma:state:"
+    const recovered: string[] = [];
+
+    do {
+      const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', `${statePrefix}*`, 'COUNT', 100);
+      cursor = nextCursor;
+
+      for (const key of keys) {
+        try {
+          const fields = await this.redis.hgetall(key);
+          if (fields['status'] !== 'running') continue;
+
+          const windowId = key.replace(statePrefix, '');
+          const runId = fields['runId'] ?? '';
+
+          // Push synthetic lifecycle_end so UI commits the message
+          await this.pushSSE(`${REDIS_KEYS.SSE_PREFIX}${windowId}`, {
+            type: 'lifecycle_end',
+            windowId,
+            runId,
+            stopReason: 'interrupted',
+          });
+
+          // Clear running state
+          await this.redis.hset(key,
+            'status', 'idle',
+            'runId', '',
+            'streamText', '',
+            'pendingToolLines', '[]',
+            'lastEventAt', String(nowMs),
+          );
+
+          await this.sessionRegistry.upsert({ sessionKey: windowId, status: 'idle', lastActiveAt: nowMs });
+          await this.agentRegistry.update(windowId, { status: 'idle' });
+
+          recovered.push(windowId);
+        } catch (err: unknown) {
+          this.logger.warn(`recoverStuckRuns: error processing key ${key}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    } while (cursor !== '0');
+
+    if (recovered.length > 0) {
+      this.logger.warn(`[RECONNECT] Recovered ${recovered.length} stuck run(s): [${recovered.join(', ')}]`);
+    }
   }
 
   // ── Frame parsing & handling ──────────────────────────────────────────
