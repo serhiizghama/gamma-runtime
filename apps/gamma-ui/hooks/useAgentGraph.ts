@@ -12,6 +12,7 @@ import type { Node, Edge } from "@xyflow/react";
 
 import type { AgentNodeData } from "../components/SyndicateMap/AgentNode";
 import type { AgentClusterNodeData } from "../components/SyndicateMap/AgentClusterNode";
+import type { TeamGroupNodeData } from "../components/SyndicateMap/TeamGroupNode";
 import type { IpcEdgeData } from "../components/SyndicateMap/IpcEdge";
 import { computeClusters, type ClusterInfo } from "../components/SyndicateMap/clustering";
 import type { SyndicateAgent, IpcFlash } from "../store/syndicate.store";
@@ -150,13 +151,56 @@ function buildEdges(
 }
 
 /**
+ * Build team group nodes for agents that share a teamName (2+ members).
+ * Returns { groupNodes, teamMemberIds } where teamMemberIds maps agentId → teamGroupNodeId.
+ */
+function buildTeamGroups(agents: SyndicateAgent[]): {
+  groupNodes: Node[];
+  teamMemberIds: Map<string, string>;
+} {
+  const byTeam = new Map<string, SyndicateAgent[]>();
+  for (const a of agents) {
+    const team = a.teamName;
+    if (!team) continue;
+    const list = byTeam.get(team);
+    if (list) list.push(a);
+    else byTeam.set(team, [a]);
+  }
+
+  const groupNodes: Node[] = [];
+  const teamMemberIds = new Map<string, string>();
+
+  for (const [teamName, members] of byTeam) {
+    if (members.length < 2) continue;
+    const groupId = `team-${teamName}`;
+    groupNodes.push({
+      id: groupId,
+      type: "teamGroup" as const,
+      position: { x: 0, y: 0 },
+      data: {
+        teamName,
+        teamId: members[0]?.teamId || "",
+        memberCount: members.length,
+        uiColor: members[0]?.uiColor || "#6366f1",
+      } satisfies TeamGroupNodeData,
+      style: { width: 400, height: 250 },
+    });
+    for (const m of members) {
+      teamMemberIds.set(m.id, groupId);
+    }
+  }
+
+  return { groupNodes, teamMemberIds };
+}
+
+/**
  * Topology fingerprint — a string that changes ONLY when graph structure
- * changes (agent added/removed, supervisor link changed). Status, flash,
- * and data-only changes do NOT affect this fingerprint.
+ * changes (agent added/removed, supervisor link changed, team changed).
+ * Status, flash, and data-only changes do NOT affect this fingerprint.
  */
 function topologyFingerprint(agents: SyndicateAgent[], collapsedIds: Set<string>): string {
   const agentPart = agents
-    .map((a) => `${a.id}:${a.supervisorId ?? ""}`)
+    .map((a) => `${a.id}:${a.supervisorId ?? ""}:${a.teamName ?? ""}`)
     .sort()
     .join("|");
   const collapsedPart = [...collapsedIds].sort().join(",");
@@ -180,10 +224,27 @@ export function useAgentGraph({
     [agents, collapsedIds],
   );
 
-  const nodes = useMemo(
-    () => [...buildNodes(visibleAgents), ...buildClusterNodes(clusters)],
-    [visibleAgents, clusters],
+  const { groupNodes, teamMemberIds } = useMemo(
+    () => buildTeamGroups(visibleAgents),
+    [visibleAgents],
   );
+
+  const nodes = useMemo(() => {
+    const agentNodes = buildNodes(visibleAgents).map((n) => {
+      const parentId = teamMemberIds.get(n.id);
+      if (parentId) {
+        return {
+          ...n,
+          parentId,
+          extent: "parent" as const,
+          data: { ...n.data, isInTeamGroup: true },
+        };
+      }
+      return n;
+    });
+    // Group nodes MUST come before their children in the array
+    return [...groupNodes, ...agentNodes, ...buildClusterNodes(clusters)];
+  }, [visibleAgents, clusters, groupNodes, teamMemberIds]);
 
   const edges = useMemo(
     () => buildEdges(visibleAgents, ipcFlashes, clusters),

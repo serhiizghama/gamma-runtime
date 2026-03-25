@@ -102,6 +102,14 @@ const _registry = new Map<string, LazyApp>([
       })),
     ),
   ],
+  [
+    "team-chat",
+    lazy(() =>
+      import("../apps/system/team-chat/TeamChatApp").then((m) => ({
+        default: m.TeamChatApp,
+      })),
+    ),
+  ],
 ]);
 
 /** Returns the lazy-loaded component for a built-in system app, or undefined. */

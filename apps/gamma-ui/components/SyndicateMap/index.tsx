@@ -34,6 +34,7 @@ import "@xyflow/react/dist/style.css";
 
 import { AgentNode } from "./AgentNode";
 import { AgentClusterNode, type AgentClusterNodeData } from "./AgentClusterNode";
+import { TeamGroupNode } from "./TeamGroupNode";
 import { IpcEdge } from "./IpcEdge";
 import { AgentDetailPanel } from "./AgentDetailPanel";
 import { MapToolbar } from "./MapToolbar";
@@ -49,7 +50,7 @@ import { useAgentGraph } from "../../hooks/useAgentGraph";
 
 // ── Node / edge type registries (stable refs — never recreate) ────────────
 
-const nodeTypes: NodeTypes = { agent: AgentNode, cluster: AgentClusterNode } as const;
+const nodeTypes: NodeTypes = { agent: AgentNode, cluster: AgentClusterNode, teamGroup: TeamGroupNode } as const;
 const edgeTypes: EdgeTypes = { ipc: IpcEdge } as const;
 const fitViewOptions: FitViewOptions = { padding: 0.25 };
 

@@ -40,6 +40,8 @@ export interface SyndicateAgent {
   liveStatus: "running" | "idle" | "offline" | "error" | "aborted";
   supervisorId: string | null;
   inProgressTaskCount: number;
+  /** Raw team ID from the agent record. */
+  teamId: string | null;
   /** Team name (resolved from teamId via teams API). */
   teamName: string | null;
 }
@@ -190,6 +192,7 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
             liveStatus: reg ? toLiveStatus(reg.status) : "offline",
             supervisorId: reg?.supervisorId ?? null,
             inProgressTaskCount: 0,
+            teamId: r.teamId ?? null,
             teamName: r.teamId ? (teamNameMap.get(r.teamId) ?? null) : null,
           };
         });
@@ -206,6 +209,7 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
           liveStatus: toLiveStatus(reg.status),
           supervisorId: reg.supervisorId ?? null,
           inProgressTaskCount: 0,
+          teamId: null,
           teamName: null,
         });
       }
@@ -264,6 +268,7 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
           liveStatus: toLiveStatus(reg.status),
           supervisorId: reg.supervisorId ?? null,
           inProgressTaskCount: 0,
+          teamId: null,
           teamName: null,
         });
       }

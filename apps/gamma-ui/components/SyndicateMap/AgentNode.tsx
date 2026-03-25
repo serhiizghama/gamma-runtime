@@ -23,6 +23,8 @@ export interface AgentNodeData extends Record<string, unknown> {
   status: "running" | "idle" | "offline" | "error" | "aborted";
   inProgressTaskCount: number;
   teamName: string | null;
+  /** True when this agent is rendered inside a team group container. */
+  isInTeamGroup?: boolean;
 }
 
 // ── Status color mapping ──────────────────────────────────────────────────
@@ -190,6 +192,7 @@ function AgentNodeInner({ data, selected }: NodeProps) {
     status,
     inProgressTaskCount,
     teamName,
+    isInTeamGroup,
   } = data as unknown as AgentNodeData;
 
   useEffect(() => { injectStyles(); }, []);
@@ -311,7 +314,7 @@ function AgentNodeInner({ data, selected }: NodeProps) {
         {/* Labels */}
         <span style={nameStyle}>{name}</span>
         <span style={roleStyle}>{roleId}</span>
-        {teamName && (
+        {teamName && !isInTeamGroup && (
           <span
             style={{
               fontSize: 9,
@@ -353,7 +356,8 @@ function arePropsEqual(prev: NodeProps, next: NodeProps): boolean {
     p.uiColor === n.uiColor &&
     p.status === n.status &&
     p.inProgressTaskCount === n.inProgressTaskCount &&
-    p.teamName === n.teamName
+    p.teamName === n.teamName &&
+    p.isInTeamGroup === n.isInTeamGroup
   );
 }
 

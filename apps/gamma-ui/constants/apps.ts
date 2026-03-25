@@ -15,4 +15,5 @@ export const INSTALLED_APPS: AppDefinition[] = [
   { id: "syndicate-map", name: "Syndicate Map", icon: "🗺️" },
   { id: "kanban", name: "Kanban Board", icon: "📋" },
   { id: "ceo-dashboard", name: "CEO Dashboard", icon: "🏢" },
+  { id: "team-chat", name: "Team Chat", icon: "💬" },
 ];
