@@ -20,6 +20,7 @@ import { REDIS_KEYS } from '@gamma/types';
 import { SessionRegistryService } from './session-registry.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { ScaffoldService } from '../scaffold/scaffold.service';
+import { AgentStateRepository } from '../state/agent-state.repository';
 import { safeJsonParse } from '../common/safe-json.util';
 const APP_OWNER_PREFIX = 'app-owner-';
 const APP_OWNER_INIT_FIELD = 'appOwnerInitialized';
@@ -69,6 +70,7 @@ export class SessionsService {
     private readonly registry: SessionRegistryService,
     private readonly agentRegistry: AgentRegistryService,
     @Optional() private readonly activityStream?: ActivityStreamService,
+    @Optional() private readonly agentStateRepo?: AgentStateRepository,
   ) {}
 
   /** Create a new window↔session mapping */
@@ -947,6 +949,97 @@ export class SessionsService {
 
     this.logger.log(`Removed session ${windowId} (sessionKey=${existing.sessionKey})`);
     return true;
+  }
+
+  // ── Programmatic Agent Activation ────────────────────────────────────
+
+  /**
+   * Open a session for a generative agent so it can receive and process
+   * messages through the OpenClaw Gateway.
+   *
+   * This is the programmatic equivalent of opening an agent window in the UI.
+   * It creates the window↔session mapping, registers in agent registry,
+   * reads the agent's SOUL.md for the system prompt, and creates the
+   * Gateway session.
+   */
+  async openAgentSession(agentId: string): Promise<{
+    ok: boolean;
+    windowId?: string;
+    error?: string;
+  }> {
+    // 1. Validate agent exists in state DB
+    if (!this.agentStateRepo) {
+      return { ok: false, error: 'AgentStateRepository not available' };
+    }
+
+    const agent = this.agentStateRepo.findById(agentId);
+    if (!agent) {
+      return { ok: false, error: `Agent '${agentId}' not found in state DB` };
+    }
+    if (agent.status !== 'active' && agent.status !== 'configuring') {
+      return { ok: false, error: `Agent '${agentId}' has status '${agent.status}' — must be 'active'` };
+    }
+
+    // 2. Check if agent already has an active session
+    const existing = await this.findBySessionKey(agentId);
+    if (existing) {
+      return { ok: true, windowId: existing.windowId };
+    }
+
+    // 3. Generate a synthetic windowId for this agent
+    const windowId = `agent-window-${agentId}-${Date.now()}`;
+
+    // 4. Create session via the standard flow
+    await this.create({
+      windowId,
+      appId: '',
+      sessionKey: agentId,
+      agentId: agent.roleId || 'daemon',
+    });
+
+    // 5. Read SOUL.md from agent workspace for the system prompt
+    let systemPrompt: string | undefined;
+    try {
+      const soulPath = path.join(agent.workspacePath, 'SOUL.md');
+      const soulContent = await fs.readFile(soulPath, 'utf8');
+      if (soulContent) {
+        systemPrompt =
+          `[SYSTEM INJECTION] You are "${agent.name}", a Gamma Runtime agent.\n\n` +
+          soulContent;
+      }
+    } catch {
+      this.logger.debug(
+        `SOUL.md not found for agent "${agent.name}" (${agentId}) — using default prompt`,
+      );
+      systemPrompt = `[SYSTEM INJECTION] You are "${agent.name}", a Gamma Runtime agent with role "${agent.roleId}". Follow instructions and report task results using the report_status tool.`;
+    }
+
+    // 6. Create Gateway session so the agent can actually receive messages
+    const created = await this.gatewayWs.createSession(
+      agentId,
+      systemPrompt,
+      agent.roleId,
+    );
+    if (!created) {
+      this.logger.warn(
+        `openAgentSession: Gateway session creation failed for ${agentId} — ` +
+        'agent may not process messages until Gateway reconnects',
+      );
+    }
+
+    // 7. Update agent registry with the windowId
+    await this.agentRegistry.update(agentId, {
+      windowId,
+      status: 'idle',
+      lastActivity: 'session opened programmatically',
+      acceptsMessages: true,
+    });
+
+    this.logger.log(
+      `Opened agent session for "${agent.name}" (${agentId}) → windowId=${windowId}`,
+    );
+
+    return { ok: true, windowId };
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────

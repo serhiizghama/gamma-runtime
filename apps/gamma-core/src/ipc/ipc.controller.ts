@@ -11,6 +11,7 @@ import {
 import { IpcRoutingService } from './ipc-routing.service';
 import type { DelegateTaskPayload, ReportStatusPayload } from './ipc-routing.service';
 import { MessageBusService } from '../messaging/message-bus.service';
+import { SessionsService } from '../sessions/sessions.service';
 import { TaskStateRepository } from '../state/task-state.repository';
 import { TeamStateRepository } from '../state/team-state.repository';
 import { ActivityStreamService } from '../activity/activity-stream.service';
@@ -75,6 +76,13 @@ interface CreateTeamTaskRequestBody {
   priority?: number;
 }
 
+/**
+ * DTO for the POST /internal/ipc/open-session endpoint.
+ */
+interface OpenSessionRequestBody {
+  agentId: string;
+}
+
 // ── Controller ────────────────────────────────────────────────────────────
 
 /**
@@ -94,6 +102,7 @@ export class IpcController {
   constructor(
     private readonly ipcRouting: IpcRoutingService,
     private readonly messageBus: MessageBusService,
+    private readonly sessionsService: SessionsService,
     private readonly taskRepo: TaskStateRepository,
     private readonly teamRepo: TeamStateRepository,
     private readonly activityStream: ActivityStreamService,
@@ -335,6 +344,42 @@ export class IpcController {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`POST /internal/ipc/create-team-task failed: ${msg}`);
+      return { ok: false, error: msg };
+    }
+  }
+
+  /**
+   * POST /internal/ipc/open-session
+   *
+   * Opens an active session for a generative agent, enabling it to receive
+   * and process messages through the OpenClaw Gateway. This is the programmatic
+   * equivalent of opening an agent window in the UI.
+   */
+  @Post('open-session')
+  @HttpCode(HttpStatus.OK)
+  async openSession(
+    @Body() body: OpenSessionRequestBody,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    this.verifyBearerToken(authHeader);
+
+    const { agentId } = body;
+
+    if (!agentId || typeof agentId !== 'string') {
+      return { ok: false, error: 'Missing or invalid required field: agentId' };
+    }
+
+    try {
+      const result = await this.sessionsService.openAgentSession(agentId);
+
+      this.logger.log(
+        `POST /internal/ipc/open-session → ${result.ok ? `windowId=${result.windowId}` : `error: ${result.error}`}`,
+      );
+
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`POST /internal/ipc/open-session failed: ${msg}`);
       return { ok: false, error: msg };
     }
   }
