@@ -10,6 +10,13 @@ import {
 } from '@nestjs/common';
 import { IpcRoutingService } from './ipc-routing.service';
 import type { DelegateTaskPayload, ReportStatusPayload } from './ipc-routing.service';
+import { MessageBusService } from '../messaging/message-bus.service';
+import { TaskStateRepository } from '../state/task-state.repository';
+import { TeamStateRepository } from '../state/team-state.repository';
+import { ActivityStreamService } from '../activity/activity-stream.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ulid } from 'ulid';
+import type { AgentMessage } from '@gamma/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -43,6 +50,31 @@ interface ReportRequestBody {
   data?: unknown;
 }
 
+/**
+ * DTO for the POST /internal/ipc/send-message endpoint.
+ */
+interface SendMessageRequestBody {
+  fromAgentId: string;
+  toAgentId: string;
+  subject: string;
+  body: string;
+  type?: AgentMessage['type'];
+  replyTo?: string;
+}
+
+/**
+ * DTO for the POST /internal/ipc/create-team-task endpoint.
+ */
+interface CreateTeamTaskRequestBody {
+  sourceAgentId: string;
+  teamId: string;
+  projectId?: string;
+  title: string;
+  description: string;
+  kind: string;
+  priority?: number;
+}
+
 // ── Controller ────────────────────────────────────────────────────────────
 
 /**
@@ -59,7 +91,14 @@ interface ReportRequestBody {
 export class IpcController {
   private readonly logger = new Logger(IpcController.name);
 
-  constructor(private readonly ipcRouting: IpcRoutingService) {}
+  constructor(
+    private readonly ipcRouting: IpcRoutingService,
+    private readonly messageBus: MessageBusService,
+    private readonly taskRepo: TaskStateRepository,
+    private readonly teamRepo: TeamStateRepository,
+    private readonly activityStream: ActivityStreamService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   /**
    * POST /internal/ipc/delegate
@@ -154,6 +193,150 @@ export class IpcController {
     );
 
     return result;
+  }
+
+  /**
+   * POST /internal/ipc/send-message
+   *
+   * Sends an inter-agent message via Redis Streams inbox.
+   * The OpenClaw `send_message` tool calls this endpoint.
+   */
+  @Post('send-message')
+  @HttpCode(HttpStatus.OK)
+  async sendMessage(
+    @Body() body: SendMessageRequestBody,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    this.verifyBearerToken(authHeader);
+
+    const { fromAgentId, toAgentId, subject, body: messageBody, type, replyTo } = body;
+
+    if (!fromAgentId || typeof fromAgentId !== 'string') {
+      return { ok: false, error: 'Missing or invalid required field: fromAgentId' };
+    }
+    if (!toAgentId || typeof toAgentId !== 'string') {
+      return { ok: false, error: 'Missing or invalid required field: toAgentId' };
+    }
+    if (!subject || typeof subject !== 'string') {
+      return { ok: false, error: 'Missing or invalid required field: subject' };
+    }
+    if (!messageBody || typeof messageBody !== 'string') {
+      return { ok: false, error: 'Missing or invalid required field: body' };
+    }
+
+    const msgType: AgentMessage['type'] = type ?? 'notification';
+    const validTypes = ['task_request', 'task_response', 'notification', 'query'];
+    if (!validTypes.includes(msgType)) {
+      return { ok: false, error: `Invalid type '${String(type)}'. Must be one of: ${validTypes.join(', ')}` };
+    }
+
+    try {
+      const result = await this.messageBus.send(
+        fromAgentId,
+        toAgentId,
+        msgType,
+        subject,
+        messageBody,
+        replyTo,
+      );
+
+      this.logger.log(
+        `POST /internal/ipc/send-message → ${fromAgentId} → ${toAgentId} [${msgType}] "${subject}"`,
+      );
+
+      return { ok: true, messageId: result.messageId, delivered: result.delivered };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`POST /internal/ipc/send-message failed: ${msg}`);
+      return { ok: false, error: msg };
+    }
+  }
+
+  /**
+   * POST /internal/ipc/create-team-task
+   *
+   * Creates a task in a team's backlog. The task will be automatically
+   * picked up by a qualified team member via TaskClaimService.
+   */
+  @Post('create-team-task')
+  @HttpCode(HttpStatus.OK)
+  async createTeamTask(
+    @Body() body: CreateTeamTaskRequestBody,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    this.verifyBearerToken(authHeader);
+
+    const { sourceAgentId, teamId, projectId, title, description, kind, priority } = body;
+
+    if (!sourceAgentId || typeof sourceAgentId !== 'string') {
+      return { ok: false, error: 'Missing or invalid required field: sourceAgentId' };
+    }
+    if (!teamId || typeof teamId !== 'string') {
+      return { ok: false, error: 'Missing or invalid required field: teamId' };
+    }
+    if (!title || typeof title !== 'string') {
+      return { ok: false, error: 'Missing or invalid required field: title' };
+    }
+    if (!description || typeof description !== 'string') {
+      return { ok: false, error: 'Missing or invalid required field: description' };
+    }
+
+    const validKinds = ['design', 'backend', 'frontend', 'qa', 'devops', 'content', 'research', 'generic'];
+    const taskKind = kind || 'generic';
+    if (!validKinds.includes(taskKind)) {
+      return { ok: false, error: `Invalid kind '${kind}'. Must be one of: ${validKinds.join(', ')}` };
+    }
+
+    const taskPriority = priority ?? 0;
+    if (typeof taskPriority !== 'number' || taskPriority < 0 || taskPriority > 100) {
+      return { ok: false, error: 'Invalid priority: must be a number between 0 and 100' };
+    }
+
+    // Validate team exists
+    const team = this.teamRepo.findById(teamId);
+    if (!team) {
+      return { ok: false, error: `Team '${teamId}' not found` };
+    }
+
+    const taskId = ulid();
+    const now = Date.now();
+
+    try {
+      this.taskRepo.insert({
+        id: taskId,
+        title,
+        sourceAgentId,
+        targetAgentId: null,
+        teamId,
+        projectId: projectId ?? null,
+        kind: taskKind as any,
+        priority: taskPriority,
+        status: 'backlog',
+        payload: JSON.stringify({ description, priority: taskPriority }),
+        result: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      this.activityStream.emit({
+        kind: 'task_status_change',
+        agentId: sourceAgentId,
+        payload: JSON.stringify({ taskId, teamId, taskKind, status: 'backlog' }),
+        severity: 'info',
+      });
+
+      this.eventEmitter.emit('backlog.task.created', { taskId, teamId, kind: taskKind });
+
+      this.logger.log(
+        `POST /internal/ipc/create-team-task → taskId=${taskId} team=${teamId} kind=${taskKind}`,
+      );
+
+      return { ok: true, taskId, teamId, kind: taskKind, status: 'backlog' };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`POST /internal/ipc/create-team-task failed: ${msg}`);
+      return { ok: false, error: msg };
+    }
   }
 
   // ── Auth helper ─────────────────────────────────────────────────────
