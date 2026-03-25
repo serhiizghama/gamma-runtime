@@ -327,16 +327,40 @@ export class IpcRoutingService {
     }
 
     // ── Verify the reporting agent is the assigned target ──────────────
-    if (task.targetAgentId !== reportingAgentId) {
-      this.logger.warn(
-        `IPC spoofing attempt: agent '${reportingAgentId}' tried to report on task '${taskId}' ` +
-        `assigned to '${task.targetAgentId}'`,
+    // Normalize both sides before comparing — OpenClaw daemon agents may
+    // report with session keys like "main" or "agent:main:agent.<ULID>".
+    // We also accept the task's own targetAgentId as the effective reporter
+    // when the normalized caller resolves to the same agent.
+    const normalizedTarget = normalizeAgentId(task.targetAgentId ?? '');
+    const callerIsTarget = normalizedTarget === reportingAgentId
+      || task.targetAgentId === reportingAgentId;
+
+    if (!callerIsTarget) {
+      // Secondary check: accept if the raw caller key contains the target ULID
+      // (handles "agent:main:agent.01KMJB..." → extract ULID and compare)
+      const targetUlid = task.targetAgentId?.replace(/^agent\./i, '') ?? '';
+      const callerContainsTargetUlid = targetUlid.length > 0
+        && rawReportingAgentId.toLowerCase().includes(targetUlid.toLowerCase());
+
+      if (!callerContainsTargetUlid) {
+        this.logger.warn(
+          `IPC spoofing attempt: agent '${reportingAgentId}' tried to report on task '${taskId}' ` +
+          `assigned to '${task.targetAgentId}'`,
+        );
+        return {
+          ok: false,
+          error: `Agent '${reportingAgentId}' is not assigned to task '${taskId}'`,
+        };
+      }
+
+      // Caller contains the target ULID — use the canonical targetAgentId
+      this.logger.debug(
+        `report_status: normalized caller '${rawReportingAgentId}' → accepted as '${task.targetAgentId}'`,
       );
-      return {
-        ok: false,
-        error: `Agent '${reportingAgentId}' is not assigned to task '${taskId}'`,
-      };
     }
+
+    // Use the canonical targetAgentId for all downstream operations
+    const effectiveReportingAgentId = task.targetAgentId ?? reportingAgentId;
 
     // ── Enforce task state machine (terminal states are immutable) ─────
     if (TERMINAL_STATUSES.has(task.status)) {
@@ -357,7 +381,7 @@ export class IpcRoutingService {
     // ── Deliver callback to supervisor's inbox ─────────────────────────
     if (supervisor) {
       await this.messageBus.send(
-        reportingAgentId,
+        effectiveReportingAgentId,
         supervisorId,
         'task_response',
         `Task [${taskId}] ${status}`,
@@ -373,19 +397,19 @@ export class IpcRoutingService {
     const activityKind = status === 'done' ? 'ipc_task_completed' : 'ipc_task_failed';
     this.activityStream.emit({
       kind: activityKind,
-      agentId: reportingAgentId,
+      agentId: effectiveReportingAgentId,
       targetAgentId: supervisorId,
       payload: JSON.stringify({ taskId, status, message }),
       severity: status === 'failed' ? 'warn' : 'info',
     });
 
     this.logger.log(
-      `IPC report: ${reportingAgentId} → task ${taskId} [${status}]`,
+      `IPC report: ${effectiveReportingAgentId} → task ${taskId} [${status}]`,
     );
 
     // ── Wake supervisor if IDLE ────────────────────────────────────────
     if (supervisor) {
-      await this.wakeSupervisorWithReport(supervisor, reportingAgentId, taskId, status, message, data);
+      await this.wakeSupervisorWithReport(supervisor, effectiveReportingAgentId, taskId, status, message, data);
     }
 
     return { ok: true };
