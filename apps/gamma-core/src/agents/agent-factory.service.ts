@@ -258,11 +258,17 @@ export class AgentFactoryService {
     // 2. Mark archived in gamma-state.db (knowledge chunks are preserved)
     this.agentStateRepo.markArchived(agentId);
 
-    // 3. Update registry to offline
-    await this.agentRegistry.update(agentId, {
-      status: 'offline',
-      acceptsMessages: false,
-    });
+    // 3. Remove agent from Redis registry entirely so it no longer appears
+    // on the Syndicate Map or any agent list. A soft-update to 'offline' is
+    // not sufficient — stale keys survive process restarts and manual DB
+    // cleanups, causing ghost nodes in the UI.
+    try {
+      await this.agentRegistry.unregister(agentId);
+      this.logger.log(`Unregistered agent ${agentId} from Redis registry`);
+    } catch (err) {
+      // Non-fatal: log and continue. The DB record is already archived.
+      this.logger.warn(`Failed to unregister agent ${agentId} from Redis: ${err}`);
+    }
 
     this.logger.log(`Agent ${agentId} archived`);
     return { ok: true };
