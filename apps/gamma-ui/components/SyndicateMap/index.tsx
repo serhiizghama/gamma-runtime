@@ -288,20 +288,25 @@ function SyndicateMapInner() {
       // Data-only update: patch node.data in-place, preserving positions
       const freshById = new Map(graph.nodes.map((n) => [n.id, n]));
 
-      setNodes((prev) =>
-        prev.map((n) => {
+      setNodes((prev) => {
+        const next = prev.map((n) => {
           const fresh = freshById.get(n.id);
           if (!fresh) return n;
 
           // Shallow-compare data to avoid unnecessary re-renders
           const cur = n.data as Record<string, unknown>;
-          const next = fresh.data as Record<string, unknown>;
-          const keys = Object.keys(next);
-          const changed = keys.some((k) => cur[k] !== next[k]);
+          const nxt = fresh.data as Record<string, unknown>;
+          const keys = Object.keys(nxt);
+          const changed = keys.some((k) => cur[k] !== nxt[k]);
           return changed ? { ...n, data: fresh.data } : n;
-        }),
-      );
-      setEdges(graph.edges);
+        });
+        // Return same reference if nothing changed — avoids downstream re-renders
+        const anyChanged = next.some((n, i) => n !== prev[i]);
+        return anyChanged ? next : prev;
+      });
+
+      // Only update edges if the reference actually changed (memoized in useAgentGraph)
+      setEdges((prev) => (prev === graph.edges ? prev : graph.edges));
     }
   }, [graph, setNodes, setEdges]);
 

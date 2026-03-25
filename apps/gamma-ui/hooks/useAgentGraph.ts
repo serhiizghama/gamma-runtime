@@ -190,5 +190,13 @@ export function useAgentGraph({
     [visibleAgents, ipcFlashes, clusters],
   );
 
-  return { nodes, edges, topologyKey };
+  // Memoize the return object so its reference only changes when content changes.
+  // Without this, a new object literal is created on every render, causing
+  // the useEffect in SyndicateMapInner (which depends on `graph`) to fire
+  // every render → setEdges → re-render → infinite loop (React "Maximum update
+  // depth exceeded").
+  return useMemo(
+    () => ({ nodes, edges, topologyKey }),
+    [nodes, edges, topologyKey],
+  );
 }
