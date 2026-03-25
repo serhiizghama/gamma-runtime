@@ -17,7 +17,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 // ---------------------------------------------------------------------------
 
 const DB_FILENAME = 'gamma-state.db';
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 
 /** Resolve DB path: env override → <repoRoot>/data/gamma-state.db */
 function resolveDbPath(): string {
@@ -109,6 +109,7 @@ function applyMigrations(db: DatabaseType): void {
     if (currentVersion < 1) migrateToV1(db);
     if (currentVersion < 2) migrateToV2(db);
     if (currentVersion < 3) migrateToV3(db);
+    if (currentVersion < 4) migrateToV4(db);
     setSchemaVersion(db, CURRENT_SCHEMA_VERSION);
   });
 
@@ -129,7 +130,7 @@ function migrateToV1(db: DatabaseType): void {
       avatar_emoji   TEXT NOT NULL DEFAULT '🤖',
       ui_color       TEXT NOT NULL DEFAULT '#6366F1',
       status         TEXT NOT NULL DEFAULT 'active'
-                     CHECK(status IN ('active', 'archived', 'corrupted')),
+                     CHECK(status IN ('active', 'archived', 'corrupted', 'configuring', 'failed')),
       workspace_path TEXT NOT NULL,
       created_at     INTEGER NOT NULL,
       updated_at     INTEGER NOT NULL
@@ -243,6 +244,44 @@ function migrateToV3(db: DatabaseType): void {
   const fkCheck = db.pragma('foreign_key_check') as unknown[];
   if (fkCheck.length > 0) {
     throw new Error(`V3 migration FK violation: ${JSON.stringify(fkCheck)}`);
+  }
+
+  db.pragma('foreign_keys = ON');
+}
+
+/** V4: Expand agents.status CHECK to include 'configuring' and 'failed'. */
+function migrateToV4(db: DatabaseType): void {
+  db.pragma('foreign_keys = OFF');
+
+  // SQLite does not support ALTER COLUMN — recreate the table with updated constraint.
+  db.exec(`
+    ALTER TABLE agents RENAME TO _agents_v3;
+
+    CREATE TABLE agents (
+      id             TEXT PRIMARY KEY,
+      name           TEXT NOT NULL,
+      role_id        TEXT NOT NULL,
+      avatar_emoji   TEXT NOT NULL DEFAULT '🤖',
+      ui_color       TEXT NOT NULL DEFAULT '#6366F1',
+      status         TEXT NOT NULL DEFAULT 'active'
+                     CHECK(status IN ('active', 'archived', 'corrupted', 'configuring', 'failed')),
+      workspace_path TEXT NOT NULL,
+      team_id        TEXT REFERENCES teams(id),
+      created_at     INTEGER NOT NULL,
+      updated_at     INTEGER NOT NULL
+    );
+
+    INSERT INTO agents SELECT * FROM _agents_v3;
+    DROP TABLE _agents_v3;
+
+    CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
+    CREATE INDEX IF NOT EXISTS idx_agents_role   ON agents(role_id);
+    CREATE INDEX IF NOT EXISTS idx_agents_team   ON agents(team_id);
+  `);
+
+  const fkCheck = db.pragma('foreign_key_check') as unknown[];
+  if (fkCheck.length > 0) {
+    throw new Error(`V4 migration FK violation: ${JSON.stringify(fkCheck)}`);
   }
 
   db.pragma('foreign_keys = ON');
