@@ -10,6 +10,37 @@ import { TaskStateRepository } from '../state/task-state.repository';
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
+/**
+ * Normalize an OpenClaw session key to a Gamma agentId.
+ *
+ * OpenClaw routes Gamma daemon agents under keys like:
+ *   agent:main:agent.01kmjaqttfvhftkdjs05nwfyr8  (lowercase ULID)
+ *   agent:agent.01KMJAQTTFVHFTKDJS05NWFYR8:main
+ *
+ * The Gamma registry stores them as:
+ *   agent.01KMJAQTTFVHFTKDJS05NWFYR8  (uppercase ULID)
+ *
+ * This function extracts and normalizes the Gamma agentId so IPC
+ * authorization checks work correctly regardless of which OpenClaw
+ * session key format is used.
+ */
+function normalizeAgentId(rawKey: string): string {
+  // Already a plain Gamma agentId
+  if (/^agent\.[0-9A-Z]{26}$/i.test(rawKey)) {
+    return 'agent.' + rawKey.replace(/^agent\./i, '').toUpperCase();
+  }
+  // OpenClaw format: agent:<anything>:agent.<ulid>  or  agent:agent.<ulid>:<anything>
+  const match = rawKey.match(/agent\.([0-9A-Za-z]{26})/i);
+  if (match) {
+    return 'agent.' + match[1].toUpperCase();
+  }
+  // system-architect shorthand
+  if (rawKey === 'agent:system-architect:main' || rawKey === 'system-architect') {
+    return 'system-architect';
+  }
+  return rawKey;
+}
+
 /** Role seniority used for hierarchy validation (higher = more senior). */
 const ROLE_SENIORITY: Record<string, number> = {
   architect: 30,
@@ -101,9 +132,10 @@ export class IpcRoutingService {
    * 8. Returns the taskId.
    */
   async delegateTask(
-    sourceAgentId: string,
+    rawSourceAgentId: string,
     payload: DelegateTaskPayload,
   ): Promise<DelegateTaskResult> {
+    const sourceAgentId = normalizeAgentId(rawSourceAgentId);
     const { targetAgentId, teamId, projectId, title, taskDescription, kind, priority } = payload;
 
     // ── At least one target must be specified ──────────────────────────
@@ -267,9 +299,10 @@ export class IpcRoutingService {
    * 8. Wakes the supervisor if IDLE.
    */
   async reportTaskStatus(
-    reportingAgentId: string,
+    rawReportingAgentId: string,
     payload: ReportStatusPayload,
   ): Promise<ReportStatusResult> {
+    const reportingAgentId = normalizeAgentId(rawReportingAgentId);
     const { taskId, status, message, data } = payload;
 
     // ── Payload size guards ────────────────────────────────────────────

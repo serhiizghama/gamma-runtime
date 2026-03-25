@@ -147,7 +147,23 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       const appId = openClawKey.replace('agent:app-owner:', '');
       return `app-owner-${appId}`;
     }
+    // Gamma daemon agent format — OpenClaw may use any of:
+    //   agent:main:agent.01kmjaqttfvhftkdjs05nwfyr8
+    //   agent:agent.01KMJAQTTFVHFTKDJS05NWFYR8:main
+    // Extract the "agent.<ULID>" segment and normalize to uppercase.
+    const gammaDaemonMatch = openClawKey.match(/agent\.([0-9A-Za-z]{26})/i);
+    if (gammaDaemonMatch) {
+      return 'agent.' + gammaDaemonMatch[1].toUpperCase();
+    }
     return openClawKey;
+  }
+
+  /**
+   * Normalize an OpenClaw-style session key to a Gamma agentId.
+   * Used when validating IPC caller identity (e.g. report_status).
+   */
+  public normalizeToAgentId(rawKey: string): string {
+    return this.toInternalKey(rawKey);
   }
 
   /**
