@@ -33,6 +33,7 @@ interface UseTeamChatResult {
   messages: TeamMessage[];
   teamName: string;
   members: TeamMember[];
+  /** true when Squad Leader SSE stream is active (primary connection) */
   isConnected: boolean;
   sendMessage: (text: string) => void;
   squadLeaderId: string | null;
@@ -228,7 +229,8 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { connected } = useSecureSse({
+  // Subscribe to activity stream for ipc events (delegation, completion, failure)
+  useSecureSse({
     path: "/api/system/activity/stream",
     onMessage: handleMessage,
     reconnectMs: 3000,
@@ -236,18 +238,18 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     enabled: teamMembers.length > 0,
   });
 
-  // ── Squad Leader SSE stream (to capture text responses) ───────────
+  // ── Squad Leader SSE stream ────────────────────────────────────────
   //
-  // Root cause of missed messages:
-  //   1. User sends message → POST /api/teams/:id/message → openAgentSession creates NEW windowId
-  //   2. Agent responds immediately on the new windowId's SSE stream
-  //   3. Hook was connected to old/null windowId → response missed
+  // Design:
+  //  - Resolves windowId from /api/sessions/active on every (re)connect
+  //  - Does NOT close a healthy connection on sendMessage — avoids race
+  //    where reconnect gap causes missed assistant_delta events
+  //  - Exposes leaderConnected state for UI (separate from activity stream)
   //
-  // Fix: expose a `reconnectNow()` trigger that sendMessage calls immediately
-  // after POST, so we connect to the fresh windowId before the agent responds.
   const leaderStreamRef = useRef<EventSource | null>(null);
   const squadLeaderIdRef = useRef<string | null>(null);
   const reconnectNowRef = useRef<(() => void) | null>(null);
+  const [leaderConnected, setLeaderConnected] = useState(false);
 
   useEffect(() => {
     squadLeaderIdRef.current = squadLeaderId;
@@ -260,8 +262,6 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     let es: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let currentWindowId: string | null = null;
-
-    // Track cumulative answer text per run
     let currentAnswerText = "";
     let currentAnswerId: string | null = null;
 
@@ -270,36 +270,29 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
         const res = await fetch(`${API_BASE}/api/sessions/active`, { headers: systemAuthHeaders() });
         if (!res.ok) return null;
         const sessions = (await res.json()) as Array<{ sessionKey: string; windowId: string }>;
-        const session = sessions.find((s) => s.sessionKey === squadLeaderIdRef.current);
-        return session?.windowId ?? null;
-      } catch {
-        return null;
-      }
+        return sessions.find((s) => s.sessionKey === squadLeaderIdRef.current)?.windowId ?? null;
+      } catch { return null; }
     }
 
-    async function connect(_forceReconnect = false) {
+    async function connect() {
       if (destroyed) return;
 
       const windowId = await resolveWindowId();
       if (!windowId || destroyed) {
-        reconnectTimer = setTimeout(() => connect(), 2000);
+        // No active session yet — retry after 2s
+        reconnectTimer = setTimeout(connect, 2000);
         return;
       }
 
-      // Already connected to the correct windowId and connection is healthy — skip.
-      // forceReconnect=true (called after sendMessage POST) still skips if same windowId
-      // to avoid closing an active SSE that's already receiving the agent's response.
-      if (windowId === currentWindowId && es && es.readyState !== EventSource.CLOSED) {
+      // Already connected to the same healthy windowId — nothing to do
+      if (windowId === currentWindowId && es && es.readyState === EventSource.OPEN) {
         return;
       }
 
-      // Only close if switching to a different windowId, not on same-window reconnect
-      if (currentWindowId && windowId !== currentWindowId) {
-        es?.close();
-        currentAnswerText = "";
-        currentAnswerId = null;
-      } else if (!es || es.readyState === EventSource.CLOSED) {
-        // No connection or closed — safe to reconnect
+      // Close old connection only if switching windowId
+      if (es && windowId !== currentWindowId) {
+        es.close();
+        es = null;
         currentAnswerText = "";
         currentAnswerId = null;
       }
@@ -309,73 +302,78 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
       const ticket = await fetchSseTicket(`/api/stream/${windowId}`);
       if (destroyed) return;
 
-      const url = `${API_BASE}/api/stream/${windowId}${ticket}`;
-      es = new EventSource(url);
+      const newEs = new EventSource(`${API_BASE}/api/stream/${windowId}${ticket}`);
+      es = newEs;
       leaderStreamRef.current = es;
 
-      es.onmessage = (ev) => {
+      newEs.onopen = () => {
+        if (!destroyed) setLeaderConnected(true);
+      };
+
+      newEs.onmessage = (ev) => {
+        if (destroyed) return;
         try {
           const event = JSON.parse(ev.data) as GammaSSEEvent;
           const leaderId = squadLeaderIdRef.current;
           if (!leaderId) return;
-          const info = getAgentInfo(leaderId);
+
+          if (event.type === "keep_alive") return;
 
           if (event.type === "assistant_delta" || event.type === "assistant_update") {
-            currentAnswerText = event.text;
+            currentAnswerText = event.text ?? "";
             if (!currentAnswerId) {
               currentAnswerId = `leader-ans-${Date.now()}`;
               const msgId = currentAnswerId;
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: msgId,
-                  agentId: leaderId,
-                  agentName: info.name,
-                  agentEmoji: info.emoji,
-                  agentColor: info.color,
-                  text: currentAnswerText,
-                  timestamp: Date.now(),
-                  type: "completion",
-                },
-              ]);
+              const info = getAgentInfo(leaderId);
+              setMessages((prev) => [...prev, {
+                id: msgId,
+                agentId: leaderId,
+                agentName: info.name,
+                agentEmoji: info.emoji,
+                agentColor: info.color,
+                text: currentAnswerText,
+                timestamp: Date.now(),
+                type: "completion",
+              }]);
             } else {
               const msgId = currentAnswerId;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === msgId ? { ...m, text: currentAnswerText } : m
-                )
-              );
+              setMessages((prev) => prev.map((m) =>
+                m.id === msgId ? { ...m, text: currentAnswerText } : m
+              ));
             }
           }
 
           if (event.type === "lifecycle_end") {
+            // Reset per-run state but keep SSE connection alive
             currentAnswerText = "";
             currentAnswerId = null;
-            // Do NOT close/reconnect here — the SSE connection is persistent and
-            // will receive the next lifecycle_start automatically. Closing here
-            // creates a race where the next message response arrives before
-            // we have reconnected, causing missed messages.
           }
-        } catch { /* ignore */ }
+        } catch { /* ignore malformed */ }
       };
 
-      es.onerror = () => {
-        es?.close();
-        currentWindowId = null;
-        if (!destroyed) reconnectTimer = setTimeout(() => connect(), 3000);
+      newEs.onerror = () => {
+        if (destroyed) return;
+        newEs.close();
+        if (es === newEs) { es = null; leaderStreamRef.current = null; }
+        setLeaderConnected(false);
+        // Reconnect: resolve fresh windowId in case session was recreated
+        reconnectTimer = setTimeout(connect, 3000);
       };
     }
 
-    // Expose reconnect trigger for sendMessage to call immediately after POST
+    // After sendMessage POST: only reconnect if not already connected
     reconnectNowRef.current = () => {
+      if (es && es.readyState === EventSource.OPEN) return; // already connected
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      void connect(true);
+      reconnectTimer = null;
+      void connect();
     };
 
     connect();
 
     return () => {
       destroyed = true;
+      setLeaderConnected(false);
       reconnectNowRef.current = null;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       es?.close();
@@ -424,7 +422,8 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     messages,
     teamName,
     members: teamMembers,
-    isConnected: connected,
+    // Show Squad Leader SSE status (primary) — activity stream is secondary
+    isConnected: leaderConnected,
     sendMessage,
     squadLeaderId,
     agentStatuses,
