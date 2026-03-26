@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { ITool, ToolResult } from '@gamma/types';
 import type { IToolExecutor, ToolExecutionContext } from '../interfaces';
 import { MessageBusService } from '../../messaging/message-bus.service';
+import { IpcRoutingService } from '../../ipc/ipc-routing.service';
 
 /**
  * Internal tool: send_message
@@ -54,7 +55,10 @@ export class SendMessageTool implements IToolExecutor {
 
   readonly toolName = SendMessageTool.DEFINITION.name;
 
-  constructor(private readonly messageBus: MessageBusService) {}
+  constructor(
+    private readonly messageBus: MessageBusService,
+    private readonly ipcRouting: IpcRoutingService,
+  ) {}
 
   async execute(
     args: Record<string, unknown>,
@@ -74,6 +78,16 @@ export class SendMessageTool implements IToolExecutor {
       body,
       replyTo,
     );
+
+    // Wake the recipient agent so it actually processes the inbox message.
+    // send_message alone only persists to Redis Stream — the agent needs
+    // an active session prompt to be triggered.
+    this.ipcRouting.wakeAgentWithMessage(
+      recipientId,
+      context.agentId,
+      subject,
+      body,
+    ).catch(() => { /* best-effort — delivery already persisted in inbox */ });
 
     return {
       ok: true,
