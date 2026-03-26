@@ -290,7 +290,7 @@ export class SystemController {
             data: JSON.stringify({ type: 'keep_alive' }),
           } as MessageEvent);
         }
-      }, 15_000);
+      }, 8_000); // Reduced from 15s to prevent H2 proxy idle timeout
 
       // Validate ticket before starting the poll loop
       validateTicket()

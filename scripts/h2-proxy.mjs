@@ -45,6 +45,10 @@ const server = http2.createSecureServer({
   key:          fs.readFileSync(KEY_PATH),
   cert:         fs.readFileSync(CERT_PATH),
   allowHTTP1:   true, // graceful fallback for HTTP/1.1 clients
+  // Increase flow control window so SSE streams don't stall under backpressure
+  settings: {
+    initialWindowSize: 1024 * 1024, // 1MB (default 65535)
+  },
 });
 
 server.on('stream', (stream, headers) => {
@@ -76,6 +80,15 @@ server.on('stream', (stream, headers) => {
     if (!stream.destroyed) {
       stream.respond(replyHeaders);
       res.pipe(stream);
+
+      // For SSE streams (text/event-stream), disable socket timeout so
+      // long-lived connections aren't killed by Node.js idle timeout.
+      const contentType = res.headers['content-type'] ?? '';
+      if (contentType.includes('text/event-stream')) {
+        proxy.setTimeout(0);
+        // Flush immediately on each chunk — SSE must not be buffered
+        res.on('data', () => { if (!stream.destroyed) stream.setDefaultEncoding('utf8'); });
+      }
     }
   });
 
