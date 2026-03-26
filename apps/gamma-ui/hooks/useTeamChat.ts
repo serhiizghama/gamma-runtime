@@ -27,6 +27,8 @@ export interface TeamMember {
   uiColor: string;
 }
 
+export type AgentLiveStatus = "running" | "idle" | "error" | "unknown";
+
 interface UseTeamChatResult {
   messages: TeamMessage[];
   teamName: string;
@@ -34,16 +36,23 @@ interface UseTeamChatResult {
   isConnected: boolean;
   sendMessage: (text: string) => void;
   squadLeaderId: string | null;
+  /** Live status per agentId — used to drive header indicators */
+  agentStatuses: Record<string, AgentLiveStatus>;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const MAX_MESSAGES = 200;
 
+// Status-only events are shown as agent indicators in the header — NOT as chat bubbles
 const RELEVANT_KINDS = new Set<string>([
   "ipc_message_sent",
   "ipc_task_completed",
   "ipc_task_failed",
+]);
+
+// Status events that feed the header indicators but not the message list
+const STATUS_KINDS = new Set<string>([
   "agent_status_change",
   "task_status_change",
 ]);
@@ -52,6 +61,7 @@ const RELEVANT_KINDS = new Set<string>([
 
 export function useTeamChat(teamId: string): UseTeamChatResult {
   const [messages, setMessages] = useState<TeamMessage[]>([]);
+  const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentLiveStatus>>({});
   const seenIdsRef = useRef<Set<string>>(new Set());
 
   // Get team info
@@ -115,7 +125,13 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     }
 
     const info = getAgentInfo(agentId);
-    const payload = event.payload ?? "";
+    // Safely stringify payload — it can be a string or object
+    const rawPayload = event.payload;
+    const payload = rawPayload == null
+      ? ""
+      : typeof rawPayload === "string"
+        ? rawPayload
+        : JSON.stringify(rawPayload);
 
     switch (event.kind) {
       case "ipc_message_sent": {
@@ -127,7 +143,7 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
           agentName: info.name,
           agentEmoji: info.emoji,
           agentColor: info.color,
-          text: `Delegated task to ${targetLabel}: "${payload || "..."}"`,
+          text: `Delegated to ${targetLabel}: "${payload || "..."}"`,
           timestamp: event.ts,
           type: "delegation",
         };
@@ -139,7 +155,7 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
           agentName: info.name,
           agentEmoji: info.emoji,
           agentColor: info.color,
-          text: `Completed: ${payload || "task finished"}`,
+          text: payload || "Task completed",
           timestamp: event.ts,
           type: "completion",
         };
@@ -154,28 +170,8 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
           timestamp: event.ts,
           type: "failure",
         };
-      case "agent_status_change":
-        return {
-          id: event.id,
-          agentId,
-          agentName: info.name,
-          agentEmoji: info.emoji,
-          agentColor: info.color,
-          text: `is now ${payload || "unknown"}`,
-          timestamp: event.ts,
-          type: "status",
-        };
-      case "task_status_change":
-        return {
-          id: event.id,
-          agentId,
-          agentName: info.name,
-          agentEmoji: info.emoji,
-          agentColor: info.color,
-          text: `Task moved to ${payload || "unknown status"}`,
-          timestamp: event.ts,
-          type: "status",
-        };
+      // agent_status_change and task_status_change are handled separately
+      // via setAgentStatuses — they do NOT appear as chat messages
       default:
         return null;
     }
@@ -186,6 +182,17 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     try {
       const event = JSON.parse(ev.data as string) as ActivityEvent;
       if (!event.id || !event.kind) return;
+
+      // Status events → update header indicators only, never show as chat messages
+      if (STATUS_KINDS.has(event.kind)) {
+        if (event.kind === "agent_status_change" && memberIdsRef.current.has(event.agentId)) {
+          const rawPayload = event.payload;
+          const status = (typeof rawPayload === "string" ? rawPayload : "") as AgentLiveStatus;
+          setAgentStatuses((prev) => ({ ...prev, [event.agentId]: status || "unknown" }));
+        }
+        return;
+      }
+
       if (!RELEVANT_KINDS.has(event.kind)) return;
       if (seenIdsRef.current.has(event.id)) return;
       seenIdsRef.current.add(event.id);
@@ -217,55 +224,74 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
   });
 
   // ── Squad Leader SSE stream (to capture text responses) ───────────
-  const [leaderWindowId, setLeaderWindowId] = useState<string | null>(null);
+  // We get the windowId from /api/sessions/active (authoritative, always current).
+  // The windowId can change when openAgentSession creates a new session, so we
+  // resolve it fresh on every connect/reconnect attempt.
+  const leaderStreamRef = useRef<EventSource | null>(null);
+  const squadLeaderIdRef = useRef<string | null>(null);
 
-  // Fetch leader's windowId from agent registry
+  // Keep ref in sync so ESS handler closure always reads current leader id
   useEffect(() => {
-    if (!squadLeaderId) return;
-    fetch(`${API_BASE}/api/system/agents`, { headers: systemAuthHeaders() })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((entries: Array<{ agentId: string; windowId?: string }>) => {
-        const entry = entries.find((e) => e.agentId === squadLeaderId);
-        if (entry?.windowId) setLeaderWindowId(entry.windowId);
-      })
-      .catch(() => {});
+    squadLeaderIdRef.current = squadLeaderId;
   }, [squadLeaderId]);
 
-  // Subscribe to leader's agent SSE stream for text responses
-  const leaderStreamRef = useRef<EventSource | null>(null);
-
   useEffect(() => {
-    if (!leaderWindowId) return;
+    if (!squadLeaderId) return;
 
     let destroyed = false;
     let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // Track cumulative answer text per run to show only latest
+    // Track cumulative answer text per run
     let currentAnswerText = "";
     let currentAnswerId: string | null = null;
 
+    async function resolveWindowId(): Promise<string | null> {
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions/active`, { headers: systemAuthHeaders() });
+        if (!res.ok) return null;
+        const sessions = (await res.json()) as Array<{ sessionKey: string; windowId: string }>;
+        const session = sessions.find((s) => s.sessionKey === squadLeaderIdRef.current);
+        return session?.windowId ?? null;
+      } catch {
+        return null;
+      }
+    }
+
     async function connect() {
-      const ticket = await fetchSseTicket(`/api/stream/${leaderWindowId}`);
       if (destroyed) return;
 
-      const url = `${API_BASE}/api/stream/${leaderWindowId}${ticket}`;
+      const windowId = await resolveWindowId();
+      if (!windowId || destroyed) {
+        // Session not active yet — retry after send activates it
+        reconnectTimer = setTimeout(connect, 2000);
+        return;
+      }
+
+      const ticket = await fetchSseTicket(`/api/stream/${windowId}`);
+      if (destroyed) return;
+
+      const url = `${API_BASE}/api/stream/${windowId}${ticket}`;
       es = new EventSource(url);
       leaderStreamRef.current = es;
 
       es.onmessage = (ev) => {
         try {
           const event = JSON.parse(ev.data) as GammaSSEEvent;
-          const info = getAgentInfo(squadLeaderId!);
+          const leaderId = squadLeaderIdRef.current;
+          if (!leaderId) return;
+          const info = getAgentInfo(leaderId);
 
           if (event.type === "assistant_delta" || event.type === "assistant_update") {
             currentAnswerText = event.text;
             if (!currentAnswerId) {
               currentAnswerId = `leader-ans-${Date.now()}`;
+              const msgId = currentAnswerId;
               setMessages((prev) => [
                 ...prev,
                 {
-                  id: currentAnswerId!,
-                  agentId: squadLeaderId!,
+                  id: msgId,
+                  agentId: leaderId,
                   agentName: info.name,
                   agentEmoji: info.emoji,
                   agentColor: info.color,
@@ -275,9 +301,10 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
                 },
               ]);
             } else {
+              const msgId = currentAnswerId;
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === currentAnswerId ? { ...m, text: currentAnswerText } : m
+                  m.id === msgId ? { ...m, text: currentAnswerText } : m
                 )
               );
             }
@@ -286,6 +313,11 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
           if (event.type === "lifecycle_end") {
             currentAnswerText = "";
             currentAnswerId = null;
+            // Reconnect after lifecycle_end: next message may create a new windowId
+            es?.close();
+            if (!destroyed) {
+              reconnectTimer = setTimeout(connect, 500);
+            }
           }
         } catch {
           // ignore
@@ -295,7 +327,7 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
       es.onerror = () => {
         es?.close();
         if (!destroyed) {
-          setTimeout(connect, 3000);
+          reconnectTimer = setTimeout(connect, 3000);
         }
       };
     }
@@ -304,11 +336,12 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
 
     return () => {
       destroyed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       es?.close();
       leaderStreamRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leaderWindowId, squadLeaderId]);
+  }, [squadLeaderId]);
 
   // Send message to squad leader
   const sendMessage = useCallback(
@@ -347,5 +380,6 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     isConnected: connected,
     sendMessage,
     squadLeaderId,
+    agentStatuses,
   };
 }

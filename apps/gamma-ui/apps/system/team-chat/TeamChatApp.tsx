@@ -232,7 +232,7 @@ function MessageBubble({ msg }: { msg: TeamMessage }): React.ReactElement {
 // ── Chat View ──────────────────────────────────────────────────────────────
 
 function ChatView({ teamId }: { teamId: string }): React.ReactElement {
-  const { messages, teamName, members, isConnected, sendMessage, squadLeaderId } =
+  const { messages, teamName, members, isConnected, sendMessage, squadLeaderId, agentStatuses } =
     useTeamChat(teamId);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -263,19 +263,44 @@ function ChatView({ teamId }: { teamId: string }): React.ReactElement {
           <span style={{ fontWeight: 600, fontSize: 13, marginRight: 8, whiteSpace: "nowrap" }}>
             {teamName}
           </span>
-          {members.map((m) => (
-            <span
-              key={m.id}
-              title={m.name}
-              style={{
-                fontSize: 16,
-                cursor: "default",
-                filter: "drop-shadow(0 0 2px rgba(0,0,0,0.5))",
-              }}
-            >
-              {m.emoji}
-            </span>
-          ))}
+          {members.map((m) => {
+            const status = agentStatuses[m.id] ?? "unknown";
+            const isRunning = status === "running";
+            const dotColor = isRunning ? "#22c55e" : status === "error" ? "#ef4444" : "rgba(255,255,255,0.2)";
+            return (
+              <span
+                key={m.id}
+                title={`${m.name} — ${status}`}
+                style={{
+                  position: "relative",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "default",
+                }}
+              >
+                <span style={{
+                  fontSize: 16,
+                  filter: "drop-shadow(0 0 2px rgba(0,0,0,0.5))",
+                  opacity: status === "idle" ? 1 : status === "running" ? 1 : 0.5,
+                }}>
+                  {m.emoji}
+                </span>
+                {/* Status dot */}
+                <span style={{
+                  position: "absolute",
+                  bottom: -1,
+                  right: -1,
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: dotColor,
+                  border: "1px solid rgba(0,0,0,0.6)",
+                  animation: isRunning ? "teamAgentPulse 1s ease-in-out infinite" : "none",
+                }} />
+              </span>
+            );
+          })}
         </div>
         <span
           style={{
@@ -351,6 +376,10 @@ function ChatView({ teamId }: { teamId: string }): React.ReactElement {
       </div>
 
       <style>{`
+        @keyframes teamAgentPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.4); }
+        }
         .team-chat-messages::-webkit-scrollbar { width: 4px; }
         .team-chat-messages::-webkit-scrollbar-track { background: transparent; }
         .team-chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }

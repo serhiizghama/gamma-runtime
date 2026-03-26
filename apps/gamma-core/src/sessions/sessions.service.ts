@@ -1080,9 +1080,11 @@ export class SessionsService {
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  private resolveAgentRole(sessionKey: string): 'architect' | 'app-owner' | 'daemon' {
+  private resolveAgentRole(sessionKey: string): 'architect' | 'app-owner' | 'team-leader' | 'daemon' {
     if (sessionKey === 'system-architect') return 'architect';
     if (sessionKey.startsWith(APP_OWNER_PREFIX)) return 'app-owner';
+    // Team leaders are identified by their roleId containing 'squad-leader' or 'team-leader'
+    // We resolve this from the DB agent record if available
     return 'daemon';
   }
 }

@@ -20,7 +20,7 @@ export class DelegateTaskTool implements IToolExecutor {
       'you must be the target\'s supervisor or hold a more senior role.',
     type: 'internal',
     category: 'agent',
-    allowedRoles: ['architect', 'app-owner'],
+    allowedRoles: ['architect', 'app-owner', 'team-leader'],
     schema: {
       parameters: {
         targetAgentId: {

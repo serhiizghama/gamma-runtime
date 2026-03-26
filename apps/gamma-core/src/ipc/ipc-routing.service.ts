@@ -45,11 +45,12 @@ function normalizeAgentId(rawKey: string): string {
 const ROLE_SENIORITY: Record<string, number> = {
   architect: 30,
   'app-owner': 20,
+  'team-leader': 15,
   daemon: 10,
 };
 
 /** Only these roles are allowed to originate delegation. */
-const DELEGATION_ALLOWED_ROLES = new Set(['architect', 'app-owner']);
+const DELEGATION_ALLOWED_ROLES = new Set(['architect', 'app-owner', 'team-leader']);
 
 /** Maximum length for task description and report message fields. */
 const MAX_DESCRIPTION_LENGTH = 8_000;

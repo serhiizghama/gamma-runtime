@@ -18,7 +18,7 @@ export class SendMessageTool implements IToolExecutor {
       'The message is persisted in the recipient\'s inbox even if they are offline.',
     type: 'internal',
     category: 'agent',
-    allowedRoles: ['architect', 'app-owner'],
+    allowedRoles: ['architect', 'app-owner', 'team-leader'],
     schema: {
       parameters: {
         recipientId: {

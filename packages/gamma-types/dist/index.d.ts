@@ -302,7 +302,7 @@ export interface SessionRecord {
     /** Total number of agent runs fired within this session */
     runCount: number;
 }
-export type AgentRole = 'architect' | 'app-owner' | 'daemon';
+export type AgentRole = 'architect' | 'app-owner' | 'team-leader' | 'daemon';
 export interface AgentRegistryEntry {
     agentId: string;
     role: AgentRole;

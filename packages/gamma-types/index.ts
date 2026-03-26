@@ -313,7 +313,7 @@ export interface SessionRecord {
 
 // ── §17 Agent Registry ──────────────────────────────────────────────────
 
-export type AgentRole = 'architect' | 'app-owner' | 'daemon';
+export type AgentRole = 'architect' | 'app-owner' | 'team-leader' | 'daemon';
 
 export interface AgentRegistryEntry {
   agentId: string;

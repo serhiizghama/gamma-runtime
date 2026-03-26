@@ -37,9 +37,20 @@ export class AgentRegistryService {
   async register(entry: AgentRegistryEntry): Promise<void> {
     const key = `${REDIS_KEYS.AGENT_REGISTRY_PREFIX}${entry.agentId}`;
 
+    // Preserve a previously assigned custom role (e.g. 'team-leader') so that
+    // re-registration on session restart doesn't downgrade the role back to 'daemon'.
+    // Only 'daemon' is considered a default role — architect/app-owner/team-leader are sticky.
+    let effectiveRole = entry.role;
+    if (entry.role === 'daemon') {
+      const existing = await this.redis.hget(key, 'role');
+      if (existing && existing !== 'daemon' && existing !== '') {
+        effectiveRole = existing as AgentRegistryEntry['role'];
+      }
+    }
+
     const flat: Record<string, string> = {
       agentId: entry.agentId,
-      role: entry.role,
+      role: effectiveRole,
       sessionKey: entry.sessionKey,
       windowId: entry.windowId,
       appId: entry.appId,

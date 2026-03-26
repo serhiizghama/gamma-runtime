@@ -20,7 +20,7 @@ export class ReportStatusTool implements IToolExecutor {
       'The supervisor will be notified and woken up if idle.',
     type: 'internal',
     category: 'agent',
-    allowedRoles: ['architect', 'app-owner', 'daemon'],
+    allowedRoles: ['architect', 'app-owner', 'team-leader', 'daemon'],
     schema: {
       parameters: {
         taskId: {
