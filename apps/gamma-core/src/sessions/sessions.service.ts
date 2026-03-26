@@ -21,6 +21,7 @@ import { SessionRegistryService } from './session-registry.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { ScaffoldService } from '../scaffold/scaffold.service';
 import { AgentStateRepository } from '../state/agent-state.repository';
+import { TeamStateRepository } from '../state/team-state.repository';
 import { safeJsonParse } from '../common/safe-json.util';
 const APP_OWNER_PREFIX = 'app-owner-';
 const APP_OWNER_INIT_FIELD = 'appOwnerInitialized';
@@ -71,6 +72,7 @@ export class SessionsService {
     private readonly agentRegistry: AgentRegistryService,
     @Optional() private readonly activityStream?: ActivityStreamService,
     @Optional() private readonly agentStateRepo?: AgentStateRepository,
+    @Optional() private readonly teamStateRepo?: TeamStateRepository,
   ) {}
 
   /** Create a new window↔session mapping */
@@ -1012,6 +1014,40 @@ export class SessionsService {
         `SOUL.md not found for agent "${agent.name}" (${agentId}) — using default prompt`,
       );
       systemPrompt = `[SYSTEM INJECTION] You are "${agent.name}", a Gamma Runtime agent with role "${agent.roleId}". Follow instructions and report task results using the report_status tool.`;
+    }
+
+    // 5b. Inject team context if agent belongs to a team
+    if (agent.teamId && this.agentStateRepo && this.teamStateRepo) {
+      const team = this.teamStateRepo.findById(agent.teamId);
+      const teammates = this.agentStateRepo.findByTeam(agent.teamId);
+
+      if (team && teammates.length > 0) {
+        const isLeader = agent.roleId?.includes('leader') || agent.roleId?.includes('lead') ||
+          agent.name.toLowerCase().includes('leader') || agent.name.toLowerCase().includes('lead');
+
+        const roster = teammates
+          .map((t) => `- ${t.name} (ID: ${t.id}, role: ${t.roleId})${t.id === agentId ? ' ← THIS IS YOU' : ''}`)
+          .join('\n');
+
+        const teamContext = [
+          `\n\n## TEAM CONTEXT`,
+          `You belong to team "${team.name}" (ID: ${team.id}).`,
+          isLeader
+            ? `You are the TEAM LEADER. You are responsible for orchestrating work within the team. When you receive a task, delegate subtasks to your team members using the \`delegate_task\` tool with their agent IDs listed below.`
+            : `You are a team member. When you complete a task, use \`report_status\` to report back.`,
+          `\n### Team Roster:`,
+          roster,
+          `\n### How to delegate (leader only):`,
+          `Use delegate_task with the exact agent ID from the roster above. Example:`,
+          `delegate_task({ targetAgentId: "agent.XXXX...", taskDescription: "your task here" })`,
+          `\n### Important:`,
+          `- Always refer to teammates by their NAME, not their ID`,
+          `- When reporting results, be specific about what was accomplished`,
+          `- If a teammate fails, handle gracefully and report the issue`,
+        ].join('\n');
+
+        systemPrompt = (systemPrompt ?? '') + teamContext;
+      }
     }
 
     // 6. Create Gateway session so the agent can actually receive messages
