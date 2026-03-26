@@ -25,7 +25,7 @@ function EmbeddedAgentChat({
   onClose: () => void;
 }): React.ReactElement {
   const sessionKey = `app-owner-${appId}`;
-  const { messages, status, pendingToolLines, sendMessage, hasMoreHistory, loadMoreHistory, loadingMore } =
+  const { messages, status, pendingToolLines, sendMessage, hasMoreHistory, loadMoreHistory, loadingMore, historyLoaded } =
     useAgentStream(sessionKey);
 
   // Ensure the backend session exists on mount (handles page-reload case where
@@ -71,6 +71,7 @@ function EmbeddedAgentChat({
       hasMoreHistory={hasMoreHistory}
       loadMoreHistory={loadMoreHistory}
       loadingMore={loadingMore}
+      historyLoaded={historyLoaded}
     />
   );
 }

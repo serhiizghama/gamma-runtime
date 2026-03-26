@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AgentStatus } from "@gamma/types";
@@ -38,6 +38,8 @@ interface MessageListProps {
   hasMoreHistory?: boolean;
   loadMoreHistory?: () => void;
   loadingMore?: boolean;
+  /** True once the initial history fetch has completed. Used to trigger initial scroll-to-bottom. */
+  historyLoaded?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -373,7 +375,7 @@ function TypingIndicator({ toolLines }: { toolLines?: string[] }): React.ReactEl
 
 // ── MessageList ──────────────────────────────────────────────────────────
 
-export function MessageList({ messages, pendingToolLines, status, hasMoreHistory, loadMoreHistory, loadingMore }: MessageListProps): React.ReactElement {
+export function MessageList({ messages, pendingToolLines, status, hasMoreHistory, loadMoreHistory, loadingMore, historyLoaded }: MessageListProps): React.ReactElement {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -381,6 +383,23 @@ export function MessageList({ messages, pendingToolLines, status, hasMoreHistory
   const userScrolledUp = useRef(false);
   // Track previous message count to detect new messages (vs streaming updates).
   const prevMessageCount = useRef(messages.length);
+  // Whether we have already performed the initial scroll-to-bottom after history load.
+  const initialScrollDoneRef = useRef(false);
+
+  // ── Initial scroll-to-bottom after history loads ─────────────────────
+  // useLayoutEffect fires synchronously after DOM mutations, before paint.
+  // This guarantees we scroll AFTER messages are in the DOM but before the
+  // browser renders — no flash of wrong scroll position.
+  useLayoutEffect(() => {
+    if (!historyLoaded || initialScrollDoneRef.current) return;
+    const el = listRef.current;
+    if (!el || messages.length === 0) return;
+    // Instant jump — no smooth animation, so Markdown layout cannot interrupt it
+    el.scrollTop = el.scrollHeight;
+    initialScrollDoneRef.current = true;
+    // Sync prevMessageCount so the useEffect scroll logic starts from correct baseline
+    prevMessageCount.current = messages.length;
+  }, [historyLoaded, messages.length]);
 
   // Detect manual scroll: if user scrolls up, stop auto-scroll.
   // If user scrolls back near the bottom (within 80px), re-enable it.
@@ -415,7 +434,6 @@ export function MessageList({ messages, pendingToolLines, status, hasMoreHistory
     prevMessageCount.current = newCount;
 
     if (isNewUserMessage) {
-      // User sent a message — reset flag and always snap to bottom
       userScrolledUp.current = false;
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     } else if (isNewAssistantMessage && !userScrolledUp.current) {

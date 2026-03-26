@@ -25,6 +25,7 @@ interface AgentChatLiveProps extends AgentChatBaseProps {
   hasMoreHistory?: boolean;
   loadMoreHistory?: () => void;
   loadingMore?: boolean;
+  historyLoaded?: boolean;
 }
 
 /** Mock mode — self-contained with demo data */
@@ -96,6 +97,7 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
   const hasMoreHistory = isLive ? (props as AgentChatLiveProps).hasMoreHistory : false;
   const loadMoreHistory = isLive ? (props as AgentChatLiveProps).loadMoreHistory : undefined;
   const loadingMore = isLive ? (props as AgentChatLiveProps).loadingMore : false;
+  const historyLoaded = isLive ? ((props as AgentChatLiveProps).historyLoaded ?? true) : true;
 
   const handleSend = useCallback(
     (text: string) => {
@@ -180,6 +182,7 @@ export function AgentChat(props: AgentChatProps): React.ReactElement {
           hasMoreHistory={hasMoreHistory}
           loadMoreHistory={loadMoreHistory}
           loadingMore={loadingMore}
+          historyLoaded={historyLoaded}
         />
       </div>
       <ChatInput

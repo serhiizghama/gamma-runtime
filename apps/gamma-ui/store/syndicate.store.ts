@@ -197,9 +197,12 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
           };
         });
 
-      // 2. Add registry-only agents (not in DB but alive in runtime)
+      // 2. Add registry-only agents (not in DB but alive in runtime).
+      // Skip daemon-role agents that have no DB record — these are OpenClaw-managed
+      // runtime sessions (not Gamma agents) and should not appear on the map.
       for (const [agentId, reg] of registryMap) {
         if (seenIds.has(agentId)) continue;
+        if ((reg.role ?? "unknown") === "daemon") continue;
         agents.push({
           id: agentId,
           name: humanizeName(reg.agentId),
