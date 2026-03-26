@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useTeamChat, type TeamMessage } from "../../../hooks/useTeamChat";
 import { useTeams } from "../../../hooks/useTeams";
 
@@ -163,35 +165,65 @@ function MessageBubble({ msg }: { msg: TeamMessage }): React.ReactElement {
   const time = new Date(msg.timestamp);
   const timeStr = `${time.getHours().toString().padStart(2, "0")}:${time.getMinutes().toString().padStart(2, "0")}`;
 
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-        paddingLeft: 10,
-        borderLeft: `3px solid ${msg.agentColor}`,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 14 }}>{msg.agentEmoji}</span>
-        <span style={{ fontWeight: 600, color: msg.agentColor, fontSize: 12 }}>
-          {msg.agentName}
-        </span>
-        <span
-          style={{
-            marginLeft: "auto",
-            fontSize: 10,
-            opacity: 0.4,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          {timeStr}
-        </span>
+  const isUser = msg.type === "user";
+
+  if (isUser) {
+    return (
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10, paddingLeft: "20%" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+          <div style={{
+            padding: "9px 14px",
+            borderRadius: "18px 18px 4px 18px",
+            background: "linear-gradient(135deg, rgba(59,130,246,0.92), rgba(37,99,235,0.96))",
+            color: "#fff",
+            fontSize: 13,
+            lineHeight: 1.55,
+            wordBreak: "break-word",
+            boxShadow: "0 2px 12px rgba(59,130,246,0.3)",
+            fontFamily: "var(--font-system)",
+          }}>
+            {msg.text}
+          </div>
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", paddingRight: 4 }}>{timeStr}</span>
+        </div>
       </div>
-      <div style={{ fontSize: 13, opacity: 0.85, lineHeight: 1.4 }}>
-        {TYPE_PREFIX[msg.type]}
-        {msg.text}
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 10, marginBottom: 12, paddingRight: "8%" }}>
+      <div style={{
+        width: 28, height: 28, borderRadius: "50%",
+        background: `${msg.agentColor}18`,
+        border: `1px solid ${msg.agentColor}40`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexShrink: 0, marginTop: 2, fontSize: 14,
+      }}>
+        {msg.agentEmoji}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+          <span style={{ fontWeight: 600, color: msg.agentColor, fontSize: 11 }}>{msg.agentName}</span>
+          <span style={{ fontSize: 10, opacity: 0.35, fontVariantNumeric: "tabular-nums", marginLeft: "auto" }}>{timeStr}</span>
+        </div>
+        <div style={{
+          padding: "10px 14px",
+          borderRadius: "4px 18px 18px 18px",
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.07)",
+          borderLeft: `3px solid ${msg.agentColor}70`,
+          color: "rgba(220,232,255,0.9)",
+          fontSize: 13,
+          lineHeight: 1.6,
+          wordBreak: "break-word",
+          fontFamily: "var(--font-system)",
+        }}>
+          <div className="team-chat-markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {TYPE_PREFIX[msg.type] + msg.text}
+            </ReactMarkdown>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -325,6 +357,35 @@ function ChatView({ teamId }: { teamId: string }): React.ReactElement {
         .team-chat-messages::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
         .team-chat-input::placeholder { color: rgba(255,255,255,0.25); }
         .team-chat-input:focus { border-color: rgba(96,165,250,0.4); }
+
+        .team-chat-markdown p { margin: 4px 0; color: inherit; }
+        .team-chat-markdown ul, .team-chat-markdown ol { margin: 6px 0; padding-left: 20px; color: inherit; }
+        .team-chat-markdown strong { font-weight: 600; color: inherit; }
+        .team-chat-markdown em { font-style: italic; }
+        .team-chat-markdown code {
+          background: rgba(255,255,255,0.07); color: rgba(150,210,255,0.9);
+          padding: 1px 5px; border-radius: 4px; font-size: 12px;
+          border: 1px solid rgba(255,255,255,0.08);
+          font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        .team-chat-markdown pre {
+          background: rgba(0,0,0,0.35); padding: 12px 14px; border-radius: 8px;
+          overflow-x: auto; font-size: 12px; border: 1px solid rgba(255,255,255,0.07);
+          margin: 6px 0;
+        }
+        .team-chat-markdown pre code { background: none; border: none; padding: 0; color: rgba(180,220,255,0.85); }
+        .team-chat-markdown a { color: rgba(96,165,250,0.9); text-decoration: underline; word-break: break-word; }
+        .team-chat-markdown table { border-collapse: collapse; width: 100%; font-size: 12px; }
+        .team-chat-markdown th, .team-chat-markdown td { border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; text-align: left; }
+        .team-chat-markdown th { background: rgba(255,255,255,0.04); }
+        .team-chat-markdown h1, .team-chat-markdown h2, .team-chat-markdown h3 { color: rgba(220,235,255,0.95); font-weight: 600; margin: 10px 0 4px; }
+        .team-chat-markdown h1 { font-size: 16px; }
+        .team-chat-markdown h2 { font-size: 14px; }
+        .team-chat-markdown h3 { font-size: 13px; }
+        .team-chat-markdown blockquote {
+          border-left: 3px solid rgba(59,130,246,0.4); margin: 6px 0; padding: 4px 12px;
+          color: rgba(180,200,255,0.6); font-style: italic;
+        }
       `}</style>
     </div>
   );
