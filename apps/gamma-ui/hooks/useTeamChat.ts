@@ -264,7 +264,7 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
       }
     }
 
-    async function connect(forceReconnect = false) {
+    async function connect(_forceReconnect = false) {
       if (destroyed) return;
 
       const windowId = await resolveWindowId();
@@ -273,17 +273,25 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
         return;
       }
 
-      // Already connected to the correct windowId — skip unless forced
-      if (!forceReconnect && windowId === currentWindowId && es && es.readyState !== EventSource.CLOSED) {
+      // Already connected to the correct windowId and connection is healthy — skip.
+      // forceReconnect=true (called after sendMessage POST) still skips if same windowId
+      // to avoid closing an active SSE that's already receiving the agent's response.
+      if (windowId === currentWindowId && es && es.readyState !== EventSource.CLOSED) {
         return;
       }
 
-      // Close existing connection before opening new one
-      es?.close();
+      // Only close if switching to a different windowId, not on same-window reconnect
+      if (currentWindowId && windowId !== currentWindowId) {
+        es?.close();
+        currentAnswerText = "";
+        currentAnswerId = null;
+      } else if (!es || es.readyState === EventSource.CLOSED) {
+        // No connection or closed — safe to reconnect
+        currentAnswerText = "";
+        currentAnswerId = null;
+      }
+
       currentWindowId = windowId;
-      // Reset streaming state for new session
-      currentAnswerText = "";
-      currentAnswerId = null;
 
       const ticket = await fetchSseTicket(`/api/stream/${windowId}`);
       if (destroyed) return;
