@@ -125,13 +125,26 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     }
 
     const info = getAgentInfo(agentId);
-    // Safely stringify payload — it can be a string or object
+
+    // Safely extract human-readable text from payload.
+    // ipc_task_completed/failed payloads are JSON: {"taskId","status","message","data"}
+    // ipc_message_sent payloads are plain strings or JSON with description.
     const rawPayload = event.payload;
-    const payload = rawPayload == null
-      ? ""
-      : typeof rawPayload === "string"
-        ? rawPayload
-        : JSON.stringify(rawPayload);
+    let payloadText = "";
+    if (rawPayload != null) {
+      if (typeof rawPayload === "string") {
+        // Try to parse as JSON and extract message/description field
+        try {
+          const parsed = JSON.parse(rawPayload) as Record<string, unknown>;
+          payloadText = (parsed.message as string) || (parsed.description as string) || rawPayload;
+        } catch {
+          payloadText = rawPayload;
+        }
+      } else if (typeof rawPayload === "object") {
+        const obj = rawPayload as Record<string, unknown>;
+        payloadText = (obj.message as string) || (obj.description as string) || JSON.stringify(rawPayload);
+      }
+    }
 
     switch (event.kind) {
       case "ipc_message_sent": {
@@ -143,7 +156,7 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
           agentName: info.name,
           agentEmoji: info.emoji,
           agentColor: info.color,
-          text: `Delegated to ${targetLabel}: "${payload || "..."}"`,
+          text: `Delegated to ${targetLabel}: "${payloadText || "..."}"`,
           timestamp: event.ts,
           type: "delegation",
         };
@@ -155,7 +168,7 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
           agentName: info.name,
           agentEmoji: info.emoji,
           agentColor: info.color,
-          text: payload || "Task completed",
+          text: payloadText || "Task completed",
           timestamp: event.ts,
           type: "completion",
         };
@@ -166,7 +179,7 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
           agentName: info.name,
           agentEmoji: info.emoji,
           agentColor: info.color,
-          text: `Failed: ${payload || "task failed"}`,
+          text: `Failed: ${payloadText || "task failed"}`,
           timestamp: event.ts,
           type: "failure",
         };

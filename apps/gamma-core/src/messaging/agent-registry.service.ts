@@ -37,15 +37,31 @@ export class AgentRegistryService {
   async register(entry: AgentRegistryEntry): Promise<void> {
     const key = `${REDIS_KEYS.AGENT_REGISTRY_PREFIX}${entry.agentId}`;
 
+    // Read existing Redis entry once — used to preserve sticky fields below.
+    const existingRole = await this.redis.hget(key, 'role');
+    const existingSupervisor = await this.redis.hget(key, 'supervisorId');
+
     // Preserve a previously assigned custom role (e.g. 'team-leader') so that
     // re-registration on session restart doesn't downgrade the role back to 'daemon'.
     // Only 'daemon' is considered a default role — architect/app-owner/team-leader are sticky.
     let effectiveRole = entry.role;
-    if (entry.role === 'daemon') {
-      const existing = await this.redis.hget(key, 'role');
-      if (existing && existing !== 'daemon' && existing !== '') {
-        effectiveRole = existing as AgentRegistryEntry['role'];
-      }
+    if (entry.role === 'daemon' && existingRole && existingRole !== 'daemon' && existingRole !== '') {
+      effectiveRole = existingRole as AgentRegistryEntry['role'];
+    }
+
+    // Preserve a previously assigned custom supervisorId so that re-registration
+    // on session restart doesn't reset hierarchy back to system-architect.
+    // Only override if the caller explicitly passes a non-default supervisor.
+    // Default: sessions.service registers with 'system-architect' as supervisor.
+    const defaultSupervisor = 'system-architect';
+    let effectiveSupervisor = entry.supervisorId ?? '';
+    if (
+      (effectiveSupervisor === defaultSupervisor || effectiveSupervisor === '') &&
+      existingSupervisor &&
+      existingSupervisor !== defaultSupervisor &&
+      existingSupervisor !== ''
+    ) {
+      effectiveSupervisor = existingSupervisor;
     }
 
     const flat: Record<string, string> = {
@@ -60,7 +76,7 @@ export class AgentRegistryService {
       lastActivity: entry.lastActivity,
       acceptsMessages: entry.acceptsMessages ? '1' : '0',
       createdAt: String(entry.createdAt),
-      supervisorId: entry.supervisorId ?? '',
+      supervisorId: effectiveSupervisor,
     };
 
     await this.redis
