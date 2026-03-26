@@ -3,8 +3,9 @@ import { useSecureSse } from "./useSecureSse";
 import { useTeams } from "./useTeams";
 import { useSyndicateStore } from "../store/syndicate.store";
 import { systemAuthHeaders } from "../lib/auth";
+import { fetchSseTicket } from "../lib/auth";
 import { API_BASE } from "../constants/api";
-import type { ActivityEvent } from "@gamma/types";
+import type { ActivityEvent, GammaSSEEvent } from "@gamma/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -214,6 +215,100 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     label: "TeamChat",
     enabled: teamMembers.length > 0,
   });
+
+  // ── Squad Leader SSE stream (to capture text responses) ───────────
+  const [leaderWindowId, setLeaderWindowId] = useState<string | null>(null);
+
+  // Fetch leader's windowId from agent registry
+  useEffect(() => {
+    if (!squadLeaderId) return;
+    fetch(`${API_BASE}/api/system/agents`, { headers: systemAuthHeaders() })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((entries: Array<{ agentId: string; windowId?: string }>) => {
+        const entry = entries.find((e) => e.agentId === squadLeaderId);
+        if (entry?.windowId) setLeaderWindowId(entry.windowId);
+      })
+      .catch(() => {});
+  }, [squadLeaderId]);
+
+  // Subscribe to leader's agent SSE stream for text responses
+  const leaderStreamRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    if (!leaderWindowId) return;
+
+    let destroyed = false;
+    let es: EventSource | null = null;
+
+    // Track cumulative answer text per run to show only latest
+    let currentAnswerText = "";
+    let currentAnswerId: string | null = null;
+
+    async function connect() {
+      const ticket = await fetchSseTicket(`/api/stream/${leaderWindowId}`);
+      if (destroyed) return;
+
+      const url = `${API_BASE}/api/stream/${leaderWindowId}${ticket}`;
+      es = new EventSource(url);
+      leaderStreamRef.current = es;
+
+      es.onmessage = (ev) => {
+        try {
+          const event = JSON.parse(ev.data) as GammaSSEEvent;
+          const info = getAgentInfo(squadLeaderId!);
+
+          if (event.type === "assistant_delta" || event.type === "assistant_update") {
+            currentAnswerText = event.text;
+            if (!currentAnswerId) {
+              currentAnswerId = `leader-ans-${Date.now()}`;
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: currentAnswerId!,
+                  agentId: squadLeaderId!,
+                  agentName: info.name,
+                  agentEmoji: info.emoji,
+                  agentColor: info.color,
+                  text: currentAnswerText,
+                  timestamp: Date.now(),
+                  type: "completion",
+                },
+              ]);
+            } else {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === currentAnswerId ? { ...m, text: currentAnswerText } : m
+                )
+              );
+            }
+          }
+
+          if (event.type === "lifecycle_end") {
+            currentAnswerText = "";
+            currentAnswerId = null;
+          }
+        } catch {
+          // ignore
+        }
+      };
+
+      es.onerror = () => {
+        es?.close();
+        if (!destroyed) {
+          setTimeout(connect, 3000);
+        }
+      };
+    }
+
+    connect();
+
+    return () => {
+      destroyed = true;
+      es?.close();
+      leaderStreamRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaderWindowId, squadLeaderId]);
 
   // Send message to squad leader
   const sendMessage = useCallback(
