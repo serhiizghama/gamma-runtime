@@ -233,17 +233,11 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
       };
       setMessages((prev) => [...prev, userMsg]);
 
-      // Send to backend
-      fetch(`${API_BASE}/internal/ipc/send-message`, {
+      // Send via team message endpoint (activates leader + delivers via Gateway)
+      fetch(`${API_BASE}/api/teams/${teamId}/message`, {
         method: "POST",
         headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromAgentId: "user",
-          toAgentId: squadLeaderId,
-          subject: "user-directive",
-          body: text,
-          type: "task_request",
-        }),
+        body: JSON.stringify({ message: text }),
       }).catch((err) => {
         console.warn("[TeamChat] Failed to send message:", err);
       });

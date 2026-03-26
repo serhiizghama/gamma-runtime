@@ -23,18 +23,23 @@ import {
   Body,
   UseGuards,
   HttpCode,
+  Logger,
 } from '@nestjs/common';
 import { SystemAppGuard } from '../sessions/system-guard';
 import { TeamsService } from './teams.service';
 import { TeamBlueprintService } from './team-blueprint.service';
+import { SessionsService } from '../sessions/sessions.service';
 import type { TaskStatus, TaskKind } from '../state/task-state.repository';
 
 @Controller('api/teams')
 @UseGuards(SystemAppGuard)
 export class TeamsController {
+  private readonly logger = new Logger(TeamsController.name);
+
   constructor(
     private readonly teamsService: TeamsService,
     private readonly blueprintService: TeamBlueprintService,
+    private readonly sessionsService: SessionsService,
   ) {}
 
   // ── Team CRUD ──────────────────────────────────────────────────────
@@ -83,6 +88,73 @@ export class TeamsController {
   @HttpCode(200)
   deleteTeam(@Param('id') id: string) {
     return this.teamsService.deleteTeam(id);
+  }
+
+  /**
+   * Send a message to the team's leader agent.
+   * Automatically activates the leader's session if needed.
+   * The message is delivered via Gateway so the agent actually processes it.
+   */
+  @Post(':id/message')
+  @HttpCode(200)
+  async sendTeamMessage(
+    @Param('id') id: string,
+    @Body() body: { message: string },
+  ) {
+    if (!body.message?.trim()) {
+      return { ok: false, error: 'Message is required' };
+    }
+
+    // Find team members
+    const teamData = this.teamsService.getTeamWithMembers(id);
+    if (!teamData || !teamData.members?.length) {
+      return { ok: false, error: `Team '${id}' not found or has no members` };
+    }
+
+    // Find squad leader: by role name or first member
+    const leader = teamData.members.find(
+      (m: any) =>
+        m.roleId?.includes('squad-leader') ||
+        m.roleId?.includes('leader') ||
+        m.name?.toLowerCase().includes('leader') ||
+        m.name?.toLowerCase().includes('lead'),
+    ) ?? teamData.members[0];
+
+    if (!leader) {
+      return { ok: false, error: 'No team leader found' };
+    }
+
+    // Ensure leader has an active session
+    const sessionResult = await this.sessionsService.openAgentSession(leader.id);
+    if (!sessionResult.ok) {
+      this.logger.warn(`Failed to activate leader session: ${sessionResult.error}`);
+    }
+
+    const windowId = sessionResult.windowId;
+    if (!windowId) {
+      return { ok: false, error: 'Could not activate leader session' };
+    }
+
+    // Also activate other team members so leader can delegate to them
+    for (const member of teamData.members) {
+      if (member.id !== leader.id) {
+        this.sessionsService.openAgentSession(member.id).catch((err: unknown) => {
+          this.logger.debug(`Failed to pre-activate member ${member.id}: ${err}`);
+        });
+      }
+    }
+
+    // Send message through Gateway (this actually wakes the agent)
+    const result = await this.sessionsService.sendMessage(windowId, body.message);
+    if (!result || !result.ok) {
+      return {
+        ok: false,
+        error: result?.error?.message ?? 'Failed to deliver message to leader',
+      };
+    }
+
+    this.logger.log(`Team message delivered to ${leader.name} (${leader.id}) via ${windowId}`);
+    return { ok: true, leaderId: leader.id, leaderName: leader.name };
   }
 
   /** Get the team's task backlog with optional filters. */
