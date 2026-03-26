@@ -90,7 +90,22 @@ export class AgentsController {
       roleId: body.roleId,
       name: body.name,
       customDirectives: body.customDirectives,
+      teamId: body.teamId,
     });
+  }
+
+  /** Assign an agent to a team (or remove from team with teamId=null). */
+  @Post(':id/team')
+  @HttpCode(200)
+  async assignTeam(
+    @Param('id') id: string,
+    @Body() body: { teamId: string | null },
+  ) {
+    if (!AGENT_ID_RE.test(id)) {
+      throw new BadRequestException(`Invalid agent ID format: ${id}`);
+    }
+    this.factory.updateTeamId(id, body.teamId ?? null);
+    return { ok: true, agentId: id, teamId: body.teamId ?? null };
   }
 
   /** Soft-delete an agent (archive). Preserves knowledge chunks. */

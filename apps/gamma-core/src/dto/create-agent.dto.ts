@@ -18,4 +18,10 @@ export class CreateAgentBody {
   @IsString()
   @MaxLength(2000)
   customDirectives?: string;
+
+  /** Optional team ID to assign the agent to on creation. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  teamId?: string;
 }
