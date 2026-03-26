@@ -224,13 +224,18 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
   });
 
   // ── Squad Leader SSE stream (to capture text responses) ───────────
-  // We get the windowId from /api/sessions/active (authoritative, always current).
-  // The windowId can change when openAgentSession creates a new session, so we
-  // resolve it fresh on every connect/reconnect attempt.
+  //
+  // Root cause of missed messages:
+  //   1. User sends message → POST /api/teams/:id/message → openAgentSession creates NEW windowId
+  //   2. Agent responds immediately on the new windowId's SSE stream
+  //   3. Hook was connected to old/null windowId → response missed
+  //
+  // Fix: expose a `reconnectNow()` trigger that sendMessage calls immediately
+  // after POST, so we connect to the fresh windowId before the agent responds.
   const leaderStreamRef = useRef<EventSource | null>(null);
   const squadLeaderIdRef = useRef<string | null>(null);
+  const reconnectNowRef = useRef<(() => void) | null>(null);
 
-  // Keep ref in sync so ESS handler closure always reads current leader id
   useEffect(() => {
     squadLeaderIdRef.current = squadLeaderId;
   }, [squadLeaderId]);
@@ -241,6 +246,7 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
     let destroyed = false;
     let es: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let currentWindowId: string | null = null;
 
     // Track cumulative answer text per run
     let currentAnswerText = "";
@@ -258,15 +264,26 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
       }
     }
 
-    async function connect() {
+    async function connect(forceReconnect = false) {
       if (destroyed) return;
 
       const windowId = await resolveWindowId();
       if (!windowId || destroyed) {
-        // Session not active yet — retry after send activates it
-        reconnectTimer = setTimeout(connect, 2000);
+        reconnectTimer = setTimeout(() => connect(), 2000);
         return;
       }
+
+      // Already connected to the correct windowId — skip unless forced
+      if (!forceReconnect && windowId === currentWindowId && es && es.readyState !== EventSource.CLOSED) {
+        return;
+      }
+
+      // Close existing connection before opening new one
+      es?.close();
+      currentWindowId = windowId;
+      // Reset streaming state for new session
+      currentAnswerText = "";
+      currentAnswerId = null;
 
       const ticket = await fetchSseTicket(`/api/stream/${windowId}`);
       if (destroyed) return;
@@ -313,29 +330,32 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
           if (event.type === "lifecycle_end") {
             currentAnswerText = "";
             currentAnswerId = null;
-            // Reconnect after lifecycle_end: next message may create a new windowId
-            es?.close();
-            if (!destroyed) {
-              reconnectTimer = setTimeout(connect, 500);
-            }
+            // Do NOT close/reconnect here — the SSE connection is persistent and
+            // will receive the next lifecycle_start automatically. Closing here
+            // creates a race where the next message response arrives before
+            // we have reconnected, causing missed messages.
           }
-        } catch {
-          // ignore
-        }
+        } catch { /* ignore */ }
       };
 
       es.onerror = () => {
         es?.close();
-        if (!destroyed) {
-          reconnectTimer = setTimeout(connect, 3000);
-        }
+        currentWindowId = null;
+        if (!destroyed) reconnectTimer = setTimeout(() => connect(), 3000);
       };
     }
+
+    // Expose reconnect trigger for sendMessage to call immediately after POST
+    reconnectNowRef.current = () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      void connect(true);
+    };
 
     connect();
 
     return () => {
       destroyed = true;
+      reconnectNowRef.current = null;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       es?.close();
       leaderStreamRef.current = null;
@@ -362,10 +382,16 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
       setMessages((prev) => [...prev, userMsg]);
 
       // Send via team message endpoint (activates leader + delivers via Gateway)
+      // After POST completes, immediately reconnect SSE to pick up the fresh windowId
+      // that openAgentSession creates — this prevents the race where the agent
+      // responds before we've connected to the new stream.
       fetch(`${API_BASE}/api/teams/${teamId}/message`, {
         method: "POST",
         headers: { ...systemAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
+      }).then(() => {
+        // POST done → session is now active with a fresh windowId → reconnect immediately
+        reconnectNowRef.current?.();
       }).catch((err) => {
         console.warn("[TeamChat] Failed to send message:", err);
       });
