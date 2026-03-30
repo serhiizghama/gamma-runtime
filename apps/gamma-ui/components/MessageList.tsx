@@ -467,7 +467,7 @@ export function MessageList({ messages, pendingToolLines, status, hasMoreHistory
       )}
       {messages.filter((msg) => {
         // Hide internal protocol tokens that should never appear in UI
-        const t = msg.text?.trim();
+        const t = String(msg.text ?? "").trim();
         return t !== "ANNOUNCE_SKIP" && t !== "HEARTBEAT_OK" && t !== "NO_REPLY";
       }).map((msg) => (
         <MessageBubble key={msg.id} msg={msg} />

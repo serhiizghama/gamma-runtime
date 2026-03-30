@@ -1,34 +1,42 @@
 /**
  * TeamChatPanel — Inline chat sidebar for a team, embedded in SyndicateMap.
  *
- * Same pattern as AgentDetailPanel: absolute right-side overlay.
- * Reuses useTeamChat → useAgentStream (same stack as the standalone TeamChatApp).
+ * - Resizable via drag handle on the left edge
+ * - Width persisted in localStorage (key: team-chat-panel-width)
+ * - Same pattern as AgentDetailPanel: absolute right-side overlay
+ * - Reuses useTeamChat → useAgentStream
  */
 
-import React, { type CSSProperties } from "react";
+import React, { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTeamChat } from "../../hooks/useTeamChat";
 import { MessageList } from "../MessageList";
 import { ChatInput } from "../ChatInput";
 
+// ── Constants ─────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = "team-chat-panel-width";
+const MIN_WIDTH = 280;
+const MAX_WIDTH = 680;
+const DEFAULT_WIDTH = 360;
+
+function loadWidth(): number {
+  try {
+    const v = localStorage.getItem(STORAGE_KEY);
+    if (v) {
+      const n = parseInt(v, 10);
+      if (!isNaN(n) && n >= MIN_WIDTH && n <= MAX_WIDTH) return n;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_WIDTH;
+}
+
+function saveWidth(w: number) {
+  try { localStorage.setItem(STORAGE_KEY, String(w)); } catch { /* ignore */ }
+}
+
 // ── Styles ────────────────────────────────────────────────────────────────
 
-const panel: CSSProperties = {
-  position: "absolute",
-  top: 0,
-  right: 0,
-  width: 360,
-  height: "100%",
-  background: "var(--color-bg-secondary, #0d1117)",
-  borderLeft: "1px solid var(--color-border-subtle, rgba(255,255,255,0.08))",
-  boxShadow: "-4px 0 24px rgba(0,0,0,0.5)",
-  display: "flex",
-  flexDirection: "column",
-  zIndex: 10,
-  fontFamily: "var(--font-system)",
-  overflow: "hidden",
-};
-
-const header: CSSProperties = {
+const headerStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -50,6 +58,18 @@ const closeBtnStyle: CSSProperties = {
   flexShrink: 0,
 };
 
+const resizeHandleStyle: CSSProperties = {
+  position: "absolute",
+  left: 0,
+  top: 0,
+  width: 5,
+  height: "100%",
+  cursor: "ew-resize",
+  zIndex: 20,
+  background: "transparent",
+  transition: "background 150ms ease",
+};
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 interface Props {
@@ -65,13 +85,78 @@ export function TeamChatPanel({
   teamColor,
   onClose,
 }: Props): React.ReactElement {
+  const [width, setWidth] = useState<number>(loadWidth);
+  const draggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startWRef = useRef(0);
+
   const { messages, members, isConnected, sendMessage, squadLeaderId, agentStatuses, status, pendingToolLines } =
     useTeamChat(teamId);
 
+  // ── Resize drag logic ──────────────────────────────────────────────────
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    startXRef.current = e.clientX;
+    startWRef.current = width;
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+  }, [width]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      const delta = startXRef.current - e.clientX; // dragging left = wider
+      const newW = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWRef.current + delta));
+      setWidth(newW);
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setWidth((w) => { saveWidth(w); return w; });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  // ── Render ─────────────────────────────────────────────────────────────
+
+  const panelStyle: CSSProperties = {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width,
+    height: "100%",
+    background: "var(--color-bg-secondary, #0d1117)",
+    borderLeft: "1px solid var(--color-border-subtle, rgba(255,255,255,0.08))",
+    boxShadow: "-4px 0 24px rgba(0,0,0,0.5)",
+    display: "flex",
+    flexDirection: "column",
+    zIndex: 10,
+    fontFamily: "var(--font-system)",
+    overflow: "hidden",
+  };
+
   return (
-    <div style={panel}>
+    <div style={panelStyle}>
+      {/* Drag-to-resize handle on left edge */}
+      <div
+        style={resizeHandleStyle}
+        onMouseDown={onMouseDown}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.08)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+        title="Drag to resize"
+      />
+
       {/* Header */}
-      <div style={header}>
+      <div style={headerStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
           <span style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.9)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {teamName}
@@ -110,7 +195,7 @@ export function TeamChatPanel({
         <button style={closeBtnStyle} onClick={onClose} title="Close chat">✕</button>
       </div>
 
-      {/* Messages — reuse shared MessageList */}
+      {/* Messages */}
       <MessageList
         messages={messages}
         status={status}
@@ -118,7 +203,7 @@ export function TeamChatPanel({
         accentColor={teamColor}
       />
 
-      {/* Input — reuse shared ChatInput */}
+      {/* Input */}
       <ChatInput
         status={status}
         placeholder={squadLeaderId ? "Send task to Squad Leader..." : "No squad leader found"}
