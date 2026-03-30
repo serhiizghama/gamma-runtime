@@ -345,49 +345,75 @@ function AgentNodeInner({ data, selected }: NodeProps) {
           cursor: "grab",
         }}
       >
-        {/* Avatar wrapper — position: relative so LedBorder & ripple are clipped to avatar */}
+        {/* Avatar wrapper — fixed px so SVG overlay always aligns perfectly */}
         <div style={{ position: "relative", width: sz.avatar, height: sz.avatar, flexShrink: 0 }}>
-          {/* Running: outer ripple ring behind the avatar */}
+          {/* Outer ripple ring — behind everything */}
           {isRunning && (
             <span style={{
               position: "absolute",
-              inset: -6,
+              top: -6, left: -6, right: -6, bottom: -6,
               borderRadius: sz.radius + 4,
-              border: `2px solid ${statusColor}55`,
+              border: `2px solid ${statusColor}44`,
               animation: "agentRunningPulse 1.4s ease-out infinite 0.35s",
               pointerEvents: "none",
               zIndex: 0,
             }} />
           )}
 
-          {/* Avatar card */}
+          {/* Avatar card — exact px size matching wrapper */}
           <div style={{
             ...avatarStyle,
+            position: "absolute",
+            top: 0, left: 0,
+            width: sz.avatar,
+            height: sz.avatar,
             opacity: status === "offline" ? 0.6 : 1,
-            width: "100%",
-            height: "100%",
           }}>
-            {/* Glass shine */}
             <div style={shineOverlay} />
-
             <span style={{ userSelect: "none", zIndex: 1, position: "relative", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.35))" }}>{avatarEmoji}</span>
-
-            {/* LED chase overlay — positioned inside the avatar card */}
-            <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
 
             {/* Task badge */}
             {taskCount > 0 && (
-              <span
-                style={{
-                  ...badgeBase,
-                  background: isPulsing ? "var(--color-accent-error)" : color,
-                  animation: isPulsing ? "agentBadgePulse 1.2s ease-in-out infinite" : undefined,
-                }}
-              >
+              <span style={{
+                ...badgeBase,
+                background: isPulsing ? "var(--color-accent-error)" : color,
+                animation: isPulsing ? "agentBadgePulse 1.2s ease-in-out infinite" : undefined,
+              }}>
                 {taskCount}
               </span>
             )}
           </div>
+
+          {/* LED chase SVG — sits on top of avatar card, same coordinate system as wrapper */}
+          {isRunning && (
+            <svg
+              width={sz.avatar}
+              height={sz.avatar}
+              viewBox={`0 0 ${sz.avatar} ${sz.avatar}`}
+              style={{
+                position: "absolute",
+                top: 0, left: 0,
+                pointerEvents: "none",
+                zIndex: 4,
+                overflow: "visible",
+              }}
+            >
+              <rect
+                x={1.5}
+                y={1.5}
+                width={sz.avatar - 3}
+                height={sz.avatar - 3}
+                rx={sz.radius - 1}
+                ry={sz.radius - 1}
+                fill="none"
+                stroke={statusColor}
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeDasharray="7 13"
+                style={{ animation: "agentLedChase 2.5s linear infinite" }}
+              />
+            </svg>
+          )}
         </div>
 
         {/* Labels */}
