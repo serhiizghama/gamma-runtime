@@ -48,14 +48,6 @@ function injectStyles() {
   const sheet = document.createElement("style");
   sheet.id = "agent-node-animations";
   sheet.textContent = `
-    @keyframes agentLedChase {
-      0%   { stroke-dashoffset: 0; }
-      100% { stroke-dashoffset: -200; }
-    }
-    @keyframes agentLedGlow {
-      0%, 100% { filter: drop-shadow(0 0 2px var(--led-color, #28c840)); }
-      50%      { filter: drop-shadow(0 0 6px var(--led-color, #28c840)) drop-shadow(0 0 12px var(--led-color, #28c840)); }
-    }
     @keyframes agentBreath {
       0%, 100% { box-shadow: 0 0 8px var(--led-color, #28c840)44, 0 2px 16px rgba(0,0,0,0.5); }
       50%      { box-shadow: 0 0 18px var(--led-color, #28c840)66, 0 0 32px var(--led-color, #28c840)22, 0 2px 16px rgba(0,0,0,0.5); }
@@ -94,62 +86,6 @@ function colorToGradient(hex: string): string {
   return `linear-gradient(135deg, ${tl} 0%, ${hex} 50%, ${br} 100%)`;
 }
 
-// ── LED border overlay (SVG rounded rect with dashed stroke) ──────────────
-
-function LedBorder({
-  size,
-  radius,
-  color,
-  active,
-}: {
-  size: number;
-  radius: number;
-  color: string;
-  active: boolean;
-}) {
-  // Inset the rect by half the stroke width so it aligns with the CSS border
-  const sw = active ? 2.5 : 0;
-  if (!active) return null;
-
-  const inset = sw / 2 + 1; // +1 to sit just outside the CSS border
-  const rw = size - inset * 2;
-  const rh = size - inset * 2;
-  const r = Math.max(0, radius - inset / 2);
-
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        pointerEvents: "none",
-        zIndex: 3,
-        animation: "agentLedGlow 2.4s ease-in-out infinite",
-        "--led-color": color,
-      } as CSSProperties}
-    >
-      <rect
-        x={inset}
-        y={inset}
-        width={rw}
-        height={rh}
-        rx={r}
-        ry={r}
-        fill="none"
-        stroke={color}
-        strokeWidth={sw}
-        strokeLinecap="round"
-        strokeDasharray="6 14"
-        style={{
-          animation: "agentLedChase 3s linear infinite",
-        }}
-      />
-    </svg>
-  );
-}
 
 // ── Shared styles ─────────────────────────────────────────────────────────
 
@@ -301,7 +237,6 @@ function AgentNodeInner({ data, selected }: NodeProps) {
             animation: `agentNodeAppear 220ms ease-out, ${avatarStyle.animation ?? ""}`.trim().replace(/,$/, ""),
           }}>
             <div style={shineOverlay} />
-            <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
           </div>
         </div>
         <Handle type="source" position={Position.Bottom} style={handleStyle} />
@@ -321,7 +256,6 @@ function AgentNodeInner({ data, selected }: NodeProps) {
           }}>
             <div style={shineOverlay} />
             <span style={{ userSelect: "none", zIndex: 1, position: "relative", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" }}>{avatarEmoji}</span>
-            <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
           </div>
         </div>
         <Handle type="source" position={Position.Bottom} style={handleStyle} />
@@ -384,36 +318,6 @@ function AgentNodeInner({ data, selected }: NodeProps) {
             )}
           </div>
 
-          {/* LED chase SVG — sits on top of avatar card, same coordinate system as wrapper */}
-          {isRunning && (
-            <svg
-              width={sz.avatar}
-              height={sz.avatar}
-              viewBox={`0 0 ${sz.avatar} ${sz.avatar}`}
-              style={{
-                position: "absolute",
-                top: 0, left: 0,
-                pointerEvents: "none",
-                zIndex: 4,
-                overflow: "visible",
-              }}
-            >
-              <rect
-                x={1.5}
-                y={1.5}
-                width={sz.avatar - 3}
-                height={sz.avatar - 3}
-                rx={sz.radius - 1}
-                ry={sz.radius - 1}
-                fill="none"
-                stroke={statusColor}
-                strokeWidth={2.5}
-                strokeLinecap="round"
-                strokeDasharray="7 13"
-                style={{ animation: "agentLedChase 2.5s linear infinite" }}
-              />
-            </svg>
-          )}
         </div>
 
         {/* Labels */}
