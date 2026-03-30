@@ -999,19 +999,35 @@ export class SessionsService {
       agentId: agent.roleId || 'daemon',
     });
 
-    // 5. Read SOUL.md from agent workspace for the system prompt
+    // 5. Read system prompt: SOUL.md from agent workspace → community-roles/{roleId}.md → default
     let systemPrompt: string | undefined;
+    let soulContent: string | undefined;
+
+    // 5a. Try agent workspace SOUL.md first
     try {
       const soulPath = path.join(agent.workspacePath, 'SOUL.md');
-      const soulContent = await fs.readFile(soulPath, 'utf8');
-      if (soulContent) {
-        systemPrompt =
-          `[SYSTEM INJECTION] You are "${agent.name}", a Gamma Runtime agent.\n\n` +
-          soulContent;
-      }
-    } catch {
+      soulContent = await fs.readFile(soulPath, 'utf8');
+    } catch { /* not found */ }
+
+    // 5b. Fallback: community-roles/{roleId}.md (e.g. job-hunting/job-hunting-squad-leader)
+    if (!soulContent && agent.roleId) {
+      try {
+        const repoRoot = process.cwd();
+        const rolePath = path.join(repoRoot, 'community-roles', `${agent.roleId}.md`);
+        const raw = await fs.readFile(rolePath, 'utf8');
+        // Strip YAML frontmatter (--- ... ---)
+        soulContent = raw.replace(/^---[\s\S]*?---\n?/, '').trim();
+        this.logger.debug(`Loaded role prompt from community-roles/${agent.roleId}.md for ${agentId}`);
+      } catch { /* not found */ }
+    }
+
+    if (soulContent) {
+      systemPrompt =
+        `[SYSTEM INJECTION] You are "${agent.name}", a Gamma Runtime agent.\n\n` +
+        soulContent;
+    } else {
       this.logger.debug(
-        `SOUL.md not found for agent "${agent.name}" (${agentId}) — using default prompt`,
+        `No soul/role file found for agent "${agent.name}" (${agentId}) — using default prompt`,
       );
       systemPrompt = `[SYSTEM INJECTION] You are "${agent.name}", a Gamma Runtime agent with role "${agent.roleId}". Follow instructions and report task results using the report_status tool.`;
     }
