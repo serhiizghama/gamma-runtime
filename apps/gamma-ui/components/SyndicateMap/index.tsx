@@ -37,6 +37,7 @@ import { AgentClusterNode, type AgentClusterNodeData } from "./AgentClusterNode"
 import { TeamGroupNode } from "./TeamGroupNode";
 import { IpcEdge } from "./IpcEdge";
 import { AgentDetailPanel } from "./AgentDetailPanel";
+import { TeamChatPanel } from "./TeamChatPanel";
 import { MapToolbar } from "./MapToolbar";
 import { getLayoutedElements } from "../../lib/layout";
 import {
@@ -215,6 +216,24 @@ function SyndicateMapInner() {
   const [activeDirection, setActiveDirection] = useState<"TB" | "LR">("TB");
   const prevTopoRef = useRef("");
 
+  // Team chat panel state
+  const [teamChatOpen, setTeamChatOpen] = useState<{
+    teamId: string;
+    teamName: string;
+    teamColor: string;
+  } | null>(null);
+
+  const handleOpenTeamChat = useCallback(
+    (teamId: string, teamName: string, teamColor: string) => {
+      setTeamChatOpen((prev) =>
+        prev?.teamId === teamId ? null : { teamId, teamName, teamColor },
+      );
+      // Close agent detail panel when opening team chat
+      selectAgent(null);
+    },
+    [selectAgent],
+  );
+
   // Build graph elements from store data via the useAgentGraph hook
   const graph = useAgentGraph({ agents, ipcFlashes, collapsedIds });
 
@@ -268,14 +287,21 @@ function SyndicateMapInner() {
     if (topoChanged) {
       prevTopoRef.current = graph.topologyKey;
 
+      // Inject onOpenChat into teamGroup nodes
+      const nodesWithChat = graph.nodes.map((n) =>
+        n.type === "teamGroup"
+          ? { ...n, data: { ...n.data, onOpenChat: handleOpenTeamChat } }
+          : n,
+      );
+
       // Try restoring saved positions first; fall back to dagre layout
-      const restored = restorePositions(graph.nodes);
+      const restored = restorePositions(nodesWithChat);
       if (restored) {
         setNodes(restored);
         setEdges(graph.edges);
       } else {
         const { nodes: laid, edges: laidEdges } = getLayoutedElements(
-          graph.nodes,
+          nodesWithChat,
           graph.edges,
           { direction: "TB" },
         );
@@ -288,7 +314,13 @@ function SyndicateMapInner() {
       });
     } else {
       // Data-only update: patch node.data in-place, preserving positions
-      const freshById = new Map(graph.nodes.map((n) => [n.id, n]));
+      const freshById = new Map(
+        graph.nodes.map((n) =>
+          n.type === "teamGroup"
+            ? [n.id, { ...n, data: { ...n.data, onOpenChat: handleOpenTeamChat } }]
+            : [n.id, n],
+        ),
+      );
 
       setNodes((prev) => {
         const next = prev.map((n) => {
@@ -310,7 +342,7 @@ function SyndicateMapInner() {
       // Only update edges if the reference actually changed (memoized in useAgentGraph)
       setEdges((prev) => (prev === graph.edges ? prev : graph.edges));
     }
-  }, [graph, setNodes, setEdges]);
+  }, [graph, setNodes, setEdges, handleOpenTeamChat]);
 
   const onLayout = useCallback(
     (direction: "TB" | "LR") => {
@@ -343,7 +375,6 @@ function SyndicateMapInner() {
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       if (node.id.startsWith("cluster-")) {
-        // Expand the cluster: remove from collapsedIds and select root agent
         const clusterId = (node.data as unknown as AgentClusterNodeData).clusterId;
         setCollapsedIds((prev) => {
           const next = new Set(prev);
@@ -351,8 +382,10 @@ function SyndicateMapInner() {
           return next;
         });
         selectAgent(clusterId);
-      } else {
+        setTeamChatOpen(null);
+      } else if (node.type !== "teamGroup") {
         selectAgent(node.id);
+        setTeamChatOpen(null);
       }
     },
     [selectAgent],
@@ -454,13 +487,23 @@ function SyndicateMapInner() {
       />
 
       {/* Agent detail sidebar */}
-      {selectedAgent && (
+      {selectedAgent && !teamChatOpen && (
         <AgentDetailPanel
           agentId={selectedAgent.id}
           agentName={selectedAgent.name}
           agentEmoji={selectedAgent.avatarEmoji}
           agentColor={selectedAgent.uiColor}
           onClose={() => selectAgent(null)}
+        />
+      )}
+
+      {/* Team chat panel — inline right sidebar */}
+      {teamChatOpen && (
+        <TeamChatPanel
+          teamId={teamChatOpen.teamId}
+          teamName={teamChatOpen.teamName}
+          teamColor={teamChatOpen.teamColor}
+          onClose={() => setTeamChatOpen(null)}
         />
       )}
     </div>

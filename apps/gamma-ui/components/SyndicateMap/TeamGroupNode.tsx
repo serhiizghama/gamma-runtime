@@ -10,7 +10,6 @@
 
 import { memo, useCallback, type CSSProperties } from "react";
 import type { NodeProps } from "@xyflow/react";
-import { useGammaStore } from "../../store/useGammaStore";
 
 // ── Data contract ─────────────────────────────────────────────────────────
 
@@ -19,6 +18,8 @@ export interface TeamGroupNodeData extends Record<string, unknown> {
   teamId: string;
   memberCount: number;
   uiColor: string;
+  /** Called when the user clicks the 💬 chat button */
+  onOpenChat?: (teamId: string, teamName: string, uiColor: string) => void;
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────
@@ -64,12 +65,14 @@ const chatBtnStyle: CSSProperties = {
 };
 
 function TeamGroupNodeInner({ data }: NodeProps) {
-  const { teamName, memberCount, uiColor } = data as unknown as TeamGroupNodeData;
+  const { teamName, teamId, memberCount, uiColor, onOpenChat } = data as unknown as TeamGroupNodeData;
   const color = uiColor || "#6366f1";
 
   const openChat = useCallback(() => {
-    useGammaStore.getState().openWindow("team-chat", `Chat: ${teamName}`);
-  }, [teamName]);
+    if (onOpenChat) {
+      onOpenChat(teamId, teamName, color);
+    }
+  }, [onOpenChat, teamId, teamName, color]);
 
   const containerStyle: CSSProperties = {
     width: "100%",
@@ -123,8 +126,10 @@ function arePropsEqual(prev: NodeProps, next: NodeProps): boolean {
   const n = next.data as unknown as TeamGroupNodeData;
   return (
     p.teamName === n.teamName &&
+    p.teamId === n.teamId &&
     p.memberCount === n.memberCount &&
-    p.uiColor === n.uiColor
+    p.uiColor === n.uiColor &&
+    p.onOpenChat === n.onOpenChat
   );
 }
 
