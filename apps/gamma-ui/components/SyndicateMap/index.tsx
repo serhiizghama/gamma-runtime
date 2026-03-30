@@ -212,6 +212,7 @@ function SyndicateMapInner() {
   } = useLayoutPersistence({ storageKey: "syndicate-map" });
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const [activeDirection, setActiveDirection] = useState<"TB" | "LR">("TB");
   const prevTopoRef = useRef("");
 
   // Build graph elements from store data via the useAgentGraph hook
@@ -314,6 +315,7 @@ function SyndicateMapInner() {
   const onLayout = useCallback(
     (direction: "TB" | "LR") => {
       clearPositions();
+      setActiveDirection(direction);
       const result = getLayoutedElements(nodes, edges, { direction });
       setNodes(result.nodes);
       setEdges(result.edges);
@@ -448,6 +450,7 @@ function SyndicateMapInner() {
         loading={loading}
         error={error}
         onRetry={() => void fetchAgents()}
+        activeDirection={activeDirection}
       />
 
       {/* Agent detail sidebar */}

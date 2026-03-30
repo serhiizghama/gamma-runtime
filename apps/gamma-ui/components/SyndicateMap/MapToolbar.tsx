@@ -16,6 +16,7 @@ interface Props {
   loading: boolean;
   error: string | null;
   onRetry: () => void;
+  activeDirection?: "TB" | "LR";
 }
 
 const toolbarStyle: React.CSSProperties = {
@@ -58,19 +59,27 @@ export const MapToolbar: React.FC<Props> = ({
   loading,
   error,
   onRetry,
+  activeDirection,
 }) => {
+  const activeBtn: React.CSSProperties = {
+    ...toolbarBtn,
+    background: "rgba(88, 166, 255, 0.18)",
+    color: "rgba(147, 197, 253, 1)",
+    borderColor: "rgba(88, 166, 255, 0.45)",
+  };
+
   return (
     <div style={toolbarStyle}>
       <button
         className="syndicate-toolbar-btn"
-        style={toolbarBtn}
+        style={activeDirection === "TB" ? activeBtn : toolbarBtn}
         onClick={() => onLayout("TB")}
       >
         ↕ Vertical
       </button>
       <button
         className="syndicate-toolbar-btn"
-        style={toolbarBtn}
+        style={activeDirection === "LR" ? activeBtn : toolbarBtn}
         onClick={() => onLayout("LR")}
       >
         ↔ Horizontal

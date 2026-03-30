@@ -55,15 +55,32 @@ function injectStyles() {
       50%      { filter: drop-shadow(0 0 6px var(--led-color, #28c840)) drop-shadow(0 0 12px var(--led-color, #28c840)); }
     }
     @keyframes agentBreath {
-      0%, 100% { box-shadow: 0 0 6px var(--led-color, #28c840)22; }
-      50%      { box-shadow: 0 0 12px var(--led-color, #28c840)44, 0 0 24px var(--led-color, #28c840)22; }
+      0%, 100% { box-shadow: 0 0 8px var(--led-color, #28c840)44, 0 2px 16px rgba(0,0,0,0.5); }
+      50%      { box-shadow: 0 0 18px var(--led-color, #28c840)66, 0 0 32px var(--led-color, #28c840)22, 0 2px 16px rgba(0,0,0,0.5); }
     }
     @keyframes agentBadgePulse {
       0%, 100% { transform: scale(1); }
       50%      { transform: scale(1.15); }
     }
+    @keyframes agentNodeAppear {
+      from { opacity: 0; transform: scale(0.85); }
+      to   { opacity: 1; transform: scale(1); }
+    }
   `;
   document.head.appendChild(sheet);
+}
+
+/** Derive a stable gradient from a hex color — like iOS app icon background */
+function colorToGradient(hex: string): string {
+  // Parse hex, lighten for top-left, darken for bottom-right
+  const r = parseInt(hex.slice(1, 3), 16) || 80;
+  const g = parseInt(hex.slice(3, 5), 16) || 100;
+  const b = parseInt(hex.slice(5, 7), 16) || 180;
+  const lighten = (v: number, amt: number) => Math.min(255, v + amt);
+  const darken  = (v: number, amt: number) => Math.max(0,   v - amt);
+  const tl = `rgb(${lighten(r,40)},${lighten(g,30)},${lighten(b,20)})`;
+  const br = `rgb(${darken(r,30)},${darken(g,20)},${darken(b,15)})`;
+  return `linear-gradient(135deg, ${tl} 0%, ${hex} 50%, ${br} 100%)`;
 }
 
 // ── LED border overlay (SVG rounded rect with dashed stroke) ──────────────
@@ -176,9 +193,9 @@ type Lod = "full" | "compact" | "dot";
 // ── Sizing per LOD ────────────────────────────────────────────────────────
 
 const SIZES = {
-  full:    { avatar: 80, radius: 20, emoji: 36 },
-  compact: { avatar: 48, radius: 14, emoji: 22 },
-  dot:     { avatar: 20, radius: 10, emoji: 0  },
+  full:    { avatar: 84, radius: 22, emoji: 38 },
+  compact: { avatar: 52, radius: 15, emoji: 24 },
+  dot:     { avatar: 22, radius: 11, emoji: 0  },
 } as const;
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -208,31 +225,42 @@ function AgentNodeInner({ data, selected }: NodeProps) {
 
   const sz = SIZES[lod];
 
-  // Border color: identity color normally, blends with status glow
-  const borderColor = color;
-
   const avatarStyle: CSSProperties = {
     position: "relative",
     width: sz.avatar,
     height: sz.avatar,
     borderRadius: sz.radius,
-    border: `2px solid ${borderColor}`,
+    border: `2px solid ${color}99`,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: sz.emoji,
     lineHeight: 1,
-    background: "var(--color-surface-elevated)",
-    transition: "box-shadow 200ms ease, transform 200ms ease",
+    // iOS-style gradient background derived from agent identity color
+    background: colorToGradient(color.startsWith("#") ? color : "#5060b8"),
+    transition: "box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease",
     boxShadow: selected
-      ? `0 0 20px ${color}88, 0 0 8px ${color}66, inset 0 0 4px ${color}22`
+      ? `0 0 22px ${color}aa, 0 0 10px ${color}66, 0 4px 24px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.15)`
       : isRunning
-        ? undefined // handled by breath animation
-        : `0 0 8px ${color}33`,
-    transform: selected ? "scale(1.05)" : undefined,
+        ? `0 2px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)`
+        : `0 2px 12px rgba(0,0,0,0.45), 0 0 6px ${color}22, inset 0 1px 0 rgba(255,255,255,0.10)`,
+    transform: selected ? "scale(1.07)" : undefined,
     animation: isRunning ? "agentBreath 2.4s ease-in-out infinite" : undefined,
     "--led-color": statusColor,
   } as CSSProperties;
+
+  // Shared inner highlight (glass shine on top edge)
+  const shineOverlay: CSSProperties = {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "45%",
+    borderRadius: `${sz.radius}px ${sz.radius}px 0 0`,
+    background: "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 100%)",
+    pointerEvents: "none",
+    zIndex: 2,
+  };
 
   // ── Dot LOD ─────────────────────────────────────────────────────────────
   if (lod === "dot") {
@@ -243,7 +271,9 @@ function AgentNodeInner({ data, selected }: NodeProps) {
           <div style={{
             ...avatarStyle,
             opacity: status === "offline" ? 0.5 : 1,
+            animation: `agentNodeAppear 220ms ease-out, ${avatarStyle.animation ?? ""}`.trim().replace(/,$/, ""),
           }}>
+            <div style={shineOverlay} />
             <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
           </div>
         </div>
@@ -262,7 +292,8 @@ function AgentNodeInner({ data, selected }: NodeProps) {
             ...avatarStyle,
             opacity: status === "offline" ? 0.6 : 1,
           }}>
-            <span style={{ userSelect: "none" }}>{avatarEmoji}</span>
+            <div style={shineOverlay} />
+            <span style={{ userSelect: "none", zIndex: 1, position: "relative", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" }}>{avatarEmoji}</span>
             <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
           </div>
         </div>
@@ -283,16 +314,19 @@ function AgentNodeInner({ data, selected }: NodeProps) {
           alignItems: "center",
           gap: 8,
           padding: 12,
-          minWidth: 100,
+          minWidth: 104,
           cursor: "grab",
         }}
       >
-        {/* Avatar with LED diode border */}
+        {/* Avatar — iOS-style app icon */}
         <div style={{
           ...avatarStyle,
           opacity: status === "offline" ? 0.6 : 1,
         }}>
-          <span style={{ userSelect: "none" }}>{avatarEmoji}</span>
+          {/* Glass shine */}
+          <div style={shineOverlay} />
+
+          <span style={{ userSelect: "none", zIndex: 1, position: "relative", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.35))" }}>{avatarEmoji}</span>
 
           {/* LED chase overlay */}
           <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
