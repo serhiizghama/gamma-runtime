@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { useTeamChat, type TeamMessage } from "../../../hooks/useTeamChat";
+import React, { useState, useCallback, type CSSProperties } from "react";
+import { useTeamChat, type TeamMember, type AgentLiveStatus } from "../../../hooks/useTeamChat";
 import { useTeams } from "../../../hooks/useTeams";
+import { MessageList } from "../../../components/MessageList";
+import { ChatInput } from "../../../components/ChatInput";
 
 // ── Styles ─────────────────────────────────────────────────────────────────
 
@@ -35,56 +35,17 @@ const membersRowStyle: CSSProperties = {
   overflow: "hidden",
 };
 
-const messageAreaStyle: CSSProperties = {
-  flex: 1,
-  overflowY: "auto",
-  padding: "12px 16px",
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-  minHeight: 0,
-};
-
-const inputBarStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "10px 16px",
-  borderTop: "1px solid rgba(255, 255, 255, 0.07)",
-  flexShrink: 0,
-};
-
-const inputStyle: CSSProperties = {
-  flex: 1,
-  background: "rgba(255, 255, 255, 0.05)",
-  border: "1px solid rgba(255, 255, 255, 0.1)",
-  borderRadius: 8,
-  padding: "8px 12px",
-  color: "rgba(255, 255, 255, 0.9)",
-  fontSize: 13,
-  fontFamily: "inherit",
-  outline: "none",
-};
-
-const sendBtnStyle: CSSProperties = {
-  background: "rgba(96, 165, 250, 0.2)",
-  border: "1px solid rgba(96, 165, 250, 0.3)",
-  borderRadius: 8,
-  padding: "8px 16px",
-  color: "rgba(96, 165, 250, 0.9)",
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
-
 // ── Team Selector ──────────────────────────────────────────────────────────
 
-function TeamSelector({ onSelect }: { onSelect: (teamId: string) => void }): React.ReactElement {
+function TeamSelector({
+  onSelect,
+}: {
+  onSelect: (teamId: string) => void;
+}): React.ReactElement {
   const { teams, loading, error } = useTeams();
 
-  // Auto-select if only one team (must be in useEffect, not during render)
-  useEffect(() => {
+  // Auto-select if only one team
+  React.useEffect(() => {
     if (!loading && !error && teams.length === 1) {
       onSelect(teams[0].id);
     }
@@ -136,10 +97,12 @@ function TeamSelector({ onSelect }: { onSelect: (teamId: string) => void }): Rea
                 transition: "background 0.15s",
               }}
               onMouseEnter={(e) => {
-                (e.target as HTMLElement).style.background = "rgba(255, 255, 255, 0.1)";
+                (e.target as HTMLElement).style.background =
+                  "rgba(255, 255, 255, 0.1)";
               }}
               onMouseLeave={(e) => {
-                (e.target as HTMLElement).style.background = "rgba(255, 255, 255, 0.05)";
+                (e.target as HTMLElement).style.background =
+                  "rgba(255, 255, 255, 0.05)";
               }}
             >
               {t.name}
@@ -151,156 +114,97 @@ function TeamSelector({ onSelect }: { onSelect: (teamId: string) => void }): Rea
   );
 }
 
-// ── Message Bubble ─────────────────────────────────────────────────────────
+// ── Member Status Dot ──────────────────────────────────────────────────────
 
-const TYPE_PREFIX: Record<TeamMessage["type"], string> = {
-  delegation: "",
-  completion: "✅ ",
-  failure: "❌ ",
-  status: "",
-  user: "",
-};
-
-function MessageBubble({ msg }: { msg: TeamMessage }): React.ReactElement {
-  const time = new Date(msg.timestamp);
-  const timeStr = `${time.getHours().toString().padStart(2, "0")}:${time.getMinutes().toString().padStart(2, "0")}`;
-
-  const isUser = msg.type === "user";
-
-  if (isUser) {
-    return (
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10, paddingLeft: "20%" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-          <div style={{
-            padding: "9px 14px",
-            borderRadius: "18px 18px 4px 18px",
-            background: "linear-gradient(135deg, rgba(59,130,246,0.92), rgba(37,99,235,0.96))",
-            color: "#fff",
-            fontSize: 13,
-            lineHeight: 1.55,
-            wordBreak: "break-word",
-            boxShadow: "0 2px 12px rgba(59,130,246,0.3)",
-            fontFamily: "var(--font-system)",
-          }}>
-            {msg.text}
-          </div>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", paddingRight: 4 }}>{timeStr}</span>
-        </div>
-      </div>
-    );
-  }
+function MemberDot({
+  member,
+  status,
+}: {
+  member: TeamMember;
+  status: AgentLiveStatus;
+}): React.ReactElement {
+  const isRunning = status === "running";
+  const dotColor =
+    isRunning
+      ? "#22c55e"
+      : status === "error"
+      ? "#ef4444"
+      : "rgba(255,255,255,0.2)";
 
   return (
-    <div style={{ display: "flex", gap: 10, marginBottom: 12, paddingRight: "8%" }}>
-      <div style={{
-        width: 28, height: 28, borderRadius: "50%",
-        background: `${msg.agentColor}18`,
-        border: `1px solid ${msg.agentColor}40`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0, marginTop: 2, fontSize: 14,
-      }}>
-        {msg.agentEmoji}
-      </div>
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-          <span style={{ fontWeight: 600, color: msg.agentColor, fontSize: 11 }}>{msg.agentName}</span>
-          <span style={{ fontSize: 10, opacity: 0.35, fontVariantNumeric: "tabular-nums", marginLeft: "auto" }}>{timeStr}</span>
-        </div>
-        <div style={{
-          padding: "10px 14px",
-          borderRadius: "4px 18px 18px 18px",
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.07)",
-          borderLeft: `3px solid ${msg.agentColor}70`,
-          color: "rgba(220,232,255,0.9)",
-          fontSize: 13,
-          lineHeight: 1.6,
-          wordBreak: "break-word",
-          fontFamily: "var(--font-system)",
-        }}>
-          <div className="team-chat-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {TYPE_PREFIX[msg.type] + msg.text}
-            </ReactMarkdown>
-          </div>
-        </div>
-      </div>
-    </div>
+    <span
+      title={`${member.name} — ${status}`}
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "default",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 16,
+          filter: "drop-shadow(0 0 2px rgba(0,0,0,0.5))",
+          opacity: status === "idle" ? 1 : status === "running" ? 1 : 0.5,
+        }}
+      >
+        {member.emoji}
+      </span>
+      <span
+        style={{
+          position: "absolute",
+          bottom: -1,
+          right: -1,
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: dotColor,
+          border: "1px solid rgba(0,0,0,0.6)",
+          animation: isRunning ? "teamAgentPulse 1s ease-in-out infinite" : "none",
+        }}
+      />
+    </span>
   );
 }
 
 // ── Chat View ──────────────────────────────────────────────────────────────
 
 function ChatView({ teamId }: { teamId: string }): React.ReactElement {
-  const { messages, teamName, members, isConnected, sendMessage, squadLeaderId, agentStatuses } =
-    useTeamChat(teamId);
-  const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
-
-  const handleSend = () => {
-    if (!input.trim()) return;
-    sendMessage(input.trim());
-    setInput("");
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const {
+    messages,
+    teamName,
+    members,
+    isConnected,
+    sendMessage,
+    squadLeaderId,
+    agentStatuses,
+    status,
+    pendingToolLines,
+  } = useTeamChat(teamId);
 
   return (
     <div style={containerStyle}>
-      {/* Header */}
+      {/* Header — same pattern as WindowNode/ArchitectWindow */}
       <div style={headerStyle}>
         <div style={membersRowStyle}>
-          <span style={{ fontWeight: 600, fontSize: 13, marginRight: 8, whiteSpace: "nowrap" }}>
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: 13,
+              marginRight: 8,
+              whiteSpace: "nowrap",
+            }}
+          >
             {teamName}
           </span>
-          {members.map((m) => {
-            const status = agentStatuses[m.id] ?? "unknown";
-            const isRunning = status === "running";
-            const dotColor = isRunning ? "#22c55e" : status === "error" ? "#ef4444" : "rgba(255,255,255,0.2)";
-            return (
-              <span
-                key={m.id}
-                title={`${m.name} — ${status}`}
-                style={{
-                  position: "relative",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "default",
-                }}
-              >
-                <span style={{
-                  fontSize: 16,
-                  filter: "drop-shadow(0 0 2px rgba(0,0,0,0.5))",
-                  opacity: status === "idle" ? 1 : status === "running" ? 1 : 0.5,
-                }}>
-                  {m.emoji}
-                </span>
-                {/* Status dot */}
-                <span style={{
-                  position: "absolute",
-                  bottom: -1,
-                  right: -1,
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: dotColor,
-                  border: "1px solid rgba(0,0,0,0.6)",
-                  animation: isRunning ? "teamAgentPulse 1s ease-in-out infinite" : "none",
-                }} />
-              </span>
-            );
-          })}
+          {members.map((m) => (
+            <MemberDot
+              key={m.id}
+              member={m}
+              status={agentStatuses[m.id] ?? "unknown"}
+            />
+          ))}
         </div>
         <span
           style={{
@@ -325,95 +229,30 @@ function ChatView({ teamId }: { teamId: string }): React.ReactElement {
         </span>
       </div>
 
-      {/* Messages */}
-      <div style={messageAreaStyle} className="team-chat-messages">
-        {messages.length === 0 && (
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: 0.3,
-              fontSize: 13,
-            }}
-          >
-            No messages yet. Send a task to the squad leader to get started.
-          </div>
-        )}
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} msg={msg} />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
+      {/* Messages — reuse shared MessageList (same as ArchitectWindow) */}
+      <MessageList
+        messages={messages}
+        status={status}
+        pendingToolLines={pendingToolLines}
+        accentColor="#6366f1"
+      />
 
-      {/* Input */}
-      <div style={inputBarStyle}>
-        <input
-          style={inputStyle}
-          placeholder={
-            squadLeaderId
-              ? "Send task to Squad Leader..."
-              : "No squad leader found"
-          }
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={!squadLeaderId}
-          className="team-chat-input"
-        />
-        <button
-          style={{
-            ...sendBtnStyle,
-            opacity: !input.trim() || !squadLeaderId ? 0.4 : 1,
-            cursor: !input.trim() || !squadLeaderId ? "default" : "pointer",
-          }}
-          onClick={handleSend}
-          disabled={!input.trim() || !squadLeaderId}
-        >
-          Send
-        </button>
-      </div>
+      {/* Input — reuse shared ChatInput */}
+      <ChatInput
+        status={status}
+        placeholder={
+          squadLeaderId
+            ? "Send task to Squad Leader..."
+            : "No squad leader found"
+        }
+        onSend={sendMessage}
+        accentColor="#6366f1"
+      />
 
       <style>{`
         @keyframes teamAgentPulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.5; transform: scale(1.4); }
-        }
-        .team-chat-messages::-webkit-scrollbar { width: 4px; }
-        .team-chat-messages::-webkit-scrollbar-track { background: transparent; }
-        .team-chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
-        .team-chat-messages::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
-        .team-chat-input::placeholder { color: rgba(255,255,255,0.25); }
-        .team-chat-input:focus { border-color: rgba(96,165,250,0.4); }
-
-        .team-chat-markdown p { margin: 4px 0; color: inherit; }
-        .team-chat-markdown ul, .team-chat-markdown ol { margin: 6px 0; padding-left: 20px; color: inherit; }
-        .team-chat-markdown strong { font-weight: 600; color: inherit; }
-        .team-chat-markdown em { font-style: italic; }
-        .team-chat-markdown code {
-          background: rgba(255,255,255,0.07); color: rgba(150,210,255,0.9);
-          padding: 1px 5px; border-radius: 4px; font-size: 12px;
-          border: 1px solid rgba(255,255,255,0.08);
-          font-family: 'SF Mono', 'Fira Code', monospace;
-        }
-        .team-chat-markdown pre {
-          background: rgba(0,0,0,0.35); padding: 12px 14px; border-radius: 8px;
-          overflow-x: auto; font-size: 12px; border: 1px solid rgba(255,255,255,0.07);
-          margin: 6px 0;
-        }
-        .team-chat-markdown pre code { background: none; border: none; padding: 0; color: rgba(180,220,255,0.85); }
-        .team-chat-markdown a { color: rgba(96,165,250,0.9); text-decoration: underline; word-break: break-word; }
-        .team-chat-markdown table { border-collapse: collapse; width: 100%; font-size: 12px; }
-        .team-chat-markdown th, .team-chat-markdown td { border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; text-align: left; }
-        .team-chat-markdown th { background: rgba(255,255,255,0.04); }
-        .team-chat-markdown h1, .team-chat-markdown h2, .team-chat-markdown h3 { color: rgba(220,235,255,0.95); font-weight: 600; margin: 10px 0 4px; }
-        .team-chat-markdown h1 { font-size: 16px; }
-        .team-chat-markdown h2 { font-size: 14px; }
-        .team-chat-markdown h3 { font-size: 13px; }
-        .team-chat-markdown blockquote {
-          border-left: 3px solid rgba(59,130,246,0.4); margin: 6px 0; padding: 4px 12px;
-          color: rgba(180,200,255,0.6); font-style: italic;
         }
       `}</style>
     </div>

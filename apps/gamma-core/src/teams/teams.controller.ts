@@ -154,7 +154,7 @@ export class TeamsController {
     }
 
     this.logger.log(`Team message delivered to ${leader.name} (${leader.id}) via ${windowId}`);
-    return { ok: true, leaderId: leader.id, leaderName: leader.name };
+    return { ok: true, leaderId: leader.id, leaderName: leader.name, windowId };
   }
 
   /** Get the team's task backlog with optional filters. */
