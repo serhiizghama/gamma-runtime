@@ -155,7 +155,7 @@ const nameStyle: CSSProperties = {
   color: "var(--color-text-primary)",
   fontFamily: "var(--font-system)",
   textAlign: "center",
-  maxWidth: 120,
+  maxWidth: 112,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
@@ -167,6 +167,10 @@ const roleStyle: CSSProperties = {
   fontFamily: "var(--font-system)",
   textAlign: "center",
   marginTop: -4,
+  maxWidth: 112,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const badgeBase: CSSProperties = {
@@ -347,7 +351,9 @@ function AgentNodeInner({ data, selected }: NodeProps) {
 
         {/* Labels */}
         <span style={nameStyle}>{name}</span>
-        <span style={roleStyle}>{roleId}</span>
+        <span style={roleStyle} title={roleId}>
+          {roleId.includes("/") ? roleId.split("/").pop() : roleId}
+        </span>
         {teamName && !isInTeamGroup && (
           <span
             style={{

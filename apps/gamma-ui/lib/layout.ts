@@ -18,12 +18,12 @@ export interface LayoutOptions {
 }
 
 const DEFAULT_NODE_WIDTH = 160;
-const DEFAULT_NODE_HEIGHT = 120;
+const DEFAULT_NODE_HEIGHT = 160; // Accounts for avatar (84px) + name + role + padding
 
 /** Padding inside team group containers. */
-const GROUP_PAD_X = 40;
-const GROUP_PAD_TOP = 50; // Extra space for the team label pill
-const GROUP_PAD_BOTTOM = 40;
+const GROUP_PAD_X = 48;
+const GROUP_PAD_TOP = 56; // Extra space for the team label pill
+const GROUP_PAD_BOTTOM = 48;
 
 /**
  * Run dagre layout on the given nodes and edges, returning new copies
@@ -41,8 +41,8 @@ export function getLayoutedElements(
 ): { nodes: Node[]; edges: Edge[] } {
   const {
     direction = "TB",
-    nodesep = 60,
-    ranksep = 80,
+    nodesep = 80,
+    ranksep = 100,
   } = options;
 
   // Separate group nodes, child nodes, and top-level nodes
@@ -97,7 +97,7 @@ export function getLayoutedElements(
 
     const subG = new dagre.graphlib.Graph();
     subG.setDefaultEdgeLabel(() => ({}));
-    subG.setGraph({ rankdir: direction, nodesep: nodesep * 0.8, ranksep: ranksep * 0.7 });
+    subG.setGraph({ rankdir: direction, nodesep: nodesep * 0.9, ranksep: ranksep * 0.85 });
 
     for (const child of children) {
       subG.setNode(child.id, {
