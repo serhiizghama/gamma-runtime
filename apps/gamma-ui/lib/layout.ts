@@ -95,9 +95,15 @@ export function getLayoutedElements(
       (e) => childIds.has(e.source) && childIds.has(e.target),
     );
 
+    // Find the squad leader among children
+    const leader = children.find((c) => {
+      const d = c.data as Record<string, unknown>;
+      return d.isLeader === true;
+    });
+
     const subG = new dagre.graphlib.Graph();
     subG.setDefaultEdgeLabel(() => ({}));
-    subG.setGraph({ rankdir: direction, nodesep: nodesep * 0.9, ranksep: ranksep * 0.85 });
+    subG.setGraph({ rankdir: "TB", nodesep: nodesep * 0.9, ranksep: ranksep * 0.85 });
 
     for (const child of children) {
       subG.setNode(child.id, {
@@ -105,8 +111,19 @@ export function getLayoutedElements(
         height: (child.measured?.height ?? child.height) || DEFAULT_NODE_HEIGHT,
       });
     }
-    for (const edge of childEdges) {
-      subG.setEdge(edge.source, edge.target);
+
+    // If leader found: add virtual edges from leader to all other members
+    // so dagre puts leader at the top/center of the group
+    if (leader) {
+      for (const child of children) {
+        if (child.id !== leader.id) {
+          subG.setEdge(leader.id, child.id);
+        }
+      }
+    } else {
+      for (const edge of childEdges) {
+        subG.setEdge(edge.source, edge.target);
+      }
     }
 
     dagre.layout(subG);

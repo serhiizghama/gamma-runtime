@@ -33,7 +33,13 @@ export interface UseAgentGraphResult {
 
 // ── Internal helpers ──────────────────────────────────────────────────────
 
-function agentToNodeData(a: SyndicateAgent): AgentNodeData {
+function isLeaderRole(roleId: string, name: string): boolean {
+  const r = roleId.toLowerCase();
+  const n = name.toLowerCase();
+  return r.includes("squad-leader") || r.includes("leader") || n.includes("squad leader") || n.includes("lead");
+}
+
+function agentToNodeData(a: SyndicateAgent, leader?: boolean): AgentNodeData {
   return {
     name: a.name,
     roleId: a.roleId,
@@ -42,15 +48,31 @@ function agentToNodeData(a: SyndicateAgent): AgentNodeData {
     status: a.liveStatus,
     inProgressTaskCount: a.inProgressTaskCount,
     teamName: a.teamName ?? null,
+    isLeader: leader ?? isLeaderRole(a.roleId, a.name),
   };
 }
 
 function buildNodes(agents: SyndicateAgent[]): Node[] {
+  // Determine team leaders so they can be flagged in node data
+  const teamLeaders = new Set<string>();
+  const byTeam = new Map<string, SyndicateAgent[]>();
+  for (const a of agents) {
+    if (a.teamName) {
+      const list = byTeam.get(a.teamName);
+      if (list) list.push(a);
+      else byTeam.set(a.teamName, [a]);
+    }
+  }
+  for (const members of byTeam.values()) {
+    const leader = members.find((m) => isLeaderRole(m.roleId, m.name)) ?? members[0];
+    if (leader) teamLeaders.add(leader.id);
+  }
+
   return agents.map((a) => ({
     id: a.id,
     type: "agent" as const,
     position: { x: 0, y: 0 },
-    data: agentToNodeData(a),
+    data: agentToNodeData(a, teamLeaders.has(a.id)),
   }));
 }
 

@@ -25,6 +25,8 @@ export interface AgentNodeData extends Record<string, unknown> {
   teamName: string | null;
   /** True when this agent is rendered inside a team group container. */
   isInTeamGroup?: boolean;
+  /** True when this agent is the squad leader of their team. */
+  isLeader?: boolean;
 }
 
 // ── Status color mapping ──────────────────────────────────────────────────
@@ -65,6 +67,15 @@ function injectStyles() {
     @keyframes agentNodeAppear {
       from { opacity: 0; transform: scale(0.85); }
       to   { opacity: 1; transform: scale(1); }
+    }
+    @keyframes agentRunningPulse {
+      0%   { box-shadow: 0 0 0 0 var(--led-color, #28c840), 0 2px 16px rgba(0,0,0,0.5); }
+      40%  { box-shadow: 0 0 0 8px transparent, 0 2px 16px rgba(0,0,0,0.5); }
+      100% { box-shadow: 0 0 0 0 transparent, 0 2px 16px rgba(0,0,0,0.5); }
+    }
+    @keyframes agentLeaderCrown {
+      0%, 100% { opacity: 0.8; transform: translateY(0); }
+      50%       { opacity: 1;   transform: translateY(-2px); }
     }
   `;
   document.head.appendChild(sheet);
@@ -214,6 +225,7 @@ function AgentNodeInner({ data, selected }: NodeProps) {
     inProgressTaskCount,
     teamName,
     isInTeamGroup,
+    isLeader,
   } = data as unknown as AgentNodeData;
 
   useEffect(() => { injectStyles(); }, []);
@@ -234,22 +246,31 @@ function AgentNodeInner({ data, selected }: NodeProps) {
     width: sz.avatar,
     height: sz.avatar,
     borderRadius: sz.radius,
-    border: `2px solid ${color}99`,
+    // Thicker, brighter border for leader; pulsing border for running
+    border: isRunning
+      ? `2.5px solid ${statusColor}`
+      : isLeader
+        ? `2.5px solid ${color}dd`
+        : `2px solid ${color}88`,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: sz.emoji,
     lineHeight: 1,
-    // iOS-style gradient background derived from agent identity color
     background: colorToGradient(color.startsWith("#") ? color : "#5060b8"),
     transition: "box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease",
     boxShadow: selected
-      ? `0 0 22px ${color}aa, 0 0 10px ${color}66, 0 4px 24px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.15)`
+      ? `0 0 22px ${color}bb, 0 0 10px ${color}77, 0 4px 24px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.15)`
       : isRunning
         ? `0 2px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)`
-        : `0 2px 12px rgba(0,0,0,0.45), 0 0 6px ${color}22, inset 0 1px 0 rgba(255,255,255,0.10)`,
-    transform: selected ? "scale(1.07)" : undefined,
-    animation: isRunning ? "agentBreath 2.4s ease-in-out infinite" : undefined,
+        : isLeader
+          ? `0 0 14px ${color}44, 0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)`
+          : `0 2px 12px rgba(0,0,0,0.45), 0 0 6px ${color}22, inset 0 1px 0 rgba(255,255,255,0.10)`,
+    transform: selected ? "scale(1.07)" : isLeader && !isRunning ? "scale(1.04)" : undefined,
+    // Ripple pulse when running — visible "working" indicator
+    animation: isRunning
+      ? `agentRunningPulse 1.4s ease-out infinite`
+      : undefined,
     "--led-color": statusColor,
   } as CSSProperties;
 
@@ -332,6 +353,19 @@ function AgentNodeInner({ data, selected }: NodeProps) {
 
           <span style={{ userSelect: "none", zIndex: 1, position: "relative", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.35))" }}>{avatarEmoji}</span>
 
+          {/* Running: outer ripple ring (rendered via box-shadow animation on parent + extra ring) */}
+          {isRunning && (
+            <span style={{
+              position: "absolute",
+              inset: -5,
+              borderRadius: sz.radius + 3,
+              border: `2px solid ${statusColor}66`,
+              animation: "agentRunningPulse 1.4s ease-out infinite 0.3s",
+              pointerEvents: "none",
+              zIndex: 0,
+            }} />
+          )}
+
           {/* LED chase overlay */}
           <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
 
@@ -350,7 +384,12 @@ function AgentNodeInner({ data, selected }: NodeProps) {
         </div>
 
         {/* Labels */}
-        <span style={nameStyle}>{name}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
+          {isLeader && (
+            <span style={{ fontSize: 11, animation: "agentLeaderCrown 2s ease-in-out infinite", lineHeight: 1 }} title="Squad Leader">👑</span>
+          )}
+          <span style={nameStyle}>{name}</span>
+        </div>
         <span style={roleStyle} title={roleId}>
           {roleId.includes("/") ? roleId.split("/").pop() : roleId}
         </span>
@@ -397,7 +436,8 @@ function arePropsEqual(prev: NodeProps, next: NodeProps): boolean {
     p.status === n.status &&
     p.inProgressTaskCount === n.inProgressTaskCount &&
     p.teamName === n.teamName &&
-    p.isInTeamGroup === n.isInTeamGroup
+    p.isInTeamGroup === n.isInTeamGroup &&
+    p.isLeader === n.isLeader
   );
 }
 
