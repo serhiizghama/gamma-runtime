@@ -98,6 +98,27 @@ function buildEdges(
   flashes: IpcFlash[],
   clusters: ClusterInfo[] = [],
 ): Edge[] {
+  // Build team leader map: agentId → leaderId for all team members
+  // Team members' edges point to their leader; leader's edge points to their supervisor
+  const teamLeaderOf = new Map<string, string>(); // memberId → leaderId
+  const byTeamForEdges = new Map<string, SyndicateAgent[]>();
+  for (const a of agents) {
+    if (a.teamName) {
+      const list = byTeamForEdges.get(a.teamName);
+      if (list) list.push(a);
+      else byTeamForEdges.set(a.teamName, [a]);
+    }
+  }
+  for (const members of byTeamForEdges.values()) {
+    if (members.length < 2) continue;
+    const leader = members.find((m) => isLeaderRole(m.roleId, m.name)) ?? members[0];
+    if (!leader) continue;
+    for (const m of members) {
+      if (m.id !== leader.id) {
+        teamLeaderOf.set(m.id, leader.id);
+      }
+    }
+  }
   // Build flash lookup — check both directions so a->b flash matches b->a edge
   const flashSet = new Set<string>();
   for (const f of flashes) {
@@ -122,7 +143,27 @@ function buildEdges(
   }
 
   // Edges from visible agents
+  const addedEdgeKeys = new Set<string>();
   for (const a of agents) {
+    // For non-leader team members: edge goes to their team leader (not external supervisor)
+    const overrideTarget = teamLeaderOf.get(a.id);
+    if (overrideTarget && visibleNodeIds.has(overrideTarget)) {
+      const edgeKey = `${overrideTarget}:${a.id}`;
+      if (!addedEdgeKeys.has(edgeKey)) {
+        addedEdgeKeys.add(edgeKey);
+        const isFlashing = flashSet.has(`${overrideTarget}:${a.id}`) || flashSet.has(`${a.id}:${overrideTarget}`);
+        edges.push({
+          id: `e-${overrideTarget}-${a.id}`,
+          source: overrideTarget,
+          target: a.id,
+          type: "ipc",
+          animated: !isFlashing,
+          data: { flashing: isFlashing, color: "var(--color-border-subtle)" } satisfies IpcEdgeData,
+        });
+      }
+      continue; // skip normal supervisorId edge for this member
+    }
+
     if (!a.supervisorId) continue;
 
     // Resolve source: if supervisor is in a cluster, point to cluster node
@@ -130,6 +171,9 @@ function buildEdges(
     if (!visibleNodeIds.has(source)) continue;
 
     const isFlashing = flashSet.has(`${a.supervisorId}:${a.id}`) || flashSet.has(`${a.id}:${a.supervisorId}`);
+    const edgeKey = `${source}:${a.id}`;
+    if (addedEdgeKeys.has(edgeKey)) continue;
+    addedEdgeKeys.add(edgeKey);
 
     edges.push({
       id: `e-${source}-${a.id}`,

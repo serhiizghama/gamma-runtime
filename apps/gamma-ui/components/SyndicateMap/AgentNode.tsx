@@ -243,9 +243,11 @@ function AgentNodeInner({ data, selected }: NodeProps) {
 
   const avatarStyle: CSSProperties = {
     position: "relative",
+    flexShrink: 0,
     width: sz.avatar,
     height: sz.avatar,
     borderRadius: sz.radius,
+    overflow: "visible",
     // Thicker, brighter border for leader; pulsing border for running
     border: isRunning
       ? `2.5px solid ${statusColor}`
@@ -343,44 +345,49 @@ function AgentNodeInner({ data, selected }: NodeProps) {
           cursor: "grab",
         }}
       >
-        {/* Avatar — iOS-style app icon */}
-        <div style={{
-          ...avatarStyle,
-          opacity: status === "offline" ? 0.6 : 1,
-        }}>
-          {/* Glass shine */}
-          <div style={shineOverlay} />
-
-          <span style={{ userSelect: "none", zIndex: 1, position: "relative", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.35))" }}>{avatarEmoji}</span>
-
-          {/* Running: outer ripple ring (rendered via box-shadow animation on parent + extra ring) */}
+        {/* Avatar wrapper — position: relative so LedBorder & ripple are clipped to avatar */}
+        <div style={{ position: "relative", width: sz.avatar, height: sz.avatar, flexShrink: 0 }}>
+          {/* Running: outer ripple ring behind the avatar */}
           {isRunning && (
             <span style={{
               position: "absolute",
-              inset: -5,
-              borderRadius: sz.radius + 3,
-              border: `2px solid ${statusColor}66`,
-              animation: "agentRunningPulse 1.4s ease-out infinite 0.3s",
+              inset: -6,
+              borderRadius: sz.radius + 4,
+              border: `2px solid ${statusColor}55`,
+              animation: "agentRunningPulse 1.4s ease-out infinite 0.35s",
               pointerEvents: "none",
               zIndex: 0,
             }} />
           )}
 
-          {/* LED chase overlay */}
-          <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
+          {/* Avatar card */}
+          <div style={{
+            ...avatarStyle,
+            opacity: status === "offline" ? 0.6 : 1,
+            width: "100%",
+            height: "100%",
+          }}>
+            {/* Glass shine */}
+            <div style={shineOverlay} />
 
-          {/* Task badge */}
-          {taskCount > 0 && (
-            <span
-              style={{
-                ...badgeBase,
-                background: isPulsing ? "var(--color-accent-error)" : color,
-                animation: isPulsing ? "agentBadgePulse 1.2s ease-in-out infinite" : undefined,
-              }}
-            >
-              {taskCount}
-            </span>
-          )}
+            <span style={{ userSelect: "none", zIndex: 1, position: "relative", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.35))" }}>{avatarEmoji}</span>
+
+            {/* LED chase overlay — positioned inside the avatar card */}
+            <LedBorder size={sz.avatar} radius={sz.radius} color={statusColor} active={isRunning} />
+
+            {/* Task badge */}
+            {taskCount > 0 && (
+              <span
+                style={{
+                  ...badgeBase,
+                  background: isPulsing ? "var(--color-accent-error)" : color,
+                  animation: isPulsing ? "agentBadgePulse 1.2s ease-in-out infinite" : undefined,
+                }}
+              >
+                {taskCount}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Labels */}
