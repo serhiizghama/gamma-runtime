@@ -20,10 +20,15 @@ export interface LayoutOptions {
 const DEFAULT_NODE_WIDTH = 160;
 const DEFAULT_NODE_HEIGHT = 160; // Accounts for avatar (84px) + name + role + padding
 
-/** Padding inside team group containers. */
-const GROUP_PAD_X = 48;
-const GROUP_PAD_TOP = 56; // Extra space for the team label pill
-const GROUP_PAD_BOTTOM = 48;
+/** Padding inside team group containers — LR needs more horizontal room. */
+function groupPad(direction: string) {
+  const isLR = direction === "LR" || direction === "RL";
+  return {
+    padX:    isLR ? 56 : 48,
+    padTop:  isLR ? 48 : 56, // TB: extra top for the label pill
+    padBot:  isLR ? 48 : 48,
+  };
+}
 
 /**
  * Run dagre layout on the given nodes and edges, returning new copies
@@ -103,7 +108,7 @@ export function getLayoutedElements(
 
     const subG = new dagre.graphlib.Graph();
     subG.setDefaultEdgeLabel(() => ({}));
-    subG.setGraph({ rankdir: "TB", nodesep: nodesep * 0.9, ranksep: ranksep * 0.85 });
+    subG.setGraph({ rankdir: direction, nodesep: nodesep * 0.9, ranksep: ranksep * 0.85 });
 
     for (const child of children) {
       subG.setNode(child.id, {
@@ -145,19 +150,20 @@ export function getLayoutedElements(
       maxY = Math.max(maxY, topLeftY + h);
     }
 
-    // Shift positions so they start at (GROUP_PAD_X, GROUP_PAD_TOP)
+    // Shift positions so they start at (padX, padTop)
+    const { padX, padTop, padBot } = groupPad(direction);
     const positions = new Map<string, { x: number; y: number }>();
     for (const [id, raw] of rawPositions) {
       positions.set(id, {
-        x: raw.x - minX + GROUP_PAD_X,
-        y: raw.y - minY + GROUP_PAD_TOP,
+        x: raw.x - minX + padX,
+        y: raw.y - minY + padTop,
       });
     }
 
     const contentWidth = maxX - minX;
     const contentHeight = maxY - minY;
-    const groupWidth = contentWidth + GROUP_PAD_X * 2;
-    const groupHeight = contentHeight + GROUP_PAD_TOP + GROUP_PAD_BOTTOM;
+    const groupWidth = contentWidth + padX * 2;
+    const groupHeight = contentHeight + padTop + padBot;
 
     groupInternals.set(group.id, { positions, width: groupWidth, height: groupHeight });
   }
@@ -230,7 +236,7 @@ export function getLayoutedElements(
       const relPos = internal.positions.get(child.id);
       resultNodes.push({
         ...child,
-        position: relPos ?? { x: GROUP_PAD_X, y: GROUP_PAD_TOP },
+        position: relPos ?? { x: 48, y: 56 },
       });
     }
   }
