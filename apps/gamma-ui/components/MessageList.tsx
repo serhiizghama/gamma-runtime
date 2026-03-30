@@ -170,7 +170,7 @@ function UserBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
             fontFamily: "var(--font-system)",
           }}
         >
-          {msg.text}
+          {String(msg.text ?? "")}
         </div>
         <span style={{ fontSize: 10, color: "rgba(255,255,255,0.22)", transition: "opacity 0.15s", opacity: hovered ? 1 : 0, paddingRight: 4 }}>
           {fmtTimeShort(msg.ts)}
@@ -212,7 +212,7 @@ function ThinkingBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
             overflow: "hidden",
           }}
         >
-          {msg.text || "…"}
+          {String(msg.text ?? "") || "…"}
         </div>
         <span style={{ fontSize: 10, color: "rgba(139,92,246,0.3)", paddingLeft: 4, transition: "opacity 0.15s", opacity: hovered ? 1 : 0 }}>
           thinking · {fmtTimeShort(msg.ts)}
@@ -305,7 +305,7 @@ function AnswerBubble({ msg }: { msg: ChatMessage }): React.ReactElement {
         >
           <div className="agent-chat-markdown">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: CodeBlockWithCopy, img: SafeMarkdownImage }}>
-              {msg.text || ""}
+              {String(msg.text ?? "")}
             </ReactMarkdown>
           </div>
         </div>
