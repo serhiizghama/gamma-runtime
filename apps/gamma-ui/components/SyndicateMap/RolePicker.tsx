@@ -242,6 +242,7 @@ export function RolePicker({
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const roleListRef = useRef<HTMLDivElement>(null);
 
   // Focus search input when picker opens
   useEffect(() => {
@@ -281,11 +282,19 @@ export function RolePicker({
   }, [grouped, search]);
 
   // Visible roles: active category or all
-  const visibleRoles = useMemo(() => {
-    if (!activeCategory) return filtered.flatMap((g) => g.roles);
+  // Computed directly (not memoized) to avoid stale data when switching categories
+  let visibleRoles: RoleEntry[];
+  if (!activeCategory) {
+    visibleRoles = filtered.flatMap((g) => g.roles);
+  } else {
     const group = filtered.find((g) => g.category === activeCategory);
-    return group?.roles ?? [];
-  }, [filtered, activeCategory]);
+    visibleRoles = group?.roles ?? [];
+  }
+
+  // Scroll role list to top when category changes
+  useEffect(() => {
+    roleListRef.current?.scrollTo(0, 0);
+  }, [activeCategory, search]);
 
   const handleSelect = useCallback(
     (role: RoleEntry) => {
@@ -415,7 +424,7 @@ export function RolePicker({
               </div>
 
               {/* Role cards */}
-              <div style={roleList}>
+              <div ref={roleListRef} style={roleList}>
                 {visibleRoles.length === 0 && (
                   <div
                     style={{
