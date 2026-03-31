@@ -78,12 +78,42 @@ export function useRoles(): {
       if (!map.has(category)) map.set(category, []);
       map.get(category)!.push(role);
     }
-    return Array.from(map.entries())
+
+    const sorted = Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([category, items]) => ({
         category,
         roles: items.sort((a, b) => a.name.localeCompare(b.name)),
       }));
+
+    // Virtual category: "Team Leaders" — roles suitable for leading a team.
+    // Curated by role ID. Placed first in the list for quick access.
+    const leaderRoleIds = new Set([
+      "project-management/project-manager-senior",
+      "product/product-manager",
+      "engineering/engineering-software-architect",
+      "engineering/engineering-backend-architect",
+      "design/design-ux-architect",
+      "job-hunting/job-hunting-squad-leader",
+      "game-development/unity/unity-architect",
+      "game-development/unreal-engine/unreal-multiplayer-architect",
+      "engineering/engineering-autonomous-optimization-architect",
+      "specialized/specialized-workflow-architect",
+      "specialized/automation-governance-architect",
+      "specialized/agentic-identity-trust",
+      "spatial-computing/xr-interface-architect",
+      "specialized/specialized-salesforce-architect",
+    ]);
+
+    const leaderRoles = roles
+      .filter((r) => leaderRoleIds.has(r.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    if (leaderRoles.length > 0) {
+      sorted.unshift({ category: "Team Leaders", roles: leaderRoles });
+    }
+
+    return sorted;
   }, [roles]);
 
   return { roles, grouped, loading, error };
