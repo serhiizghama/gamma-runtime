@@ -7,7 +7,7 @@
  *  - Trace: Console-style log view (GET /api/agents/:id/trace + SSE stream)
  */
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { systemAuthHeaders } from "../../lib/auth";
 import { API_BASE } from "../../constants/api";
 import { useAgentTrace } from "../../hooks/useAgentTrace";
@@ -15,6 +15,7 @@ import { TraceTerminal } from "./TraceTerminal";
 import { ActivityFeed } from "./ActivityFeed";
 import { useActivityStream } from "../../hooks/useActivityStream";
 import { TaskList } from "./TaskList";
+import { ConfirmModal } from "../ui/ConfirmModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ interface Props {
   agentEmoji: string;
   agentColor: string;
   onClose: () => void;
+  onDeleted?: () => void;
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────
@@ -201,14 +203,47 @@ function ActivityTab({ agentId }: { agentId: string }) {
 
 // ── Main Panel ────────────────────────────────────────────────────────────
 
+const deleteBtnStyle: CSSProperties = {
+  padding: "6px 14px",
+  fontSize: 11,
+  fontWeight: 600,
+  fontFamily: "var(--font-system)",
+  color: "var(--button-danger-fg, #ff5f57)",
+  background: "var(--button-danger-bg, rgba(255, 95, 87, 0.15))",
+  border: "1px solid var(--button-danger-border, rgba(255, 95, 87, 0.35))",
+  borderRadius: 6,
+  cursor: "pointer",
+  width: "100%",
+};
+
 export function AgentDetailPanel({
   agentId,
   agentName,
   agentEmoji,
   agentColor,
   onClose,
+  onDeleted,
 }: Props) {
   const [tab, setTab] = useState<Tab>("tasks");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = useCallback(async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/agents/${encodeURIComponent(agentId)}`,
+        { method: "DELETE", headers: systemAuthHeaders() },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setShowDeleteConfirm(false);
+      onClose();
+      onDeleted?.();
+    } catch {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }, [agentId, onClose, onDeleted]);
 
   // Reset tab to "tasks" when switching agents
   const prevIdRef = useRef(agentId);
@@ -265,6 +300,30 @@ export function AgentDetailPanel({
         {tab === "trace" && <TraceTab agentId={agentId} />}
         {tab === "activity" && <ActivityTab agentId={agentId} />}
       </div>
+
+      {/* Delete agent */}
+      {isValidUlidAgentId(agentId) && (
+        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--color-border-subtle)", flexShrink: 0 }}>
+          <button
+            style={deleteBtnStyle}
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting..." : "Delete Agent"}
+          </button>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Delete Agent"
+          message={`Are you sure you want to delete "${agentName}"? This will archive the agent and terminate its active session.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => void handleDelete()}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </div>
   );
 }

@@ -40,7 +40,10 @@ import { AgentDetailPanel } from "./AgentDetailPanel";
 import { TeamChatPanel } from "./TeamChatPanel";
 import { CreateTeamModal } from "./CreateTeamModal";
 import { AddAgentModal } from "./AddAgentModal";
+import { ConfirmModal } from "../ui/ConfirmModal";
 import { MapToolbar } from "./MapToolbar";
+import { API_BASE } from "../../constants/api";
+import { systemAuthHeaders } from "../../lib/auth";
 import { getLayoutedElements } from "../../lib/layout";
 import {
   useSyndicateStore,
@@ -237,6 +240,40 @@ function SyndicateMapInner() {
     [selectAgent],
   );
 
+  // Delete team state
+  const [deleteTeamTarget, setDeleteTeamTarget] = useState<{
+    teamId: string;
+    teamName: string;
+  } | null>(null);
+  const [deletingTeam, setDeletingTeam] = useState(false);
+
+  const handleDeleteTeam = useCallback(
+    (teamId: string, teamName: string) => {
+      setDeleteTeamTarget({ teamId, teamName });
+    },
+    [],
+  );
+
+  const confirmDeleteTeam = useCallback(async () => {
+    if (!deleteTeamTarget) return;
+    setDeletingTeam(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/teams/${encodeURIComponent(deleteTeamTarget.teamId)}`,
+        { method: "DELETE", headers: systemAuthHeaders() },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setDeleteTeamTarget(null);
+      setTeamChatOpen(null);
+      void fetchAgents();
+    } catch {
+      // silently close on error
+      setDeleteTeamTarget(null);
+    } finally {
+      setDeletingTeam(false);
+    }
+  }, [deleteTeamTarget, fetchAgents]);
+
   // Team chat panel state
   const [teamChatOpen, setTeamChatOpen] = useState<{
     teamId: string;
@@ -311,7 +348,7 @@ function SyndicateMapInner() {
       // Inject onOpenChat into teamGroup nodes
       const nodesWithChat = graph.nodes.map((n) =>
         n.type === "teamGroup"
-          ? { ...n, data: { ...n.data, onOpenChat: handleOpenTeamChat, onAddAgent: handleAddAgent } }
+          ? { ...n, data: { ...n.data, onOpenChat: handleOpenTeamChat, onAddAgent: handleAddAgent, onDeleteTeam: handleDeleteTeam } }
           : n,
       );
 
@@ -363,7 +400,7 @@ function SyndicateMapInner() {
       // Only update edges if the reference actually changed (memoized in useAgentGraph)
       setEdges((prev) => (prev === graph.edges ? prev : graph.edges));
     }
-  }, [graph, setNodes, setEdges, handleOpenTeamChat, handleAddAgent]);
+  }, [graph, setNodes, setEdges, handleOpenTeamChat, handleAddAgent, handleDeleteTeam]);
 
   const onLayout = useCallback(
     (direction: "TB" | "LR") => {
@@ -544,6 +581,7 @@ function SyndicateMapInner() {
           agentEmoji={selectedAgent.avatarEmoji}
           agentColor={selectedAgent.uiColor}
           onClose={() => selectAgent(null)}
+          onDeleted={() => void fetchAgents()}
         />
       )}
 
@@ -572,6 +610,18 @@ function SyndicateMapInner() {
           teamName={addAgentTarget.teamName}
           onClose={() => setAddAgentTarget(null)}
           onCreated={() => void fetchAgents()}
+        />
+      )}
+
+      {/* Delete team confirmation */}
+      {deleteTeamTarget && (
+        <ConfirmModal
+          title="Delete Team"
+          message={`Are you sure you want to delete "${deleteTeamTarget.teamName}"? All agents will be unassigned from this team.`}
+          confirmLabel={deletingTeam ? "Deleting..." : "Delete"}
+          danger
+          onConfirm={() => void confirmDeleteTeam()}
+          onCancel={() => setDeleteTeamTarget(null)}
         />
       )}
     </div>

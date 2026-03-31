@@ -22,6 +22,8 @@ export interface TeamGroupNodeData extends Record<string, unknown> {
   onOpenChat?: (teamId: string, teamName: string, uiColor: string) => void;
   /** Called when the user clicks the ➕ add agent button */
   onAddAgent?: (teamId: string, teamName: string) => void;
+  /** Called when the user clicks the ✕ delete team button */
+  onDeleteTeam?: (teamId: string, teamName: string) => void;
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────
@@ -67,7 +69,7 @@ const chatBtnStyle: CSSProperties = {
 };
 
 function TeamGroupNodeInner({ data }: NodeProps) {
-  const { teamName, teamId, memberCount, uiColor, onOpenChat, onAddAgent } = data as unknown as TeamGroupNodeData;
+  const { teamName, teamId, memberCount, uiColor, onOpenChat, onAddAgent, onDeleteTeam } = data as unknown as TeamGroupNodeData;
   const color = uiColor || "#6366f1";
 
   const openChat = useCallback(() => {
@@ -81,6 +83,12 @@ function TeamGroupNodeInner({ data }: NodeProps) {
       onAddAgent(teamId, teamName);
     }
   }, [onAddAgent, teamId, teamName]);
+
+  const deleteTeam = useCallback(() => {
+    if (onDeleteTeam) {
+      onDeleteTeam(teamId, teamName);
+    }
+  }, [onDeleteTeam, teamId, teamName]);
 
   const containerStyle: CSSProperties = {
     width: "100%",
@@ -104,6 +112,15 @@ function TeamGroupNodeInner({ data }: NodeProps) {
         {teamName}
         <span style={countBadge}>{memberCount}</span>
       </span>
+      {onDeleteTeam && (
+        <button
+          style={{ ...chatBtnStyle, right: 72, fontSize: 10, color: "rgba(255, 95, 87, 0.7)" }}
+          onClick={deleteTeam}
+          title={`Delete ${teamName}`}
+        >
+          ✕
+        </button>
+      )}
       {onAddAgent && (
         <button
           style={{ ...chatBtnStyle, right: 42 }}
@@ -147,7 +164,8 @@ function arePropsEqual(prev: NodeProps, next: NodeProps): boolean {
     p.memberCount === n.memberCount &&
     p.uiColor === n.uiColor &&
     p.onOpenChat === n.onOpenChat &&
-    p.onAddAgent === n.onAddAgent
+    p.onAddAgent === n.onAddAgent &&
+    p.onDeleteTeam === n.onDeleteTeam
   );
 }
 
