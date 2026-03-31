@@ -151,7 +151,7 @@ export class AgentFactoryService {
     const roleMarkdown = readFileSync(roleFilePath, 'utf-8');
 
     // 3. Generate agentId (OpenClaw passport — never changes)
-    const agentId = `agent.${ulid()}`;
+    const agentId = `agent.${ulid().toLowerCase()}`;
     const workspacePath = resolve(this.agentsRoot, agentId);
 
     this.logger.log(`Creating agent "${name}" (${agentId}) from role "${roleId}"`);

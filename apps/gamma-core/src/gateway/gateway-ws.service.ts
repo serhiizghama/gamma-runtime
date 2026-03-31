@@ -124,6 +124,10 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       const appId = internalKey.replace('app-owner-', '');
       return `agent:app-owner:${appId}`;
     }
+    // Daemon agent IDs (agent.<ULID>) → OpenClaw native format
+    if (internalKey.startsWith('agent.')) {
+      return `agent:main:${internalKey}`;
+    }
     return internalKey;
   }
 
@@ -153,7 +157,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     // Extract the "agent.<ULID>" segment and normalize to uppercase.
     const gammaDaemonMatch = openClawKey.match(/agent\.([0-9A-Za-z]{26})/i);
     if (gammaDaemonMatch) {
-      return 'agent.' + gammaDaemonMatch[1].toUpperCase();
+      return 'agent.' + gammaDaemonMatch[1].toLowerCase();
     }
     return openClawKey;
   }
@@ -1630,19 +1634,16 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     this.inflightChatSend.set(frameId, { windowId, sessionKey });
     this.logger.log(`sendMessage: ${sessionKey} → ${outgoingMessage.slice(0, 60)}... (frame=${frameId}) | system=${systemPromptForSend ? systemPromptForSend.length : 0}chars`);
 
-    // Dual-path injection: pass system prompt both as a `system` param on
-    // chat.send AND prepended to the message text. This ensures the agent
-    // receives its persona/context regardless of whether the Gateway version
-    // supports the `system` field on chat.send.
-    if (systemPromptForSend) {
-      outgoingMessage = `[SYSTEM]\n${systemPromptForSend}\n[/SYSTEM]\n\n${outgoingMessage}`;
-    }
+    // NOTE: system prompt is passed via sessions.create (workingDirectory + systemPrompt).
+    // Do NOT prepend [SYSTEM]...[/SYSTEM] to message text — the model receives it
+    // as user content and treats it as a prompt injection attempt.
 
     const chatParams: Record<string, unknown> = {
       sessionKey: this.toOpenClawKey(sessionKey),
       message: outgoingMessage,
       idempotencyKey: frameId,
-      ...(systemPromptForSend ? { system: systemPromptForSend } : {}),
+      // NOTE: `system` field is NOT supported by this OpenClaw version — context
+      // is injected via message text prefix ([SYSTEM]...[/SYSTEM]) instead.
     };
 
     this.send({

@@ -260,8 +260,10 @@ export const useSyndicateStore = create<SyndicateStore>((set, get) => ({
       });
 
       // Add newly-appeared registry agents that aren't in the store yet
+      // Skip daemon-role agents — these are OpenClaw runtime sessions, not Gamma agents
       for (const [agentId, reg] of byId) {
         if (existingIds.has(agentId)) continue;
+        if ((reg.role ?? "unknown") === "daemon") continue;
         updated.push({
           id: agentId,
           name: humanizeName(reg.agentId),
