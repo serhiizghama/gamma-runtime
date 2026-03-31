@@ -73,6 +73,23 @@ function injectStyles() {
   document.head.appendChild(sheet);
 }
 
+/**
+ * Convert a roleId like "engineering/engineering-software-architect" into
+ * a readable label like "Software Architect". Strips the category prefix
+ * and the repeated category slug from the role name portion.
+ */
+function humanizeRoleId(roleId: string): string {
+  // Take the last segment after "/"
+  const slug = roleId.includes("/") ? roleId.split("/").pop()! : roleId;
+  // Strip category prefix (e.g. "engineering-" from "engineering-software-architect")
+  const category = roleId.split("/")[0] ?? "";
+  const stripped = slug.startsWith(category + "-") ? slug.slice(category.length + 1) : slug;
+  // Convert kebab-case to Title Case
+  return stripped
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /** Derive a stable gradient from a hex color — like iOS app icon background */
 function colorToGradient(hex: string): string {
   // Parse hex, lighten for top-left, darken for bottom-right
@@ -328,7 +345,7 @@ function AgentNodeInner({ data, selected }: NodeProps) {
           <span style={nameStyle}>{name}</span>
         </div>
         <span style={roleStyle} title={roleId}>
-          {roleId.includes("/") ? roleId.split("/").pop() : roleId}
+          {humanizeRoleId(roleId)}
         </span>
         {teamName && !isInTeamGroup && (
           <span

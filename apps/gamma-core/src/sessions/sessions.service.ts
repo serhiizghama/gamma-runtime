@@ -1075,11 +1075,27 @@ export class SessionsService {
     if (!created) {
       this.logger.warn(
         `openAgentSession: Gateway session creation failed for ${agentId} — ` +
-        'agent may not process messages until Gateway reconnects',
+        'continuing to persist context for dual-path chat.send injection',
       );
+      // NOTE: do NOT return early — persist context so dual-path injection works.
     }
 
-    // 7. Update agent registry with the windowId
+    // 7. Persist system prompt for dual-path injection on chat.send
+    // (matching app-owner and system-architect patterns)
+    if (systemPrompt) {
+      await Promise.all([
+        this.registry.setContext(agentId, systemPrompt),
+        this.registry.upsert({
+          sessionKey: agentId,
+          windowId,
+          appId: agent.name,
+          systemPromptSnippet: systemPrompt.slice(0, 2000),
+          lastActiveAt: Date.now(),
+        }),
+      ]);
+    }
+
+    // 8. Update agent registry with the windowId
     await this.agentRegistry.update(agentId, {
       windowId,
       status: 'idle',
