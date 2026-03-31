@@ -1,4 +1,6 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import Redis from 'ioredis';
+import { REDIS_CLIENT } from '../redis/redis.constants';
 import { SessionRegistryService } from '../sessions/session-registry.service';
 import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { SystemEventLog } from '../system/system-event-log.service';
@@ -25,12 +27,20 @@ export class ContextInjectorService {
    */
   private readonly INJECT_TTL_MS = 24 * 60 * 60 * 1000;
 
-  private cache: { content: string; ts: number } | null = null;
+  /** Redis key prefix for persistent TTL tracking (survives process restarts). */
+  private readonly REDIS_KEY_PREFIX = 'context-injector:last-inject:';
 
-  /** Force-invalidate the cache — next message will get a fresh injection. */
-  clearCache(): void {
-    this.cache = null;
-    this.logger.debug('Live context cache cleared — will re-inject on next message.');
+  /** Force-invalidate the cache for a specific session (or all sessions if no key given). */
+  async clearCache(sessionKey?: string): Promise<void> {
+    if (sessionKey) {
+      await this.redis.del(`${this.REDIS_KEY_PREFIX}${sessionKey}`);
+      this.logger.debug(`Live context cache cleared for session ${sessionKey}`);
+    } else {
+      // Clear all keys matching the prefix
+      const keys = await this.redis.keys(`${this.REDIS_KEY_PREFIX}*`);
+      if (keys.length > 0) await this.redis.del(...keys);
+      this.logger.debug('Live context cache cleared for all sessions');
+    }
   }
 
   constructor(
@@ -38,6 +48,7 @@ export class ContextInjectorService {
     private readonly agentRegistry: AgentRegistryService,
     private readonly eventLog: SystemEventLog,
     private readonly healthService: SystemHealthService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @Optional() private readonly toolRegistry?: ToolRegistryService,
   ) {}
 
@@ -46,9 +57,14 @@ export class ContextInjectorService {
    * Best-effort: returns an empty string if aggregation fails entirely.
    */
   async getLiveContext(callerSessionKey?: string, callerRole?: AgentRole): Promise<string> {
-    // Within TTL: skip injection entirely (return empty string)
-    if (this.cache && Date.now() - this.cache.ts < this.INJECT_TTL_MS) {
-      return '';
+    // Check Redis-persisted TTL (survives process restarts / reconnects)
+    const redisKey = `${this.REDIS_KEY_PREFIX}${callerSessionKey ?? 'global'}`;
+    const lastInjectStr = await this.redis.get(redisKey).catch(() => null);
+    if (lastInjectStr) {
+      const lastInject = parseInt(lastInjectStr, 10);
+      if (Date.now() - lastInject < this.INJECT_TTL_MS) {
+        return '';
+      }
     }
 
     try {
@@ -163,8 +179,12 @@ export class ContextInjectorService {
       lines.push('[/LIVE SYSTEM STATE]');
       const content = lines.join('\n');
 
-      // Store in cache with current timestamp
-      this.cache = { content, ts: Date.now() };
+      // Persist inject timestamp to Redis so it survives process restarts
+      await this.redis
+        .set(redisKey, String(Date.now()), 'PX', this.INJECT_TTL_MS)
+        .catch((err: unknown) =>
+          this.logger.warn(`Failed to persist context inject timestamp: ${err instanceof Error ? err.message : String(err)}`),
+        );
 
       return content;
     } catch (err) {
