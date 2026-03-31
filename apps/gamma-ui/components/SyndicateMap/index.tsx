@@ -375,7 +375,7 @@ function SyndicateMapInner() {
       const freshById = new Map(
         graph.nodes.map((n) =>
           n.type === "teamGroup"
-            ? [n.id, { ...n, data: { ...n.data, onOpenChat: handleOpenTeamChat } }]
+            ? [n.id, { ...n, data: { ...n.data, onOpenChat: handleOpenTeamChat, onAddAgent: handleAddAgent, onDeleteTeam: handleDeleteTeam } }]
             : [n.id, n],
         ),
       );

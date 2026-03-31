@@ -188,6 +188,35 @@ function buildEdges(
     });
   }
 
+  // Edges from team leaders with no supervisorId → System Architect (visual hierarchy hint)
+  const architectAgent = agents.find((a) => a.roleId === "architect");
+  if (architectAgent && visibleNodeIds.has(architectAgent.id)) {
+    // Find team leaders that have no supervisor edge yet
+    const agentsWithEdges = new Set<string>();
+    for (const e of edges) agentsWithEdges.add(e.target);
+
+    for (const [, members] of byTeamForEdges) {
+      const leader = members.find((m) => isLeaderRole(m.roleId, m.name)) ?? members[0];
+      if (!leader) continue;
+      if (leader.id === architectAgent.id) continue;
+      if (leader.supervisorId) continue; // already has explicit supervisor
+      if (agentsWithEdges.has(leader.id)) continue; // already has an incoming edge
+
+      const edgeKey = `${architectAgent.id}:${leader.id}`;
+      if (addedEdgeKeys.has(edgeKey)) continue;
+      addedEdgeKeys.add(edgeKey);
+
+      edges.push({
+        id: `e-${architectAgent.id}-${leader.id}`,
+        source: architectAgent.id,
+        target: leader.id,
+        type: "ipc",
+        animated: true,
+        data: { flashing: false, color: "var(--color-border-subtle)" } satisfies IpcEdgeData,
+      });
+    }
+  }
+
   // Edges from cluster nodes to their parent (supervisor of the root agent)
   for (const c of clusters) {
     const rootSupervisor = c.root.supervisorId;
@@ -217,7 +246,7 @@ function buildEdges(
 }
 
 /**
- * Build team group nodes for agents that share a teamName (2+ members).
+ * Build team group nodes for agents that share a teamName (1+ members).
  * Returns { groupNodes, teamMemberIds } where teamMemberIds maps agentId → teamGroupNodeId.
  */
 function buildTeamGroups(agents: SyndicateAgent[]): {
@@ -237,7 +266,7 @@ function buildTeamGroups(agents: SyndicateAgent[]): {
   const teamMemberIds = new Map<string, string>();
 
   for (const [teamName, members] of byTeam) {
-    if (members.length < 2) continue;
+    if (members.length < 1) continue;
     const groupId = `team-${teamName}`;
     groupNodes.push({
       id: groupId,
