@@ -1482,6 +1482,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     sessionKey: string,
     systemPrompt?: string,
     agentId?: string,
+    workingDirectory?: string,
   ): Promise<boolean> {
     if (!this.connected) {
       this.logger.warn(
@@ -1506,12 +1507,14 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       ...(systemPrompt ? { systemPrompt } : {}),
       ...(agentId ? { agentId } : {}),
       ...(allowedTools ? { allowedTools } : {}),
+      ...(workingDirectory ? { workingDirectory, cwd: workingDirectory } : {}),
     };
 
     this.logger.log(
       `createSession: ${sessionKey} | agentId=${agentId ?? 'default'} | ` +
       `tools=${allowedTools ? allowedTools.length : 'all'} | ` +
-      `promptLen=${systemPrompt?.length ?? 0}`,
+      `promptLen=${systemPrompt?.length ?? 0} | ` +
+      `cwd=${workingDirectory ?? 'default'}`,
     );
 
     this.send({
@@ -1627,10 +1630,10 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     this.inflightChatSend.set(frameId, { windowId, sessionKey });
     this.logger.log(`sendMessage: ${sessionKey} → ${outgoingMessage.slice(0, 60)}... (frame=${frameId}) | system=${systemPromptForSend ? systemPromptForSend.length : 0}chars`);
 
-    // Dual-path: Gateway's chat.send does NOT accept a `system` field.
-    // Instead, prepend the stored system prompt directly to the message so
-    // the agent always receives its persona/context regardless of whether
-    // sessions.create honored the systemPrompt field.
+    // Dual-path injection: pass system prompt both as a `system` param on
+    // chat.send AND prepended to the message text. This ensures the agent
+    // receives its persona/context regardless of whether the Gateway version
+    // supports the `system` field on chat.send.
     if (systemPromptForSend) {
       outgoingMessage = `[SYSTEM]\n${systemPromptForSend}\n[/SYSTEM]\n\n${outgoingMessage}`;
     }
@@ -1639,6 +1642,7 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       sessionKey: this.toOpenClawKey(sessionKey),
       message: outgoingMessage,
       idempotencyKey: frameId,
+      ...(systemPromptForSend ? { system: systemPromptForSend } : {}),
     };
 
     this.send({

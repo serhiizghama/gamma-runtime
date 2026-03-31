@@ -1067,10 +1067,13 @@ export class SessionsService {
     }
 
     // 6. Create Gateway session so the agent can actually receive messages
+    // Pass workingDirectory so OpenClaw runs the agent in its own workspace
+    // (with its own SOUL.md, IDENTITY.md, etc.) instead of the main workspace.
     const created = await this.gatewayWs.createSession(
       agentId,
       systemPrompt,
       agent.roleId,
+      agent.workspacePath || undefined,
     );
     if (!created) {
       this.logger.warn(
@@ -1104,7 +1107,9 @@ export class SessionsService {
     });
 
     this.logger.log(
-      `Opened agent session for "${agent.name}" (${agentId}) → windowId=${windowId}`,
+      `Opened agent session for "${agent.name}" (${agentId}) → windowId=${windowId} | ` +
+      `cwd=${agent.workspacePath ?? 'none'} | soul=${soulContent ? soulContent.length + 'chars' : 'fallback'} | ` +
+      `promptLen=${systemPrompt?.length ?? 0}`,
     );
 
     return { ok: true, windowId };
