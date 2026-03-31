@@ -38,6 +38,8 @@ import { TeamGroupNode } from "./TeamGroupNode";
 import { IpcEdge } from "./IpcEdge";
 import { AgentDetailPanel } from "./AgentDetailPanel";
 import { TeamChatPanel } from "./TeamChatPanel";
+import { CreateTeamModal } from "./CreateTeamModal";
+import { AddAgentModal } from "./AddAgentModal";
 import { MapToolbar } from "./MapToolbar";
 import { getLayoutedElements } from "../../lib/layout";
 import {
@@ -216,6 +218,25 @@ function SyndicateMapInner() {
   const [activeDirection, setActiveDirection] = useState<"TB" | "LR">("TB");
   const prevTopoRef = useRef("");
 
+  // Create team modal state
+  const [showCreateTeam, setShowCreateTeam] = useState(false);
+
+  // Add agent modal state
+  const [addAgentTarget, setAddAgentTarget] = useState<{
+    teamId: string;
+    teamName: string;
+  } | null>(null);
+
+  const handleAddAgent = useCallback(
+    (teamId: string, teamName: string) => {
+      setAddAgentTarget({ teamId, teamName });
+      setShowCreateTeam(false);
+      setTeamChatOpen(null);
+      selectAgent(null);
+    },
+    [selectAgent],
+  );
+
   // Team chat panel state
   const [teamChatOpen, setTeamChatOpen] = useState<{
     teamId: string;
@@ -290,7 +311,7 @@ function SyndicateMapInner() {
       // Inject onOpenChat into teamGroup nodes
       const nodesWithChat = graph.nodes.map((n) =>
         n.type === "teamGroup"
-          ? { ...n, data: { ...n.data, onOpenChat: handleOpenTeamChat } }
+          ? { ...n, data: { ...n.data, onOpenChat: handleOpenTeamChat, onAddAgent: handleAddAgent } }
           : n,
       );
 
@@ -342,7 +363,7 @@ function SyndicateMapInner() {
       // Only update edges if the reference actually changed (memoized in useAgentGraph)
       setEdges((prev) => (prev === graph.edges ? prev : graph.edges));
     }
-  }, [graph, setNodes, setEdges, handleOpenTeamChat]);
+  }, [graph, setNodes, setEdges, handleOpenTeamChat, handleAddAgent]);
 
   const onLayout = useCallback(
     (direction: "TB" | "LR") => {
@@ -437,8 +458,31 @@ function SyndicateMapInner() {
           textAlign: "center",
           maxWidth: 280,
         }}>
-          Create agents via the Agent Genesis API to see them here
+          Create your first team to get started
         </span>
+        <button
+          style={{
+            marginTop: 8,
+            padding: "6px 16px",
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: "var(--font-system)",
+            color: "#fff",
+            background: "var(--color-accent-primary)",
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+          }}
+          onClick={() => setShowCreateTeam(true)}
+        >
+          + Create Team
+        </button>
+        {showCreateTeam && (
+          <CreateTeamModal
+            onClose={() => setShowCreateTeam(false)}
+            onCreated={() => void fetchAgents()}
+          />
+        )}
       </div>
     );
   }
@@ -484,6 +528,12 @@ function SyndicateMapInner() {
         error={error}
         onRetry={() => void fetchAgents()}
         activeDirection={activeDirection}
+        onCreateTeam={() => {
+          setShowCreateTeam(true);
+          setTeamChatOpen(null);
+          selectAgent(null);
+          setAddAgentTarget(null);
+        }}
       />
 
       {/* Agent detail sidebar */}
@@ -504,6 +554,24 @@ function SyndicateMapInner() {
           teamName={teamChatOpen.teamName}
           teamColor={teamChatOpen.teamColor}
           onClose={() => setTeamChatOpen(null)}
+        />
+      )}
+
+      {/* Create team modal */}
+      {showCreateTeam && (
+        <CreateTeamModal
+          onClose={() => setShowCreateTeam(false)}
+          onCreated={() => void fetchAgents()}
+        />
+      )}
+
+      {/* Add agent to team modal */}
+      {addAgentTarget && (
+        <AddAgentModal
+          teamId={addAgentTarget.teamId}
+          teamName={addAgentTarget.teamName}
+          onClose={() => setAddAgentTarget(null)}
+          onCreated={() => void fetchAgents()}
         />
       )}
     </div>

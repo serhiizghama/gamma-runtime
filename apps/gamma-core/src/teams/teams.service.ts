@@ -5,12 +5,13 @@
  * Delegates persistence to TeamStateRepository and emits activity events.
  */
 
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ulid } from 'ulid';
 import { TeamStateRepository, type TeamStateRecord } from '../state/team-state.repository';
 import { AgentStateRepository, type AgentStateRecord } from '../state/agent-state.repository';
 import { TaskStateRepository, type TaskRecord, type TaskFindFilters } from '../state/task-state.repository';
 import { ActivityStreamService } from '../activity/activity-stream.service';
+import { AgentFactoryService, type AgentInstanceDto } from '../agents/agent-factory.service';
 
 @Injectable()
 export class TeamsService {
@@ -21,6 +22,7 @@ export class TeamsService {
     private readonly agentStateRepo: AgentStateRepository,
     private readonly taskRepo: TaskStateRepository,
     private readonly activity: ActivityStreamService,
+    private readonly agentFactory: AgentFactoryService,
   ) {}
 
   /** Create a new team with a generated ULID-based ID. */
@@ -48,6 +50,35 @@ export class TeamsService {
     });
 
     return record;
+  }
+
+  /**
+   * Atomic: create team + leader agent in one call.
+   * Used by the Syndicate Map inline "Create Team" flow.
+   */
+  async createTeamWithLeader(opts: {
+    name: string;
+    description?: string;
+    leaderRoleId: string;
+    leaderName?: string;
+  }): Promise<{ team: TeamStateRecord; leader: AgentInstanceDto }> {
+    const role = this.agentFactory.findRole(opts.leaderRoleId);
+    if (!role) {
+      throw new BadRequestException(`Unknown role: "${opts.leaderRoleId}"`);
+    }
+
+    const leaderName = opts.leaderName?.trim() || role.name;
+    const team = this.createTeam(opts.name, opts.description ?? '');
+
+    const leader = await this.agentFactory.createAgent({
+      roleId: opts.leaderRoleId,
+      name: leaderName,
+      teamId: team.id,
+    });
+
+    this.logger.log(`Team "${opts.name}" (${team.id}) created with leader "${leaderName}" (${leader.agentId})`);
+
+    return { team, leader };
   }
 
   /** Return all teams. */

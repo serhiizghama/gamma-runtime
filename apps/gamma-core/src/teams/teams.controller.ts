@@ -4,6 +4,7 @@
  * Endpoints:
  *   GET    /api/teams                — List all teams
  *   POST   /api/teams                — Create team manually
+ *   POST   /api/teams/create-with-leader — Create team + leader agent atomically
  *   GET    /api/teams/blueprints     — List available blueprints
  *   POST   /api/teams/spawn-blueprint — Spawn a team from a blueprint
  *   GET    /api/teams/:id            — Get team details + members
@@ -54,6 +55,19 @@ export class TeamsController {
   @Post()
   createTeam(@Body() body: { name: string; description?: string }) {
     return this.teamsService.createTeam(body.name, body.description ?? '');
+  }
+
+  /** Create a team with a leader agent atomically. (Must be above :id routes) */
+  @Post('create-with-leader')
+  async createTeamWithLeader(
+    @Body() body: {
+      name: string;
+      description?: string;
+      leaderRoleId: string;
+      leaderName?: string;
+    },
+  ) {
+    return this.teamsService.createTeamWithLeader(body);
   }
 
   /** List available blueprints. (Must be above :id routes) */

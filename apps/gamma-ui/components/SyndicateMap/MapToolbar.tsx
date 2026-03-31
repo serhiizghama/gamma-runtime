@@ -17,6 +17,7 @@ interface Props {
   error: string | null;
   onRetry: () => void;
   activeDirection?: "TB" | "LR";
+  onCreateTeam?: () => void;
 }
 
 const toolbarStyle: React.CSSProperties = {
@@ -60,6 +61,7 @@ export const MapToolbar: React.FC<Props> = ({
   error,
   onRetry,
   activeDirection,
+  onCreateTeam,
 }) => {
   const activeBtn: React.CSSProperties = {
     ...toolbarBtn,
@@ -120,6 +122,16 @@ export const MapToolbar: React.FC<Props> = ({
       >
         {layoutMode === "auto" ? "Auto" : "Manual"}
       </span>
+      {onCreateTeam && (
+        <button
+          className="syndicate-toolbar-btn"
+          style={toolbarBtn}
+          onClick={onCreateTeam}
+          title="Create new team"
+        >
+          + Team
+        </button>
+      )}
       {loading && (
         <span
           style={{

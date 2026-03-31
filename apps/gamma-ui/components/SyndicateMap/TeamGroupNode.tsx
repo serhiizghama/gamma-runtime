@@ -20,6 +20,8 @@ export interface TeamGroupNodeData extends Record<string, unknown> {
   uiColor: string;
   /** Called when the user clicks the 💬 chat button */
   onOpenChat?: (teamId: string, teamName: string, uiColor: string) => void;
+  /** Called when the user clicks the ➕ add agent button */
+  onAddAgent?: (teamId: string, teamName: string) => void;
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────
@@ -65,7 +67,7 @@ const chatBtnStyle: CSSProperties = {
 };
 
 function TeamGroupNodeInner({ data }: NodeProps) {
-  const { teamName, teamId, memberCount, uiColor, onOpenChat } = data as unknown as TeamGroupNodeData;
+  const { teamName, teamId, memberCount, uiColor, onOpenChat, onAddAgent } = data as unknown as TeamGroupNodeData;
   const color = uiColor || "#6366f1";
 
   const openChat = useCallback(() => {
@@ -73,6 +75,12 @@ function TeamGroupNodeInner({ data }: NodeProps) {
       onOpenChat(teamId, teamName, color);
     }
   }, [onOpenChat, teamId, teamName, color]);
+
+  const addAgent = useCallback(() => {
+    if (onAddAgent) {
+      onAddAgent(teamId, teamName);
+    }
+  }, [onAddAgent, teamId, teamName]);
 
   const containerStyle: CSSProperties = {
     width: "100%",
@@ -96,6 +104,15 @@ function TeamGroupNodeInner({ data }: NodeProps) {
         {teamName}
         <span style={countBadge}>{memberCount}</span>
       </span>
+      {onAddAgent && (
+        <button
+          style={{ ...chatBtnStyle, right: 42 }}
+          onClick={addAgent}
+          title={`Add agent to ${teamName}`}
+        >
+          ➕
+        </button>
+      )}
       <button
         style={chatBtnStyle}
         onClick={openChat}
@@ -129,7 +146,8 @@ function arePropsEqual(prev: NodeProps, next: NodeProps): boolean {
     p.teamId === n.teamId &&
     p.memberCount === n.memberCount &&
     p.uiColor === n.uiColor &&
-    p.onOpenChat === n.onOpenChat
+    p.onOpenChat === n.onOpenChat &&
+    p.onAddAgent === n.onAddAgent
   );
 }
 
