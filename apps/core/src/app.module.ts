@@ -7,6 +7,7 @@ import { ClaudeModule } from './claude/claude.module';
 import { EventsModule } from './events/events.module';
 import { SseModule } from './sse/sse.module';
 import { TraceModule } from './trace/trace.module';
+import { InternalModule } from './internal/internal.module';
 import { ProjectsRepository } from './repositories/projects.repository';
 import { TasksRepository } from './repositories/tasks.repository';
 import { ChatRepository } from './repositories/chat.repository';
@@ -21,6 +22,7 @@ import { AgentMessagesRepository } from './repositories/agent-messages.repositor
     ClaudeModule,
     SseModule,
     TraceModule,
+    InternalModule,
   ],
   controllers: [AppController],
   providers: [

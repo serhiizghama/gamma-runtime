@@ -23,4 +23,9 @@ export type EventKind =
   | 'team.message'
   | 'orchestrator.stage_start'
   | 'orchestrator.stage_end'
-  | 'orchestrator.review';
+  | 'orchestrator.review'
+  | 'message.sent'
+  | 'message.broadcast'
+  | 'project.completed'
+  | 'agent.status_report'
+  | 'agent.review_request';
