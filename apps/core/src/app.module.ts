@@ -8,6 +8,8 @@ import { EventsModule } from './events/events.module';
 import { SseModule } from './sse/sse.module';
 import { TraceModule } from './trace/trace.module';
 import { InternalModule } from './internal/internal.module';
+import { OrchestratorModule } from './orchestrator/orchestrator.module';
+import { TeamAppModule } from './team-app/team-app.module';
 import { ProjectsRepository } from './repositories/projects.repository';
 import { TasksRepository } from './repositories/tasks.repository';
 import { ChatRepository } from './repositories/chat.repository';
@@ -23,6 +25,8 @@ import { AgentMessagesRepository } from './repositories/agent-messages.repositor
     SseModule,
     TraceModule,
     InternalModule,
+    OrchestratorModule,
+    TeamAppModule,
   ],
   controllers: [AppController],
   providers: [

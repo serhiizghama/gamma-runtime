@@ -42,15 +42,13 @@ export class ClaudeCliAdapter {
       args.push('--system-prompt', systemPrompt);
     }
 
-    // Working directory
-    args.push('--cwd', cwd);
-
     this.logger.log(`Spawning Claude CLI: session=${sessionId ?? 'new'}, cwd=${cwd}`);
     this.logger.debug(`Args: claude ${args.map(a => a.length > 100 ? a.slice(0, 100) + '...' : a).join(' ')}`);
 
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       detached: true,
+      cwd,
     });
 
     // Emit the process so session pool can register it
