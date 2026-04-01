@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSecureSse } from "./useSecureSse";
+import { useUnifiedSse } from "./useUnifiedSse";
 import { useTeams } from "./useTeams";
 import { useSyndicateStore } from "../store/syndicate.store";
 import { systemAuthHeaders } from "../lib/auth";
@@ -132,37 +132,29 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
   });
 
   // Activity stream for IPC status indicators in header
-  const handleActivityMessage = useCallback((ev: MessageEvent) => {
-    try {
-      const event = JSON.parse(ev.data as string) as ActivityEvent;
-      if (!event.id || !event.kind) return;
+  const handleActivityMessage = useCallback((data: Record<string, unknown>) => {
+    const event = data as unknown as ActivityEvent;
+    if (!event.id || !event.kind) return;
 
-      if (STATUS_KINDS.has(event.kind)) {
-        if (
-          event.kind === "agent_status_change" &&
-          memberIdsRef.current.has(event.agentId)
-        ) {
-          const rawPayload = event.payload;
-          const status = (
-            typeof rawPayload === "string" ? rawPayload : ""
-          ) as AgentLiveStatus;
-          setAgentStatuses((prev) => ({
-            ...prev,
-            [event.agentId]: status || "unknown",
-          }));
-        }
+    if (STATUS_KINDS.has(event.kind)) {
+      if (
+        event.kind === "agent_status_change" &&
+        memberIdsRef.current.has(event.agentId)
+      ) {
+        const rawPayload = event.payload;
+        const status = (
+          typeof rawPayload === "string" ? rawPayload : ""
+        ) as AgentLiveStatus;
+        setAgentStatuses((prev) => ({
+          ...prev,
+          [event.agentId]: status || "unknown",
+        }));
       }
-    } catch {
-      // ignore malformed
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useSecureSse({
-    path: "/api/system/activity/stream",
-    onMessage: handleActivityMessage,
-    reconnectMs: 3000,
-    label: "TeamChatActivity",
+  useUnifiedSse("activity", handleActivityMessage, {
     enabled: teamMembers.length > 0,
   });
 

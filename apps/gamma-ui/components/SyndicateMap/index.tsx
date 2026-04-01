@@ -50,7 +50,7 @@ import {
   handleSyndicateSseEvent,
   startFlashPruner,
 } from "../../store/syndicate.store";
-import { useSecureSse } from "../../hooks/useSecureSse";
+import { useUnifiedSse } from "../../hooks/useUnifiedSse";
 import { useLayoutPersistence } from "../../hooks/useLayoutPersistence";
 import { useAgentGraph } from "../../hooks/useAgentGraph";
 
@@ -301,20 +301,9 @@ function SyndicateMapInner() {
     return startFlashPruner();
   }, [fetchAgents]);
 
-  // Subscribe to SSE for live updates (activity stream + broadcast)
-  useSecureSse({
-    path: "/api/system/activity/stream",
-    onMessage: handleSyndicateSseEvent,
-    reconnectMs: 3000,
-    label: "SyndicateActivity",
-  });
-
-  useSecureSse({
-    path: "/api/stream/agent-monitor",
-    onMessage: handleSyndicateSseEvent,
-    reconnectMs: 4000,
-    label: "SyndicateRegistry",
-  });
+  // Subscribe to unified SSE for live updates (activity + agent-monitor channels)
+  useUnifiedSse("activity", handleSyndicateSseEvent);
+  useUnifiedSse("window:agent-monitor", handleSyndicateSseEvent);
 
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);

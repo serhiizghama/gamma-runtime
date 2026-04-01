@@ -3,7 +3,7 @@ import { create } from "zustand";
 import type { ActivityEvent, AgentRegistryEntry, GammaSSEEvent, SpawnAgentDto, AgentRole } from "@gamma/types";
 import { systemAuthHeaders } from "../../../lib/auth";
 import { API_BASE } from "../../../constants/api";
-import { useSecureSse } from "../../../hooks/useSecureSse";
+import { useUnifiedSse } from "../../../hooks/useUnifiedSse";
 import { fmtTime, truncate, relativeTime } from "../../../lib/format";
 
 // ─── Event color coding ───────────────────────────────────────────────────────
@@ -786,21 +786,14 @@ function useAgentMonitor(onUpdate: (agents: AgentRegistryEntry[]) => void) {
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
 
-  const handleMessage = useCallback((ev: MessageEvent) => {
-    try {
-      const event = JSON.parse(ev.data as string) as GammaSSEEvent;
-      if (event.type === "agent_registry_update") {
-        onUpdateRef.current(event.agents);
-      }
-    } catch { /* ignore */ }
+  const handleMessage = useCallback((data: Record<string, unknown>) => {
+    const event = data as unknown as GammaSSEEvent;
+    if (event.type === "agent_registry_update") {
+      onUpdateRef.current(event.agents);
+    }
   }, []);
 
-  useSecureSse({
-    path: "/api/stream/agent-monitor",
-    onMessage: handleMessage,
-    reconnectMs: 4000,
-    label: "AgentMonitor",
-  });
+  useUnifiedSse("window:agent-monitor", handleMessage);
 }
 
 // ─── Agent Hierarchy Panel ────────────────────────────────────────────────────
@@ -1356,42 +1349,32 @@ function useActivityStream(): { connected: boolean; eventCount: number } {
   const eventCount = useActivityStore((s) => s.events.length);
 
   const handleMessage = useCallback(
-    (ev: MessageEvent) => {
-      try {
-        const data = JSON.parse(ev.data as string) as Record<string, unknown>;
-        if (data.type === "keep_alive" || !data.kind) return;
+    (data: Record<string, unknown>) => {
+      if (data.type === "keep_alive" || !data.kind) return;
 
-        const event = data as unknown as ActivityEvent;
-        if (!event.id) event.id = `sse-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const event = data as unknown as ActivityEvent;
+      if (!event.id) event.id = `sse-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-        // Validate timestamp: must be a reasonable Unix-ms (after 2020-01-01)
-        const MIN_TS = 1_577_836_800_000; // 2020-01-01
-        if (!event.ts || typeof event.ts !== "number" || event.ts < MIN_TS) {
-          // Could be seconds instead of ms — auto-correct
-          if (event.ts && event.ts > MIN_TS / 1000 && event.ts < Date.now() / 1000 + 86400) {
-            event.ts = event.ts * 1000;
-          } else {
-            event.ts = Date.now();
-          }
+      // Validate timestamp: must be a reasonable Unix-ms (after 2020-01-01)
+      const MIN_TS = 1_577_836_800_000; // 2020-01-01
+      if (!event.ts || typeof event.ts !== "number" || event.ts < MIN_TS) {
+        // Could be seconds instead of ms — auto-correct
+        if (event.ts && event.ts > MIN_TS / 1000 && event.ts < Date.now() / 1000 + 86400) {
+          event.ts = event.ts * 1000;
+        } else {
+          event.ts = Date.now();
         }
-
-        if (!event.agentId) event.agentId = "unknown";
-        if (!event.severity) event.severity = "info";
-
-        push(event);
-      } catch {
-        console.warn("[Director] SSE parse error:", ev.data);
       }
+
+      if (!event.agentId) event.agentId = "unknown";
+      if (!event.severity) event.severity = "info";
+
+      push(event);
     },
     [push],
   );
 
-  const { connected } = useSecureSse({
-    path: "/api/system/activity/stream",
-    onMessage: handleMessage,
-    reconnectMs: 3000,
-    label: "Director",
-  });
+  const { connected } = useUnifiedSse("activity", handleMessage);
 
   return { connected, eventCount };
 }

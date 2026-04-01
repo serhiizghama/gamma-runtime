@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { SessionRecord, GammaSSEEvent } from "@gamma/types";
 import { API_BASE } from "../constants/api";
 import { systemAuthHeaders } from "../lib/auth";
-import { useSecureSse } from "./useSecureSse";
+import { useUnifiedSse } from "./useUnifiedSse";
 
 export interface SessionRegistryState {
   records: SessionRecord[];
@@ -15,10 +15,7 @@ export interface SessionRegistryState {
 
 /**
  * Fetches the active session registry from the kernel and keeps it live via
- * the SSE broadcast stream (session_registry_update events).
- *
- * Uses a module-level singleton EventSource so that multiple components
- * (Sentinel, AgentMonitor) share ONE connection instead of opening N.
+ * the unified SSE agent-monitor channel (session_registry_update events).
  */
 export function useSessionRegistry(): SessionRegistryState {
   const [records, setRecords] = useState<SessionRecord[]>([]);
@@ -56,15 +53,10 @@ export function useSessionRegistry(): SessionRegistryState {
     };
   }, [refreshTick]);
 
-  const handleMessage = useCallback(
-    (ev: MessageEvent) => {
+  const handleEvent = useCallback(
+    (data: Record<string, unknown>) => {
       if (!mountedRef.current) return;
-      let event: GammaSSEEvent;
-      try {
-        event = JSON.parse(ev.data as string) as GammaSSEEvent;
-      } catch {
-        return;
-      }
+      const event = data as unknown as GammaSSEEvent;
       if (event.type === "session_registry_update") {
         setRecords(event.records);
         setLoading(false);
@@ -73,12 +65,7 @@ export function useSessionRegistry(): SessionRegistryState {
     [],
   );
 
-  useSecureSse({
-    path: "/api/stream/agent-monitor",
-    onMessage: handleMessage,
-    reconnectMs: 4000,
-    label: "SessionRegistry",
-  });
+  useUnifiedSse("window:agent-monitor", handleEvent);
 
   return { records, loading, error, refresh: () => setRefreshTick((t) => t + 1) };
 }

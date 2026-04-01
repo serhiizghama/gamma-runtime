@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { AgentStatus, GammaSSEEvent, ChatHistoryMessage } from "@gamma/types";
 import type { ChatMessage, ToolCallEntry } from "../components/MessageList";
 import { API_BASE } from "../constants/api";
-import { fetchSseTicket, systemAuthHeaders } from "../lib/auth";
+import { systemAuthHeaders } from "../lib/auth";
+import { useUnifiedSse } from "./useUnifiedSse";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -146,280 +147,210 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
     finally { setLoadingMore(false); }
   }, [loadingMore, hasMoreHistory, fetchHistoryPage]);
 
-  // ── SSE Connection ───────────────────────────────────────────────────
+  // ── SSE Connection (via unified SSE) ─────────────────────────────────
 
-  useEffect(() => {
-    // Guard: do not open any connection for empty windowId.
-    // useTeamChat passes "" until the session is resolved — without this guard
-    // the hook would continuously reconnect to "/api/stream/" (invalid path).
-    if (!windowId) return;
+  const handleSseEvent = useCallback((data: Record<string, unknown>) => {
+    if (!mountedRef.current) return;
 
-    mountedRef.current = true;
-    let es: EventSource | null = null;
-    let cancelled = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let backoffMs = 3000; // start at 3s — gives network time to stabilize after ERR_NETWORK_CHANGED
-    const MAX_BACKOFF_MS = 30_000;
+    const event = data as unknown as GammaSSEEvent;
 
-    const scheduleReconnect = () => {
-      if (cancelled) return;
-      reconnectTimer = setTimeout(() => {
-        backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
-        void connect();
-      }, backoffMs);
-    };
+    switch (event.type) {
 
-    const connect = async () => {
-      if (cancelled) return;
+      // ── Lifecycle ────────────────────────────────────────────────
 
-      // Always fetch a fresh ticket — EventSource reuse of the same URL
-      // causes "invalid or expired ticket" once the ticket hits 10-use limit.
-      const ticketQs = await fetchSseTicket(`/api/stream/${windowId}`);
-      if (cancelled) return;
-      const url = `${API_BASE}/api/stream/${windowId}${ticketQs}`;
-      es = new EventSource(url);
+      case "keep_alive": break;
 
-      const connectedAt = { ts: 0 };
-      es.onopen = () => {
-        connectedAt.ts = Date.now();
-        // Reset backoff only after 5s of stability — ERR_NETWORK_CHANGED
-        // fires immediately after onopen and would cause a flood if we reset here.
-        setTimeout(() => {
-          if (!cancelled && connectedAt.ts > 0) backoffMs = 2000;
-        }, 5000);
-      };
+      case "lifecycle_start": {
+        thinkingIdRef.current = null;
+        toolIdRef.current     = null;
+        answerIdRef.current   = null;
+        setStatus("running");
+        setPendingToolLines([]);
+        break;
+      }
 
-      es.onmessage = (ev) => {
-      if (!mountedRef.current) return;
+      case "lifecycle_end": {
+        finalizeAllPhases();
+        setStatus("idle");
+        setPendingToolLines([]);
+        break;
+      }
 
-      let event: GammaSSEEvent;
-      try { event = JSON.parse(ev.data) as GammaSSEEvent; }
-      catch { return; }
+      case "lifecycle_error": {
+        finalizeAllPhases();
 
-      switch (event.type) {
+        // Detect transient errors (API overloaded / rate limit)
+        const errMsg = event.message ?? "";
+        const isTransient =
+          ("isTransient" in event && !!(event as Record<string, unknown>).isTransient) ||
+          /overloaded|rate.?limit|temporarily|try again/i.test(errMsg);
 
-        // ── Lifecycle ────────────────────────────────────────────────
+        setMessages((prev) => [...prev, {
+          id: `err-${Date.now()}`,
+          role: "assistant",
+          kind: "answer",
+          text: isTransient
+            ? `⚠️ ${errMsg}\n\n_Сессия восстановится автоматически — можно повторить сообщение._`
+            : `⚠️ Error: ${errMsg}`,
+          ts: Date.now(),
+        }]);
+        setStatus("error");
+        setPendingToolLines([]);
 
-        case "keep_alive": break;
-
-        case "lifecycle_start": {
-          thinkingIdRef.current = null;
-          toolIdRef.current     = null;
-          answerIdRef.current   = null;
-          setStatus("running");
-          setPendingToolLines([]);
-          break;
+        // Auto-recover from transient errors: reset to idle after 3s
+        // so the user can immediately retry without refreshing.
+        if (isTransient) {
+          if (recoveryTimerRef.current) clearTimeout(recoveryTimerRef.current);
+          recoveryTimerRef.current = setTimeout(() => {
+            if (mountedRef.current) {
+              setStatus("idle");
+            }
+            recoveryTimerRef.current = null;
+          }, 3000);
         }
+        break;
+      }
 
-        case "lifecycle_end": {
-          finalizeAllPhases();
-          setStatus("idle");
-          setPendingToolLines([]);
-          break;
-        }
+      // ── Thinking ─────────────────────────────────────────────────
 
-        case "lifecycle_error": {
-          finalizeAllPhases();
-
-          // Detect transient errors (API overloaded / rate limit)
-          const errMsg = event.message ?? "";
-          const isTransient =
-            ("isTransient" in event && !!(event as Record<string, unknown>).isTransient) ||
-            /overloaded|rate.?limit|temporarily|try again/i.test(errMsg);
-
+      case "thinking": {
+        if (!thinkingIdRef.current) {
+          const id = `think-${Date.now()}`;
+          thinkingIdRef.current = id;
           setMessages((prev) => [...prev, {
-            id: `err-${Date.now()}`,
+            id,
             role: "assistant",
-            kind: "answer",
-            text: isTransient
-              ? `⚠️ ${errMsg}\n\n_Сессия восстановится автоматически — можно повторить сообщение._`
-              : `⚠️ Error: ${errMsg}`,
+            kind: "thinking",
+            text: event.text,
+            isStreaming: true,
             ts: Date.now(),
           }]);
-          setStatus("error");
-          setPendingToolLines([]);
-
-          // Auto-recover from transient errors: reset to idle after 3s
-          // so the user can immediately retry without refreshing.
-          if (isTransient) {
-            if (recoveryTimerRef.current) clearTimeout(recoveryTimerRef.current);
-            recoveryTimerRef.current = setTimeout(() => {
-              if (mountedRef.current) {
-                setStatus("idle");
-              }
-              recoveryTimerRef.current = null;
-            }, 3000);
-          }
-          break;
+        } else {
+          // Backend sends cumulative thinking text — overwrite, don't append
+          patchMsg(thinkingIdRef.current, { text: event.text });
         }
-
-        // ── Thinking ─────────────────────────────────────────────────
-
-        case "thinking": {
-          if (!thinkingIdRef.current) {
-            const id = `think-${Date.now()}`;
-            thinkingIdRef.current = id;
-            setMessages((prev) => [...prev, {
-              id,
-              role: "assistant",
-              kind: "thinking",
-              text: event.text,
-              isStreaming: true,
-              ts: Date.now(),
-            }]);
-          } else {
-            // Backend sends cumulative thinking text — overwrite, don't append
-            patchMsg(thinkingIdRef.current, { text: event.text });
-          }
-          break;
-        }
-
-        // ── Assistant text ───────────────────────────────────────────
-
-        case "assistant_delta":
-        case "assistant_update": {
-          // Thinking and tool phases are done once the answer starts
-          finalizeMsg(thinkingIdRef.current);
-          finalizeMsg(toolIdRef.current);
-
-          if (!answerIdRef.current) {
-            const id = `ans-${Date.now()}`;
-            answerIdRef.current = id;
-            setMessages((prev) => [...prev, {
-              id,
-              role: "assistant",
-              kind: "answer",
-              text: event.text,
-              isStreaming: true,
-              ts: Date.now(),
-            }]);
-          } else {
-            // Cumulative overwrite — backend sends full text each time
-            patchMsg(answerIdRef.current, { text: event.text });
-          }
-          break;
-        }
-
-        // ── Tool calls ───────────────────────────────────────────────
-
-        case "tool_call": {
-          const { name, toolCallId, arguments: args } = event;
-          const argsStr = args ? JSON.stringify(args).slice(0, 80) : "";
-
-          // Thinking phase ends when tools start
-          finalizeMsg(thinkingIdRef.current);
-
-          if (!toolIdRef.current) {
-            const id = `tool-${Date.now()}`;
-            toolIdRef.current = id;
-            const entry: ToolCallEntry = { toolCallId, name, args: argsStr };
-            setMessages((prev) => [...prev, {
-              id,
-              role: "assistant",
-              kind: "tool",
-              text: "",
-              toolCalls: [entry],
-              isStreaming: true,
-              ts: Date.now(),
-            }]);
-          } else {
-            setMessages((prev) => prev.map((m) => {
-              if (m.id !== toolIdRef.current) return m;
-              return { ...m, toolCalls: [...(m.toolCalls ?? []), { toolCallId, name, args: argsStr }] };
-            }));
-          }
-
-          setPendingToolLines((prev) => [...prev, `🔧 ${name}(${argsStr})`]);
-          break;
-        }
-
-        case "tool_result": {
-          const { name, toolCallId, result, isError } = event;
-          const resultStr = result ? JSON.stringify(result).slice(0, 80) : "";
-
-          if (toolIdRef.current) {
-            setMessages((prev) => prev.map((m) => {
-              if (m.id !== toolIdRef.current) return m;
-              const calls = [...(m.toolCalls ?? [])];
-              // Match by toolCallId; fallback to last pending call with same name
-              const idx = toolCallId
-                ? calls.findIndex((tc) => tc.toolCallId === toolCallId && tc.result === undefined)
-                : calls.reduce((best, tc, i) => (tc.name === name && tc.result === undefined ? i : best), -1);
-              if (idx >= 0) {
-                calls[idx] = { ...calls[idx], result: resultStr, isError };
-              } else {
-                calls.push({ toolCallId, name, result: resultStr, isError });
-              }
-              return { ...m, toolCalls: calls };
-            }));
-          }
-
-          setPendingToolLines((prev) => prev.filter((l) => !l.includes(name)));
-          break;
-        }
-
-        // ── User message echo ────────────────────────────────────────
-
-        case "user_message": {
-          setMessages((prev) => {
-            // Deduplicate: skip if this timestamp was already loaded from history
-            if (historyTsSetRef.current.has(event.ts)) return prev;
-            return [...prev, {
-              id: `u-${event.ts}`,
-              role: "user",
-              text: event.text,
-              ts: event.ts,
-            }];
-          });
-          break;
-        }
-
-        case "error": {
-          // Server-sent error (e.g. invalid or expired ticket mid-stream).
-          // Close and reconnect with a fresh ticket instead of letting
-          // EventSource loop on the same stale URL.
-          const errMsg = (event as Record<string, unknown>).message as string ?? "";
-          if (errMsg.includes("invalid or expired ticket")) {
-            console.warn("[useAgentStream] SSE ticket expired — reconnecting with fresh ticket");
-            es?.close();
-            es = null;
-            scheduleReconnect();
-            return;
-          }
-          break;
-        }
-
-        default:
-          break;
+        break;
       }
-    };
 
-      // onerror: EventSource READYSTATE goes CLOSED when server completes the
-      // stream (e.g. after sending type:'error' + subscriber.complete()).
-      // We must fetch a fresh ticket and reconnect manually — reusing the same
-      // URL would replay the same expired ticket and get rejected again.
-      es.onerror = () => {
-        if (cancelled) return;
-        console.warn("[useAgentStream] SSE error — reconnecting with fresh ticket");
-        es?.close();
-        es = null;
-        scheduleReconnect();
-      };
-    };
+      // ── Assistant text ───────────────────────────────────────────
 
-    void connect();
+      case "assistant_delta":
+      case "assistant_update": {
+        // Thinking and tool phases are done once the answer starts
+        finalizeMsg(thinkingIdRef.current);
+        finalizeMsg(toolIdRef.current);
 
+        if (!answerIdRef.current) {
+          const id = `ans-${Date.now()}`;
+          answerIdRef.current = id;
+          setMessages((prev) => [...prev, {
+            id,
+            role: "assistant",
+            kind: "answer",
+            text: event.text,
+            isStreaming: true,
+            ts: Date.now(),
+          }]);
+        } else {
+          // Cumulative overwrite — backend sends full text each time
+          patchMsg(answerIdRef.current, { text: event.text });
+        }
+        break;
+      }
+
+      // ── Tool calls ───────────────────────────────────────────────
+
+      case "tool_call": {
+        const { name, toolCallId, arguments: args } = event;
+        const argsStr = args ? JSON.stringify(args).slice(0, 80) : "";
+
+        // Thinking phase ends when tools start
+        finalizeMsg(thinkingIdRef.current);
+
+        if (!toolIdRef.current) {
+          const id = `tool-${Date.now()}`;
+          toolIdRef.current = id;
+          const entry: ToolCallEntry = { toolCallId, name, args: argsStr };
+          setMessages((prev) => [...prev, {
+            id,
+            role: "assistant",
+            kind: "tool",
+            text: "",
+            toolCalls: [entry],
+            isStreaming: true,
+            ts: Date.now(),
+          }]);
+        } else {
+          setMessages((prev) => prev.map((m) => {
+            if (m.id !== toolIdRef.current) return m;
+            return { ...m, toolCalls: [...(m.toolCalls ?? []), { toolCallId, name, args: argsStr }] };
+          }));
+        }
+
+        setPendingToolLines((prev) => [...prev, `🔧 ${name}(${argsStr})`]);
+        break;
+      }
+
+      case "tool_result": {
+        const { name, toolCallId, result, isError } = event;
+        const resultStr = result ? JSON.stringify(result).slice(0, 80) : "";
+
+        if (toolIdRef.current) {
+          setMessages((prev) => prev.map((m) => {
+            if (m.id !== toolIdRef.current) return m;
+            const calls = [...(m.toolCalls ?? [])];
+            // Match by toolCallId; fallback to last pending call with same name
+            const idx = toolCallId
+              ? calls.findIndex((tc) => tc.toolCallId === toolCallId && tc.result === undefined)
+              : calls.reduce((best, tc, i) => (tc.name === name && tc.result === undefined ? i : best), -1);
+            if (idx >= 0) {
+              calls[idx] = { ...calls[idx], result: resultStr, isError };
+            } else {
+              calls.push({ toolCallId, name, result: resultStr, isError });
+            }
+            return { ...m, toolCalls: calls };
+          }));
+        }
+
+        setPendingToolLines((prev) => prev.filter((l) => !l.includes(name)));
+        break;
+      }
+
+      // ── User message echo ────────────────────────────────────────
+
+      case "user_message": {
+        setMessages((prev) => {
+          // Deduplicate: skip if this timestamp was already loaded from history
+          if (historyTsSetRef.current.has(event.ts)) return prev;
+          return [...prev, {
+            id: `u-${event.ts}`,
+            role: "user",
+            text: event.text,
+            ts: event.ts,
+          }];
+        });
+        break;
+      }
+
+      default:
+        break;
+    }
+  }, [patchMsg, finalizeMsg, finalizeAllPhases]);
+
+  const channel = windowId ? `window:${windowId}` : "";
+  useUnifiedSse(channel, handleSseEvent, { enabled: !!windowId });
+
+  // Cleanup recovery timer on unmount
+  useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      cancelled = true;
       mountedRef.current = false;
-      es?.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
       if (recoveryTimerRef.current) {
         clearTimeout(recoveryTimerRef.current);
         recoveryTimerRef.current = null;
       }
     };
-  }, [windowId, patchMsg, finalizeMsg, finalizeAllPhases]);
+  }, []);
 
   // ── Send ─────────────────────────────────────────────────────────────
 

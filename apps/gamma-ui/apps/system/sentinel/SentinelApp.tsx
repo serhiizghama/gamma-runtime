@@ -12,7 +12,7 @@ import type {
 // Tracked: move systemAuthHeaders out of useSessionRegistry before next auth refactor.
 import { systemAuthHeaders } from "../../../lib/auth";
 import { API_BASE } from "../../../constants/api";
-import { useSecureSse } from "../../../hooks/useSecureSse";
+import { useUnifiedSse } from "../../../hooks/useUnifiedSse";
 import { fmtTime, fmtDate, relativeTime } from "../../../lib/format";
 
 // ── Styles ────────────────────────────────────────────────────────────────
@@ -392,13 +392,8 @@ function useAgentRegistry() {
   // SSE live updates — now delegated to useSecureSse which handles ticket auth,
   // reconnects, and cleanup.
   const handleSseMessage = useCallback(
-    (ev: MessageEvent) => {
-      let event: GammaSSEEvent;
-      try {
-        event = JSON.parse(ev.data as string) as GammaSSEEvent;
-      } catch {
-        return;
-      }
+    (data: Record<string, unknown>) => {
+      const event = data as unknown as GammaSSEEvent;
 
       if (event.type === "agent_registry_update") {
         // Validate shape before applying to state to prevent injected data from
@@ -418,12 +413,7 @@ function useAgentRegistry() {
     [],
   );
 
-  useSecureSse({
-    path: "/api/stream/agent-monitor",
-    onMessage: handleSseMessage,
-    reconnectMs: 4000,
-    label: "SentinelAgents",
-  });
+  useUnifiedSse("window:agent-monitor", handleSseMessage);
 
   // Auto-refresh every 10s as fallback when SSE is silent or unavailable
   useEffect(() => {

@@ -354,29 +354,24 @@ export function startFlashPruner(): () => void {
   };
 }
 
-// ── SSE event handler (called from useSecureSse onMessage callback) ──────
+// ── SSE event handler (called from useUnifiedSse onMessage callback) ──────
 
 /**
- * Parse an SSE MessageEvent and route it to the appropriate store action.
+ * Route an already-parsed SSE event to the appropriate store action.
  * Handles both broadcast registry updates and activity stream events.
  */
-export function handleSyndicateSseEvent(ev: MessageEvent): void {
-  try {
-    const data = JSON.parse(ev.data as string) as Record<string, unknown>;
-    if (data.type === "keep_alive") return;
+export function handleSyndicateSseEvent(data: Record<string, unknown>): void {
+  if (data.type === "keep_alive") return;
 
-    // Registry broadcast (from gamma:sse:broadcast)
-    if (data.type === "agent_registry_update") {
-      const event = data as unknown as GammaSSEEvent & { type: "agent_registry_update" };
-      useSyndicateStore.getState().applyRegistryUpdate(event.agents);
-      return;
-    }
+  // Registry broadcast (from gamma:sse:broadcast)
+  if (data.type === "agent_registry_update") {
+    const event = data as unknown as GammaSSEEvent & { type: "agent_registry_update" };
+    useSyndicateStore.getState().applyRegistryUpdate(event.agents);
+    return;
+  }
 
-    // Activity event (from /api/system/activity/stream)
-    if (data.kind) {
-      useSyndicateStore.getState().handleActivityEvent(data as unknown as ActivityEvent);
-    }
-  } catch {
-    // Ignore parse errors
+  // Activity event (from /api/system/activity/stream)
+  if (data.kind) {
+    useSyndicateStore.getState().handleActivityEvent(data as unknown as ActivityEvent);
   }
 }

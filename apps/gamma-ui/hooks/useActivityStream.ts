@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSecureSse } from "./useSecureSse";
+import { useUnifiedSse } from "./useUnifiedSse";
 import { systemAuthHeaders } from "../lib/auth";
 import { API_BASE } from "../constants/api";
 import type { ActivityEvent } from "@gamma/types";
@@ -13,10 +13,10 @@ interface UseActivityStreamResult {
 }
 
 /**
- * Connects to the system activity stream via SSE and backfills historical
- * events via REST. Maintains a ring buffer of the last {@link MAX_EVENTS}
- * events (newest last), deduplicating SSE events that overlap with the
- * REST backfill.
+ * Connects to the system activity stream via unified SSE and backfills
+ * historical events via REST. Maintains a ring buffer of the last
+ * {@link MAX_EVENTS} events (newest last), deduplicating SSE events
+ * that overlap with the REST backfill.
  */
 export function useActivityStream(): UseActivityStreamResult {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
@@ -50,39 +50,29 @@ export function useActivityStream(): UseActivityStreamResult {
     return () => controller.abort();
   }, []);
 
-  // ── SSE live events ─────────────────────────────────────────────────────
-  const handleMessage = useCallback((ev: MessageEvent) => {
-    try {
-      const event = JSON.parse(ev.data as string) as ActivityEvent;
-      if (!event.id || !event.kind) return;
+  // ── SSE live events via unified channel ─────────────────────────────────
+  const handleEvent = useCallback((data: Record<string, unknown>) => {
+    const event = data as unknown as ActivityEvent;
+    if (!event.id || !event.kind) return;
 
-      // Deduplicate against backfill
-      if (seenIdsRef.current.has(event.id)) return;
-      seenIdsRef.current.add(event.id);
+    // Deduplicate against backfill
+    if (seenIdsRef.current.has(event.id)) return;
+    seenIdsRef.current.add(event.id);
 
-      setEvents((prev) => {
-        const next = [...prev, event];
-        if (next.length > MAX_EVENTS) {
-          // Trim oldest events and clean up seenIds for evicted entries
-          const evicted = next.slice(0, next.length - MAX_EVENTS);
-          for (const e of evicted) {
-            seenIdsRef.current.delete(e.id);
-          }
-          return next.slice(-MAX_EVENTS);
+    setEvents((prev) => {
+      const next = [...prev, event];
+      if (next.length > MAX_EVENTS) {
+        const evicted = next.slice(0, next.length - MAX_EVENTS);
+        for (const e of evicted) {
+          seenIdsRef.current.delete(e.id);
         }
-        return next;
-      });
-    } catch {
-      // Ignore malformed messages
-    }
+        return next.slice(-MAX_EVENTS);
+      }
+      return next;
+    });
   }, []);
 
-  const { connected } = useSecureSse({
-    path: "/api/system/activity/stream",
-    onMessage: handleMessage,
-    reconnectMs: 3000,
-    label: "ActivityStream",
-  });
+  const { connected } = useUnifiedSse("activity", handleEvent);
 
   return { events, connected };
 }

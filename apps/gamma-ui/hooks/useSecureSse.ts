@@ -70,10 +70,11 @@ export function useSecureSse({
 
     const scheduleReconnect = () => {
       if (destroyed || !enabled) return;
+      const jitter = Math.random() * 2000;
       reconnectTimerRef.current = setTimeout(() => {
         backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
         void connect().catch((err) => console.error(`[${label}] SSE reconnect failed:`, err));
-      }, backoffMs);
+      }, backoffMs + jitter);
     };
 
     const connect = async (): Promise<void> => {
