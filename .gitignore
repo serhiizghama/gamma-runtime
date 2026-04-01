@@ -25,6 +25,9 @@ agency-agents
 .pnpm-store
 .claude
 
+# Agent workspaces (generated at runtime)
+data/workspaces/
+
 # Docker volumes
 pgdata/
 
