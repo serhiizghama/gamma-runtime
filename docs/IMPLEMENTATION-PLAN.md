@@ -29,7 +29,7 @@ claude -p "say ok" --permission-mode bypassPermissions --output-format json
 
 **Create files**:
 ```
-v2/
+./  (project root)
 ├── docker-compose.yml              # Postgres 16 only (no Redis)
 ├── package.json                    # pnpm workspace root
 ├── pnpm-workspace.yaml             # workspace config
@@ -1139,7 +1139,7 @@ apps/web/src/
 
 ## CLAUDE.md for the v2 Project
 
-Place this at `v2/CLAUDE.md` so Claude Code (and agents) understand the project:
+Place this at `CLAUDE.md` (project root) so Claude Code (and agents) understand the project:
 
 ```markdown
 # Gamma Runtime v2

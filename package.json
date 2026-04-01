@@ -1,0 +1,18 @@
+{
+  "name": "@gamma/root",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Gamma Runtime v2 — Multi-agent team orchestration platform",
+  "scripts": {
+    "dev:core": "pnpm --filter @gamma/core dev",
+    "dev:web": "pnpm --filter @gamma/web dev",
+    "build:core": "pnpm --filter @gamma/core build",
+    "build:web": "pnpm --filter @gamma/web build",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

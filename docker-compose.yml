@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gamma-v2-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gamma
+      POSTGRES_PASSWORD: gamma_dev
+      POSTGRES_DB: gamma_v2
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U gamma -d gamma_v2']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

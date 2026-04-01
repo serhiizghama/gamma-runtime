@@ -24,6 +24,15 @@ apps/gamma-ui/apps/system/*.bak_session/
 agency-agents
 .pnpm-store
 .claude
+
+# Docker volumes
+pgdata/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 # Runtime state databases
 *.db
 *.db-shm
