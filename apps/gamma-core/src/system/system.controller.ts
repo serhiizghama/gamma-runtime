@@ -232,12 +232,17 @@ export class SystemController {
     @Query('lastEventId') lastEventId?: string,
   ): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
-      // Validate single-use SSE ticket before allowing the stream
+      // Validate SSE ticket — multi-use (up to 10) with 30s TTL, same as SseController.
+      // Single-use del() caused reconnect loops: browser auto-retries with the same URL
+      // after server closes the stream, but del() returns 0 on reuse → rejected → loop.
       const validateTicket = async (): Promise<boolean> => {
         if (!ticket) return false;
         const key = `${REDIS_KEYS.SSE_TICKET_PREFIX}${ticket}`;
-        const deleted = await this.redis.del(key);
-        return deleted === 1;
+        const count = await this.redis.incr(key);
+        if (count === 1) {
+          await this.redis.expire(key, 30);
+        }
+        return count <= 10;
       };
 
       const blockingRedis = this.redis.duplicate();
@@ -290,7 +295,7 @@ export class SystemController {
             data: JSON.stringify({ type: 'keep_alive' }),
           } as MessageEvent);
         }
-      }, 8_000); // Reduced from 15s to prevent H2 proxy idle timeout
+      }, 4_000); // 4s — must arrive before Vite proxy's ~5s socket timeout
 
       // Validate ticket before starting the poll loop
       validateTicket()

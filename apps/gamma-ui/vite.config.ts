@@ -40,6 +40,30 @@ export default defineConfig({
         target: apiTarget,
         changeOrigin: true,
         secure: false, // accept self-signed certs from backend
+        // Disable socket timeout for SSE long-lived connections.
+        // Vite's http-proxy has a ~5s default timeout which kills SSE streams
+        // before the 8s keep-alive arrives, causing endless reconnect loops.
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            const isSSE =
+              req.headers["accept"] === "text/event-stream" ||
+              (req.url ?? "").includes("/api/stream/") ||
+              (req.url ?? "").includes("/api/system/activity/stream");
+            if (isSSE) {
+              // @ts-expect-error — socket is available at this point
+              if (proxyReq.socket) proxyReq.socket.setTimeout(0);
+            }
+          });
+          proxy.on("proxyRes", (proxyRes, req) => {
+            const isSSE =
+              (proxyRes.headers["content-type"] ?? "").includes("text/event-stream");
+            if (isSSE) {
+              // Disable timeout on the response socket as well
+              // @ts-expect-error
+              if (proxyRes.socket) proxyRes.socket.setTimeout(0);
+            }
+          });
+        },
       },
       "/pty": {
         target: wsTarget,

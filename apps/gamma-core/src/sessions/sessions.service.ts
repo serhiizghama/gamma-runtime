@@ -31,7 +31,9 @@ const APP_OWNER_INIT_FIELD = 'appOwnerInitialized';
  * created via the app-owner flow and therefore lack appId/windowId in the DTO.
  */
 const GLOBAL_SESSION_IDENTITY: Record<string, { appId: string; windowId: string }> = {
-  'system-architect': { appId: 'system-architect', windowId: 'system-architect-window' },
+  // windowId MUST match ArchitectWindow.tsx ARCHITECT_WINDOW_ID = "system-architect"
+  // (previously was "system-architect-window" which broke genesis task delivery)
+  'system-architect': { appId: 'system-architect', windowId: 'system-architect' },
 };
 
 /**
@@ -985,6 +987,11 @@ export class SessionsService {
     // 2. Check if agent already has an active session
     const existing = await this.findBySessionKey(agentId);
     if (existing) {
+      // Ensure the Gateway in-memory routing map is populated even if gamma-core
+      // was restarted after the session was created (loadExistingSessionsFromRedis
+      // should have done this, but we re-register here as a safety guarantee so
+      // agent SSE events are never DROPPED due to a missing sessionToWindow entry).
+      this.gatewayWs.registerWindowSession(agentId, existing.windowId);
       return { ok: true, windowId: existing.windowId };
     }
 

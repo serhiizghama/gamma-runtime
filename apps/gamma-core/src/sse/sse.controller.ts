@@ -125,7 +125,7 @@ export class SseController {
             data: JSON.stringify({ type: 'keep_alive' }),
           } as MessageEvent);
         }
-      }, 8_000); // Reduced from 15s to prevent H2 proxy idle timeout
+      }, 4_000); // 4s — must arrive before Vite proxy's ~5s socket timeout
 
       // Validate ticket before starting the poll loop
       validateTicket()

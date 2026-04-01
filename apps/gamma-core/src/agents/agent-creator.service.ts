@@ -60,8 +60,13 @@ export interface GenesisTaskResult {
 export class AgentCreatorService {
   private readonly logger = new Logger(AgentCreatorService.name);
 
-  /** Window ID of the system architect session. */
-  private readonly architectWindowId = 'system-architect-window';
+  /**
+   * Window ID of the system-architect session.
+   * Must match the value sent by ArchitectWindow.tsx (ARCHITECT_WINDOW_ID = "system-architect").
+   * GLOBAL_SESSION_IDENTITY had "system-architect-window" but the UI creates the session
+   * with windowId="system-architect" — this constant must match the actual Redis key.
+   */
+  private readonly architectWindowId = 'system-architect';
 
   constructor(private readonly sessions: SessionsService) {}
 

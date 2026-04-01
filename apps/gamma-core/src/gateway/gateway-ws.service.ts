@@ -1506,12 +1506,14 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const frameId = ulid();
+    // Gateway sessions.create only accepts: agentId, allowedTools.
+    // Fields sessionKey, systemPrompt, workingDirectory, cwd are NOT supported
+    // by the current Gateway protocol — sending them causes INVALID_REQUEST and
+    // prevents the agent session from opening.
+    // System prompt injection happens via the dual-path context-injector (chat.send).
     const params: Record<string, unknown> = {
-      sessionKey: this.toOpenClawKey(sessionKey),
-      ...(systemPrompt ? { systemPrompt } : {}),
       ...(agentId ? { agentId } : {}),
       ...(allowedTools ? { allowedTools } : {}),
-      ...(workingDirectory ? { workingDirectory, cwd: workingDirectory } : {}),
     };
 
     this.logger.log(

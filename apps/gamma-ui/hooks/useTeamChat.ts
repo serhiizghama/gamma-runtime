@@ -121,7 +121,8 @@ export function useTeamChat(teamId: string): UseTeamChatResult {
   }, [squadLeaderId]);
 
   // ── Reuse useAgentStream (same as ArchitectWindow / WindowNode) ────────
-  // Pass empty string when no windowId yet — useAgentStream handles it gracefully
+  // Pass empty string when no windowId yet — useAgentStream guards against "" internally
+  // and will not open any SSE connection until windowId is resolved.
   const agentStream = useAgentStream(windowId ?? "", {
     onSessionMissing: () => {
       // Session was evicted from Redis — reset windowId so next send recreates it

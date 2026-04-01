@@ -28,7 +28,7 @@ interface SoulData {
 type Tab = "tasks" | "trace" | "activity";
 
 /** Check if agentId matches backend's strict ULID format: agent.<26-char ULID> */
-const AGENT_ULID_RE = /^agent\.[A-Z0-9]{26}$/;
+const AGENT_ULID_RE = /^agent\.[A-Z0-9]{26}$/i;
 function isValidUlidAgentId(id: string): boolean {
   return AGENT_ULID_RE.test(id);
 }

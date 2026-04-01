@@ -44,7 +44,7 @@ import { AgentRegistryService } from '../messaging/agent-registry.service';
 import { TaskStateRepository, type TaskRecord } from '../state/task-state.repository';
 
 // Agent IDs are always `agent.<26-char ULID>`
-const AGENT_ID_RE = /^agent\.[A-Z0-9]{26}$/;
+const AGENT_ID_RE = /^agent\.[A-Z0-9]{26}$/i;
 
 /** Max characters returned from SOUL.md to avoid oversized responses. */
 const SOUL_MAX_CHARS = 2000;

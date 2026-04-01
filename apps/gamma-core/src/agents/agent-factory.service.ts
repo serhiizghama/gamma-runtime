@@ -229,7 +229,7 @@ export class AgentFactoryService {
 
   async deleteAgent(agentId: string): Promise<{ ok: boolean; reason?: string }> {
     // Validate agentId format to prevent injection via route param
-    if (!/^agent\.[A-Z0-9]{26}$/.test(agentId)) {
+    if (!/^agent\.[A-Z0-9]{26}$/i.test(agentId)) {
       throw new BadRequestException(`Invalid agentId format: "${agentId}"`);
     }
 

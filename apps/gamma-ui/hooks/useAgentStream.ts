@@ -121,6 +121,7 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
 
   // Initial load — last 10 messages
   useEffect(() => {
+    if (!windowId) { setHistoryLoaded(true); return; } // guard: skip for empty windowId
     let cancelled = false;
     (async () => {
       try {
@@ -148,15 +149,45 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
   // ── SSE Connection ───────────────────────────────────────────────────
 
   useEffect(() => {
+    // Guard: do not open any connection for empty windowId.
+    // useTeamChat passes "" until the session is resolved — without this guard
+    // the hook would continuously reconnect to "/api/stream/" (invalid path).
+    if (!windowId) return;
+
     mountedRef.current = true;
     let es: EventSource | null = null;
     let cancelled = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoffMs = 3000; // start at 3s — gives network time to stabilize after ERR_NETWORK_CHANGED
+    const MAX_BACKOFF_MS = 30_000;
+
+    const scheduleReconnect = () => {
+      if (cancelled) return;
+      reconnectTimer = setTimeout(() => {
+        backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+        void connect();
+      }, backoffMs);
+    };
 
     const connect = async () => {
+      if (cancelled) return;
+
+      // Always fetch a fresh ticket — EventSource reuse of the same URL
+      // causes "invalid or expired ticket" once the ticket hits 10-use limit.
       const ticketQs = await fetchSseTicket(`/api/stream/${windowId}`);
       if (cancelled) return;
       const url = `${API_BASE}/api/stream/${windowId}${ticketQs}`;
       es = new EventSource(url);
+
+      const connectedAt = { ts: 0 };
+      es.onopen = () => {
+        connectedAt.ts = Date.now();
+        // Reset backoff only after 5s of stability — ERR_NETWORK_CHANGED
+        // fires immediately after onopen and would cause a flood if we reset here.
+        setTimeout(() => {
+          if (!cancelled && connectedAt.ts > 0) backoffMs = 2000;
+        }, 5000);
+      };
 
       es.onmessage = (ev) => {
       if (!mountedRef.current) return;
@@ -343,12 +374,37 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
           break;
         }
 
+        case "error": {
+          // Server-sent error (e.g. invalid or expired ticket mid-stream).
+          // Close and reconnect with a fresh ticket instead of letting
+          // EventSource loop on the same stale URL.
+          const errMsg = (event as Record<string, unknown>).message as string ?? "";
+          if (errMsg.includes("invalid or expired ticket")) {
+            console.warn("[useAgentStream] SSE ticket expired — reconnecting with fresh ticket");
+            es?.close();
+            es = null;
+            scheduleReconnect();
+            return;
+          }
+          break;
+        }
+
         default:
           break;
       }
     };
 
-      es.onerror = () => { /* EventSource auto-reconnects */ };
+      // onerror: EventSource READYSTATE goes CLOSED when server completes the
+      // stream (e.g. after sending type:'error' + subscriber.complete()).
+      // We must fetch a fresh ticket and reconnect manually — reusing the same
+      // URL would replay the same expired ticket and get rejected again.
+      es.onerror = () => {
+        if (cancelled) return;
+        console.warn("[useAgentStream] SSE error — reconnecting with fresh ticket");
+        es?.close();
+        es = null;
+        scheduleReconnect();
+      };
     };
 
     void connect();
@@ -357,6 +413,7 @@ export function useAgentStream(windowId: string, opts?: AgentStreamOptions): Age
       cancelled = true;
       mountedRef.current = false;
       es?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       if (recoveryTimerRef.current) {
         clearTimeout(recoveryTimerRef.current);
         recoveryTimerRef.current = null;
