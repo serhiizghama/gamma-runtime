@@ -365,6 +365,71 @@ export class GatewayWsService implements OnModuleInit, OnModuleDestroy {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Failed to restore session mappings from Redis: ${msg}`);
     }
+
+    // Reset any sessions stuck in 'running' state from a previous process crash.
+    // On every startup we treat all running→idle since the previous process is gone.
+    await this.resetStuckRuns();
+  }
+
+  /**
+   * Scan all session-registry keys and reset status=running → idle.
+   * Also pushes a synthetic lifecycle_end into each stuck window's SSE stream
+   * so the UI immediately shows the correct idle state without a page reload.
+   */
+  private async resetStuckRuns(): Promise<void> {
+    try {
+      const pattern = `${REDIS_KEYS.SESSION_REGISTRY_PREFIX}*`;
+      const keys = await this.scanRedisKeys(pattern);
+      let reset = 0;
+
+      for (const key of keys) {
+        const runningStatus = await this.redis.hget(key, 'status');
+        if (runningStatus !== 'running') continue;
+
+        const windowId = await this.redis.hget(key, 'windowId');
+        const runId = await this.redis.hget(key, 'currentRunId') ?? 'crash-reset';
+
+        // Reset session-registry status
+        await this.redis.hset(key, 'status', 'idle');
+
+        // Push lifecycle_end into the window SSE stream so UI finalises immediately
+        if (windowId) {
+          const sseKey = `${REDIS_KEYS.SSE_PREFIX}${windowId}`;
+          await this.redis.xadd(sseKey, '*',
+            'type', 'lifecycle_end',
+            'windowId', windowId,
+            'runId', runId,
+            'phase', 'end',
+          ).catch(() => { /* stream may not exist */ });
+
+          // Also reset state hash if present
+          const stateKey = `${REDIS_KEYS.STATE_PREFIX}${windowId}`;
+          await this.redis.hset(stateKey, 'status', 'idle').catch(() => {});
+        }
+
+        reset++;
+        this.logger.warn(`[STARTUP] Reset stuck run: ${key.replace(REDIS_KEYS.SESSION_REGISTRY_PREFIX, '')} → idle`);
+      }
+
+      if (reset > 0) {
+        this.logger.log(`[STARTUP] Reset ${reset} stuck run(s) to idle`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`resetStuckRuns failed: ${msg}`);
+    }
+  }
+
+  /** Scan Redis keys matching a glob pattern */
+  private async scanRedisKeys(pattern: string): Promise<string[]> {
+    const keys: string[] = [];
+    let cursor = '0';
+    do {
+      const [next, batch] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = next;
+      keys.push(...batch);
+    } while (cursor !== '0');
+    return keys;
   }
 
   private scheduleReconnect(): void {

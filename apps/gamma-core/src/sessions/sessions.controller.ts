@@ -78,6 +78,19 @@ export class SessionsController {
   }
 
   /** Force-kill a session by its sessionKey — aborts the run and marks registry as aborted. */
+  /**
+   * Abort ALL running sessions — reset status running→idle without deleting sessions.
+   * Called by the frontend on beforeunload (tab close / page navigation).
+   * Lightweight: does not touch Gateway, just resets Redis state and emits lifecycle_end.
+   * MUST be declared before :windowId routes to avoid NestJS route shadowing.
+   */
+  @Post('abort-all')
+  @HttpCode(HttpStatus.OK)
+  async abortAll(@Body() _body: Record<string, unknown>): Promise<{ ok: boolean; aborted: number }> {
+    const count = await this.sessions.abortAllRunning();
+    return { ok: true, aborted: count };
+  }
+
   @Post(':sessionKey/kill')
   @HttpCode(HttpStatus.OK)
   async kill(

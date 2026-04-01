@@ -430,6 +430,51 @@ export class SessionsService {
     return true;
   }
 
+  /**
+   * Abort all sessions currently in 'running' state — lightweight reset.
+   * Called on page unload (beforeunload) to prevent stuck runs after tab close.
+   * Does NOT delete sessions or touch Gateway — just resets status and emits lifecycle_end.
+   */
+  async abortAllRunning(): Promise<number> {
+    const sessions = await this.findAll();
+    let count = 0;
+
+    await Promise.all(sessions.map(async (s) => {
+      const stateKey = `${REDIS_KEYS.STATE_PREFIX}${s.windowId}`;
+      const runningStatus = await this.redis.hget(stateKey, 'status');
+      if (runningStatus !== 'running') {
+        // Also check session-registry
+        const regKey = `${REDIS_KEYS.SESSION_REGISTRY_PREFIX}${s.sessionKey}`;
+        const regStatus = await this.redis.hget(regKey, 'status');
+        if (regStatus !== 'running') return;
+      }
+
+      // Reset state
+      await this.redis.hset(stateKey, 'status', 'idle', 'runId', '');
+      await this.redis.hset(
+        `${REDIS_KEYS.SESSION_REGISTRY_PREFIX}${s.sessionKey}`,
+        'status', 'idle',
+      );
+
+      // Push clean lifecycle_end so UI finalises immediately on reconnect
+      await this.redis.xadd(
+        `${REDIS_KEYS.SSE_PREFIX}${s.windowId}`, '*',
+        'type', 'lifecycle_end',
+        'windowId', s.windowId,
+        'runId', 'unload-reset',
+        'phase', 'end',
+      ).catch(() => {});
+
+      this.toolWatchdog.clearWindow(s.windowId);
+      count++;
+    }));
+
+    if (count > 0) {
+      this.logger.log(`abortAllRunning: reset ${count} running session(s) on unload`);
+    }
+    return count;
+  }
+
   /** Get F5 recovery snapshot from gamma:state:<windowId> (spec §4.1) */
   async getSyncSnapshot(windowId: string): Promise<WindowStateSyncSnapshot | null> {
     const session = await this.findByWindowId(windowId);

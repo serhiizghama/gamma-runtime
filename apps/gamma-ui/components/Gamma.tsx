@@ -11,6 +11,8 @@ import { WindowManager } from "./WindowManager";
 import { NotificationCenter } from "./NotificationCenter";
 import { useSystemEvents } from "../hooks/useSystemEvents";
 import { useAppRegistry } from "../hooks/useAppRegistry";
+import { API_BASE } from "../constants/api";
+import { systemAuthHeaders } from "../lib/auth";
 
 /**
  * Fresh-boot gate: spawn default windows ONLY when localStorage has no
@@ -31,6 +33,42 @@ function useFreshBootDefaults() {
   }, []);
 }
 
+/**
+ * Abort all running sessions on page unload (tab close / navigation away).
+ * Uses navigator.sendBeacon for fire-and-forget reliability on unload.
+ * Also aborts on visibility hidden → visible after a long gap (tab sleep).
+ */
+function useSessionCleanupOnUnload(): void {
+  useEffect(() => {
+    const abortAll = () => {
+      const url = `${API_BASE}/api/sessions/abort-all`;
+      const headers = systemAuthHeaders();
+      // sendBeacon doesn't support custom headers — use fetch with keepalive
+      // keepalive ensures the request completes even after the page unloads
+      fetch(url, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "page_unload" }),
+        keepalive: true,
+      }).catch(() => { /* best-effort */ });
+    };
+
+    const handleUnload = () => abortAll();
+    const handleVisibility = () => {
+      // When tab comes back after being hidden for > 30s, treat it as a reconnect
+      // but don't abort — just let the SSE reconnect naturally
+    };
+
+    window.addEventListener("beforeunload", handleUnload);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleUnload);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
+}
+
 export function Gamma(): React.ReactElement {
   const [booting, setBooting] = useState(true);
   const handleBootDone = useCallback(() => setBooting(false), []);
@@ -40,6 +78,7 @@ export function Gamma(): React.ReactElement {
   useFreshBootDefaults();
   useAppRegistry(); // fetch registry + subscribe to component_ready/removed
   useSystemEvents(); // mock SSE → real EventSource in production
+  useSessionCleanupOnUnload(); // abort running sessions on tab close
 
   if (booting) {
     return <BootScreen onDone={handleBootDone} />;

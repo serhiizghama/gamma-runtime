@@ -139,6 +139,19 @@ server.on('unknownProtocol', (socket) => {
   socket.destroy();
 });
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[h2-proxy] Port ${PROXY_PORT} in use — retrying in 3s...`);
+    setTimeout(() => {
+      server.close();
+      server.listen(PROXY_PORT, '0.0.0.0');
+    }, 3000);
+  } else {
+    console.error('[h2-proxy] Server error:', err);
+    process.exit(1);
+  }
+});
+
 server.listen(PROXY_PORT, '0.0.0.0', () => {
   console.log(`HTTP/2 proxy listening on https://0.0.0.0:${PROXY_PORT}`);
   console.log(`Forwarding to Vite on http://127.0.0.1:${VITE_PORT}`);
