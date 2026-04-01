@@ -92,6 +92,37 @@ export class AgentsRepository {
     );
   }
 
+  async updateWorkspacePath(id: string, path: string): Promise<void> {
+    await this.db.query(
+      'UPDATE agents SET workspace_path = $1, updated_at = $2 WHERE id = $3',
+      [path, Date.now(), id],
+    );
+  }
+
+  async updateFields(id: string, fields: Record<string, unknown>): Promise<Agent | null> {
+    const keys = Object.keys(fields);
+    if (keys.length === 0) return this.findById(id);
+
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    for (const key of keys) {
+      sets.push(`${key} = $${idx++}`);
+      values.push(fields[key]);
+    }
+
+    sets.push(`updated_at = $${idx++}`);
+    values.push(Date.now());
+    values.push(id);
+
+    const { rows } = await this.db.query<Agent>(
+      `UPDATE agents SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values,
+    );
+    return rows[0] ? this.mapAgent(rows[0]) : null;
+  }
+
   async archiveByTeam(teamId: string): Promise<void> {
     await this.db.query(
       `UPDATE agents SET status = 'archived', updated_at = $1 WHERE team_id = $2`,

@@ -1,0 +1,878 @@
+[
+  {
+    "id": "academic/academic-anthropologist",
+    "name": "Anthropologist Agent Personality",
+    "category": "academic",
+    "fileName": "academic-anthropologist.md"
+  },
+  {
+    "id": "academic/academic-geographer",
+    "name": "Geographer Agent Personality",
+    "category": "academic",
+    "fileName": "academic-geographer.md"
+  },
+  {
+    "id": "academic/academic-historian",
+    "name": "Historian Agent Personality",
+    "category": "academic",
+    "fileName": "academic-historian.md"
+  },
+  {
+    "id": "academic/academic-narratologist",
+    "name": "Narratologist Agent Personality",
+    "category": "academic",
+    "fileName": "academic-narratologist.md"
+  },
+  {
+    "id": "academic/academic-psychologist",
+    "name": "Psychologist Agent Personality",
+    "category": "academic",
+    "fileName": "academic-psychologist.md"
+  },
+  {
+    "id": "design/design-brand-guardian",
+    "name": "Brand Guardian Agent Personality",
+    "category": "design",
+    "fileName": "design-brand-guardian.md"
+  },
+  {
+    "id": "design/design-image-prompt-engineer",
+    "name": "Image Prompt Engineer Agent",
+    "category": "design",
+    "fileName": "design-image-prompt-engineer.md"
+  },
+  {
+    "id": "design/design-inclusive-visuals-specialist",
+    "name": "📸 Inclusive Visuals Specialist",
+    "category": "design",
+    "fileName": "design-inclusive-visuals-specialist.md"
+  },
+  {
+    "id": "design/design-ui-designer",
+    "name": "UI Designer Agent Personality",
+    "category": "design",
+    "fileName": "design-ui-designer.md"
+  },
+  {
+    "id": "design/design-ux-architect",
+    "name": "ArchitectUX Agent Personality",
+    "category": "design",
+    "fileName": "design-ux-architect.md"
+  },
+  {
+    "id": "design/design-ux-researcher",
+    "name": "UX Researcher Agent Personality",
+    "category": "design",
+    "fileName": "design-ux-researcher.md"
+  },
+  {
+    "id": "design/design-visual-storyteller",
+    "name": "Visual Storyteller Agent",
+    "category": "design",
+    "fileName": "design-visual-storyteller.md"
+  },
+  {
+    "id": "design/design-whimsy-injector",
+    "name": "Whimsy Injector Agent Personality",
+    "category": "design",
+    "fileName": "design-whimsy-injector.md"
+  },
+  {
+    "id": "engineering/engineering-ai-data-remediation-engineer",
+    "name": "AI Data Remediation Engineer Agent",
+    "category": "engineering",
+    "fileName": "engineering-ai-data-remediation-engineer.md"
+  },
+  {
+    "id": "engineering/engineering-ai-engineer",
+    "name": "AI Engineer Agent",
+    "category": "engineering",
+    "fileName": "engineering-ai-engineer.md"
+  },
+  {
+    "id": "engineering/engineering-autonomous-optimization-architect",
+    "name": "⚙️ Autonomous Optimization Architect",
+    "category": "engineering",
+    "fileName": "engineering-autonomous-optimization-architect.md"
+  },
+  {
+    "id": "engineering/engineering-backend-architect",
+    "name": "Backend Architect Agent Personality",
+    "category": "engineering",
+    "fileName": "engineering-backend-architect.md"
+  },
+  {
+    "id": "engineering/engineering-code-reviewer",
+    "name": "Code Reviewer Agent",
+    "category": "engineering",
+    "fileName": "engineering-code-reviewer.md"
+  },
+  {
+    "id": "engineering/engineering-data-engineer",
+    "name": "Data Engineer Agent",
+    "category": "engineering",
+    "fileName": "engineering-data-engineer.md"
+  },
+  {
+    "id": "engineering/engineering-database-optimizer",
+    "name": "🗄️ Database Optimizer",
+    "category": "engineering",
+    "fileName": "engineering-database-optimizer.md"
+  },
+  {
+    "id": "engineering/engineering-devops-automator",
+    "name": "DevOps Automator Agent Personality",
+    "category": "engineering",
+    "fileName": "engineering-devops-automator.md"
+  },
+  {
+    "id": "engineering/engineering-embedded-firmware-engineer",
+    "name": "Embedded Firmware Engineer",
+    "category": "engineering",
+    "fileName": "engineering-embedded-firmware-engineer.md"
+  },
+  {
+    "id": "engineering/engineering-feishu-integration-developer",
+    "name": "Feishu Integration Developer",
+    "category": "engineering",
+    "fileName": "engineering-feishu-integration-developer.md"
+  },
+  {
+    "id": "engineering/engineering-frontend-developer",
+    "name": "Frontend Developer Agent Personality",
+    "category": "engineering",
+    "fileName": "engineering-frontend-developer.md"
+  },
+  {
+    "id": "engineering/engineering-git-workflow-master",
+    "name": "Git Workflow Master Agent",
+    "category": "engineering",
+    "fileName": "engineering-git-workflow-master.md"
+  },
+  {
+    "id": "engineering/engineering-incident-response-commander",
+    "name": "Incident Response Commander Agent",
+    "category": "engineering",
+    "fileName": "engineering-incident-response-commander.md"
+  },
+  {
+    "id": "engineering/engineering-mobile-app-builder",
+    "name": "Mobile App Builder Agent Personality",
+    "category": "engineering",
+    "fileName": "engineering-mobile-app-builder.md"
+  },
+  {
+    "id": "engineering/engineering-rapid-prototyper",
+    "name": "Rapid Prototyper Agent Personality",
+    "category": "engineering",
+    "fileName": "engineering-rapid-prototyper.md"
+  },
+  {
+    "id": "engineering/engineering-security-engineer",
+    "name": "Security Engineer Agent",
+    "category": "engineering",
+    "fileName": "engineering-security-engineer.md"
+  },
+  {
+    "id": "engineering/engineering-senior-developer",
+    "name": "Developer Agent Personality",
+    "category": "engineering",
+    "fileName": "engineering-senior-developer.md"
+  },
+  {
+    "id": "engineering/engineering-software-architect",
+    "name": "Software Architect Agent",
+    "category": "engineering",
+    "fileName": "engineering-software-architect.md"
+  },
+  {
+    "id": "engineering/engineering-solidity-smart-contract-engineer",
+    "name": "Solidity Smart Contract Engineer",
+    "category": "engineering",
+    "fileName": "engineering-solidity-smart-contract-engineer.md"
+  },
+  {
+    "id": "engineering/engineering-sre",
+    "name": "SRE (Site Reliability Engineer) Agent",
+    "category": "engineering",
+    "fileName": "engineering-sre.md"
+  },
+  {
+    "id": "engineering/engineering-technical-writer",
+    "name": "Technical Writer Agent",
+    "category": "engineering",
+    "fileName": "engineering-technical-writer.md"
+  },
+  {
+    "id": "engineering/engineering-threat-detection-engineer",
+    "name": "Threat Detection Engineer Agent",
+    "category": "engineering",
+    "fileName": "engineering-threat-detection-engineer.md"
+  },
+  {
+    "id": "engineering/engineering-wechat-mini-program-developer",
+    "name": "WeChat Mini Program Developer Agent Personality",
+    "category": "engineering",
+    "fileName": "engineering-wechat-mini-program-developer.md"
+  },
+  {
+    "id": "game-development/game-audio-engineer",
+    "name": "Game Audio Engineer Agent Personality",
+    "category": "game-development",
+    "fileName": "game-audio-engineer.md"
+  },
+  {
+    "id": "game-development/game-designer",
+    "name": "Game Designer Agent Personality",
+    "category": "game-development",
+    "fileName": "game-designer.md"
+  },
+  {
+    "id": "game-development/level-designer",
+    "name": "Level Designer Agent Personality",
+    "category": "game-development",
+    "fileName": "level-designer.md"
+  },
+  {
+    "id": "game-development/narrative-designer",
+    "name": "Narrative Designer Agent Personality",
+    "category": "game-development",
+    "fileName": "narrative-designer.md"
+  },
+  {
+    "id": "game-development/technical-artist",
+    "name": "Technical Artist Agent Personality",
+    "category": "game-development",
+    "fileName": "technical-artist.md"
+  },
+  {
+    "id": "job-hunting/job-hunting-analyst",
+    "name": "Analyst — Match Scorer",
+    "category": "job-hunting",
+    "fileName": "job-hunting-analyst.md"
+  },
+  {
+    "id": "job-hunting/job-hunting-reporter",
+    "name": "Reporter — Analytics & Summary",
+    "category": "job-hunting",
+    "fileName": "job-hunting-reporter.md"
+  },
+  {
+    "id": "job-hunting/job-hunting-scout",
+    "name": "Scout — Vacancy Researcher",
+    "category": "job-hunting",
+    "fileName": "job-hunting-scout.md"
+  },
+  {
+    "id": "job-hunting/job-hunting-squad-leader",
+    "name": "Squad Leader — Pipeline Orchestrator",
+    "category": "job-hunting",
+    "fileName": "job-hunting-squad-leader.md"
+  },
+  {
+    "id": "job-hunting/job-hunting-tailor",
+    "name": "Tailor — Application Specialist",
+    "category": "job-hunting",
+    "fileName": "job-hunting-tailor.md"
+  },
+  {
+    "id": "marketing/marketing-ai-citation-strategist",
+    "name": "Your Identity & Memory",
+    "category": "marketing",
+    "fileName": "marketing-ai-citation-strategist.md"
+  },
+  {
+    "id": "marketing/marketing-app-store-optimizer",
+    "name": "App Store Optimizer Agent Personality",
+    "category": "marketing",
+    "fileName": "marketing-app-store-optimizer.md"
+  },
+  {
+    "id": "marketing/marketing-baidu-seo-specialist",
+    "name": "Marketing Baidu SEO Specialist",
+    "category": "marketing",
+    "fileName": "marketing-baidu-seo-specialist.md"
+  },
+  {
+    "id": "marketing/marketing-bilibili-content-strategist",
+    "name": "Marketing Bilibili Content Strategist",
+    "category": "marketing",
+    "fileName": "marketing-bilibili-content-strategist.md"
+  },
+  {
+    "id": "marketing/marketing-book-co-author",
+    "name": "Book Co-Author",
+    "category": "marketing",
+    "fileName": "marketing-book-co-author.md"
+  },
+  {
+    "id": "marketing/marketing-carousel-growth-engine",
+    "name": "Marketing Carousel Growth Engine",
+    "category": "marketing",
+    "fileName": "marketing-carousel-growth-engine.md"
+  },
+  {
+    "id": "marketing/marketing-china-ecommerce-operator",
+    "name": "Marketing China E-Commerce Operator",
+    "category": "marketing",
+    "fileName": "marketing-china-ecommerce-operator.md"
+  },
+  {
+    "id": "marketing/marketing-content-creator",
+    "name": "Marketing Content Creator Agent",
+    "category": "marketing",
+    "fileName": "marketing-content-creator.md"
+  },
+  {
+    "id": "marketing/marketing-cross-border-ecommerce",
+    "name": "Marketing Cross-Border E-Commerce Specialist",
+    "category": "marketing",
+    "fileName": "marketing-cross-border-ecommerce.md"
+  },
+  {
+    "id": "marketing/marketing-douyin-strategist",
+    "name": "Marketing Douyin Strategist",
+    "category": "marketing",
+    "fileName": "marketing-douyin-strategist.md"
+  },
+  {
+    "id": "marketing/marketing-growth-hacker",
+    "name": "Marketing Growth Hacker Agent",
+    "category": "marketing",
+    "fileName": "marketing-growth-hacker.md"
+  },
+  {
+    "id": "marketing/marketing-instagram-curator",
+    "name": "Marketing Instagram Curator",
+    "category": "marketing",
+    "fileName": "marketing-instagram-curator.md"
+  },
+  {
+    "id": "marketing/marketing-kuaishou-strategist",
+    "name": "Marketing Kuaishou Strategist",
+    "category": "marketing",
+    "fileName": "marketing-kuaishou-strategist.md"
+  },
+  {
+    "id": "marketing/marketing-linkedin-content-creator",
+    "name": "LinkedIn Content Creator",
+    "category": "marketing",
+    "fileName": "marketing-linkedin-content-creator.md"
+  },
+  {
+    "id": "marketing/marketing-livestream-commerce-coach",
+    "name": "Marketing Livestream Commerce Coach",
+    "category": "marketing",
+    "fileName": "marketing-livestream-commerce-coach.md"
+  },
+  {
+    "id": "marketing/marketing-podcast-strategist",
+    "name": "Marketing Podcast Strategist",
+    "category": "marketing",
+    "fileName": "marketing-podcast-strategist.md"
+  },
+  {
+    "id": "marketing/marketing-private-domain-operator",
+    "name": "Marketing Private Domain Operator",
+    "category": "marketing",
+    "fileName": "marketing-private-domain-operator.md"
+  },
+  {
+    "id": "marketing/marketing-reddit-community-builder",
+    "name": "Marketing Reddit Community Builder",
+    "category": "marketing",
+    "fileName": "marketing-reddit-community-builder.md"
+  },
+  {
+    "id": "marketing/marketing-seo-specialist",
+    "name": "Marketing SEO Specialist",
+    "category": "marketing",
+    "fileName": "marketing-seo-specialist.md"
+  },
+  {
+    "id": "marketing/marketing-short-video-editing-coach",
+    "name": "Marketing Short-Video Editing Coach",
+    "category": "marketing",
+    "fileName": "marketing-short-video-editing-coach.md"
+  },
+  {
+    "id": "marketing/marketing-social-media-strategist",
+    "name": "Social Media Strategist Agent",
+    "category": "marketing",
+    "fileName": "marketing-social-media-strategist.md"
+  },
+  {
+    "id": "marketing/marketing-tiktok-strategist",
+    "name": "Marketing TikTok Strategist",
+    "category": "marketing",
+    "fileName": "marketing-tiktok-strategist.md"
+  },
+  {
+    "id": "marketing/marketing-twitter-engager",
+    "name": "Marketing Twitter Engager",
+    "category": "marketing",
+    "fileName": "marketing-twitter-engager.md"
+  },
+  {
+    "id": "marketing/marketing-wechat-official-account",
+    "name": "Marketing WeChat Official Account Manager",
+    "category": "marketing",
+    "fileName": "marketing-wechat-official-account.md"
+  },
+  {
+    "id": "marketing/marketing-weibo-strategist",
+    "name": "Marketing Weibo Strategist",
+    "category": "marketing",
+    "fileName": "marketing-weibo-strategist.md"
+  },
+  {
+    "id": "marketing/marketing-xiaohongshu-specialist",
+    "name": "Marketing Xiaohongshu Specialist",
+    "category": "marketing",
+    "fileName": "marketing-xiaohongshu-specialist.md"
+  },
+  {
+    "id": "marketing/marketing-zhihu-strategist",
+    "name": "Marketing Zhihu Strategist",
+    "category": "marketing",
+    "fileName": "marketing-zhihu-strategist.md"
+  },
+  {
+    "id": "paid-media/paid-media-auditor",
+    "name": "Paid Media Auditor Agent",
+    "category": "paid-media",
+    "fileName": "paid-media-auditor.md"
+  },
+  {
+    "id": "paid-media/paid-media-creative-strategist",
+    "name": "Paid Media Ad Creative Strategist Agent",
+    "category": "paid-media",
+    "fileName": "paid-media-creative-strategist.md"
+  },
+  {
+    "id": "paid-media/paid-media-paid-social-strategist",
+    "name": "Paid Media Paid Social Strategist Agent",
+    "category": "paid-media",
+    "fileName": "paid-media-paid-social-strategist.md"
+  },
+  {
+    "id": "paid-media/paid-media-ppc-strategist",
+    "name": "Paid Media PPC Campaign Strategist Agent",
+    "category": "paid-media",
+    "fileName": "paid-media-ppc-strategist.md"
+  },
+  {
+    "id": "paid-media/paid-media-programmatic-buyer",
+    "name": "Paid Media Programmatic & Display Buyer Agent",
+    "category": "paid-media",
+    "fileName": "paid-media-programmatic-buyer.md"
+  },
+  {
+    "id": "paid-media/paid-media-search-query-analyst",
+    "name": "Paid Media Search Query Analyst Agent",
+    "category": "paid-media",
+    "fileName": "paid-media-search-query-analyst.md"
+  },
+  {
+    "id": "paid-media/paid-media-tracking-specialist",
+    "name": "Paid Media Tracking & Measurement Specialist Agent",
+    "category": "paid-media",
+    "fileName": "paid-media-tracking-specialist.md"
+  },
+  {
+    "id": "product/product-behavioral-nudge-engine",
+    "name": "🧠 Behavioral Nudge Engine",
+    "category": "product",
+    "fileName": "product-behavioral-nudge-engine.md"
+  },
+  {
+    "id": "product/product-feedback-synthesizer",
+    "name": "Product Feedback Synthesizer Agent",
+    "category": "product",
+    "fileName": "product-feedback-synthesizer.md"
+  },
+  {
+    "id": "product/product-manager",
+    "name": "🧭 Product Manager Agent",
+    "category": "product",
+    "fileName": "product-manager.md"
+  },
+  {
+    "id": "product/product-sprint-prioritizer",
+    "name": "Product Sprint Prioritizer Agent",
+    "category": "product",
+    "fileName": "product-sprint-prioritizer.md"
+  },
+  {
+    "id": "product/product-trend-researcher",
+    "name": "Product Trend Researcher Agent",
+    "category": "product",
+    "fileName": "product-trend-researcher.md"
+  },
+  {
+    "id": "project-management/project-management-experiment-tracker",
+    "name": "Experiment Tracker Agent Personality",
+    "category": "project-management",
+    "fileName": "project-management-experiment-tracker.md"
+  },
+  {
+    "id": "project-management/project-management-jira-workflow-steward",
+    "name": "Jira Workflow Steward Agent",
+    "category": "project-management",
+    "fileName": "project-management-jira-workflow-steward.md"
+  },
+  {
+    "id": "project-management/project-management-project-shepherd",
+    "name": "Project Shepherd Agent Personality",
+    "category": "project-management",
+    "fileName": "project-management-project-shepherd.md"
+  },
+  {
+    "id": "project-management/project-management-studio-operations",
+    "name": "Studio Operations Agent Personality",
+    "category": "project-management",
+    "fileName": "project-management-studio-operations.md"
+  },
+  {
+    "id": "project-management/project-management-studio-producer",
+    "name": "Studio Producer Agent Personality",
+    "category": "project-management",
+    "fileName": "project-management-studio-producer.md"
+  },
+  {
+    "id": "project-management/project-manager-senior",
+    "name": "Project Manager Agent Personality",
+    "category": "project-management",
+    "fileName": "project-manager-senior.md"
+  },
+  {
+    "id": "sales/sales-account-strategist",
+    "name": "Account Strategist Agent",
+    "category": "sales",
+    "fileName": "sales-account-strategist.md"
+  },
+  {
+    "id": "sales/sales-coach",
+    "name": "Sales Coach Agent",
+    "category": "sales",
+    "fileName": "sales-coach.md"
+  },
+  {
+    "id": "sales/sales-deal-strategist",
+    "name": "Deal Strategist Agent",
+    "category": "sales",
+    "fileName": "sales-deal-strategist.md"
+  },
+  {
+    "id": "sales/sales-discovery-coach",
+    "name": "Discovery Coach Agent",
+    "category": "sales",
+    "fileName": "sales-discovery-coach.md"
+  },
+  {
+    "id": "sales/sales-engineer",
+    "name": "Sales Engineer Agent",
+    "category": "sales",
+    "fileName": "sales-engineer.md"
+  },
+  {
+    "id": "sales/sales-outbound-strategist",
+    "name": "Outbound Strategist Agent",
+    "category": "sales",
+    "fileName": "sales-outbound-strategist.md"
+  },
+  {
+    "id": "sales/sales-pipeline-analyst",
+    "name": "Pipeline Analyst Agent",
+    "category": "sales",
+    "fileName": "sales-pipeline-analyst.md"
+  },
+  {
+    "id": "sales/sales-proposal-strategist",
+    "name": "Proposal Strategist Agent",
+    "category": "sales",
+    "fileName": "sales-proposal-strategist.md"
+  },
+  {
+    "id": "spatial-computing/macos-spatial-metal-engineer",
+    "name": "macOS Spatial/Metal Engineer Agent Personality",
+    "category": "spatial-computing",
+    "fileName": "macos-spatial-metal-engineer.md"
+  },
+  {
+    "id": "spatial-computing/terminal-integration-specialist",
+    "name": "Terminal Integration Specialist",
+    "category": "spatial-computing",
+    "fileName": "terminal-integration-specialist.md"
+  },
+  {
+    "id": "spatial-computing/visionos-spatial-engineer",
+    "name": "visionOS Spatial Engineer",
+    "category": "spatial-computing",
+    "fileName": "visionos-spatial-engineer.md"
+  },
+  {
+    "id": "spatial-computing/xr-cockpit-interaction-specialist",
+    "name": "XR Cockpit Interaction Specialist Agent Personality",
+    "category": "spatial-computing",
+    "fileName": "xr-cockpit-interaction-specialist.md"
+  },
+  {
+    "id": "spatial-computing/xr-immersive-developer",
+    "name": "XR Immersive Developer Agent Personality",
+    "category": "spatial-computing",
+    "fileName": "xr-immersive-developer.md"
+  },
+  {
+    "id": "spatial-computing/xr-interface-architect",
+    "name": "XR Interface Architect Agent Personality",
+    "category": "spatial-computing",
+    "fileName": "xr-interface-architect.md"
+  },
+  {
+    "id": "specialized/accounts-payable-agent",
+    "name": "Accounts Payable Agent Personality",
+    "category": "specialized",
+    "fileName": "accounts-payable-agent.md"
+  },
+  {
+    "id": "specialized/agentic-identity-trust",
+    "name": "Agentic Identity & Trust Architect",
+    "category": "specialized",
+    "fileName": "agentic-identity-trust.md"
+  },
+  {
+    "id": "specialized/agents-orchestrator",
+    "name": "AgentsOrchestrator Agent Personality",
+    "category": "specialized",
+    "fileName": "agents-orchestrator.md"
+  },
+  {
+    "id": "specialized/automation-governance-architect",
+    "name": "Automation Governance Architect",
+    "category": "specialized",
+    "fileName": "automation-governance-architect.md"
+  },
+  {
+    "id": "specialized/blockchain-security-auditor",
+    "name": "Blockchain Security Auditor",
+    "category": "specialized",
+    "fileName": "blockchain-security-auditor.md"
+  },
+  {
+    "id": "specialized/compliance-auditor",
+    "name": "Compliance Auditor Agent",
+    "category": "specialized",
+    "fileName": "compliance-auditor.md"
+  },
+  {
+    "id": "specialized/corporate-training-designer",
+    "name": "Corporate Training Designer",
+    "category": "specialized",
+    "fileName": "corporate-training-designer.md"
+  },
+  {
+    "id": "specialized/data-consolidation-agent",
+    "name": "Data Consolidation Agent",
+    "category": "specialized",
+    "fileName": "data-consolidation-agent.md"
+  },
+  {
+    "id": "specialized/government-digital-presales-consultant",
+    "name": "Government Digital Presales Consultant",
+    "category": "specialized",
+    "fileName": "government-digital-presales-consultant.md"
+  },
+  {
+    "id": "specialized/healthcare-marketing-compliance",
+    "name": "Healthcare Marketing Compliance Specialist",
+    "category": "specialized",
+    "fileName": "healthcare-marketing-compliance.md"
+  },
+  {
+    "id": "specialized/identity-graph-operator",
+    "name": "Identity Graph Operator",
+    "category": "specialized",
+    "fileName": "identity-graph-operator.md"
+  },
+  {
+    "id": "specialized/lsp-index-engineer",
+    "name": "LSP/Index Engineer Agent Personality",
+    "category": "specialized",
+    "fileName": "lsp-index-engineer.md"
+  },
+  {
+    "id": "specialized/recruitment-specialist",
+    "name": "Recruitment Specialist Agent",
+    "category": "specialized",
+    "fileName": "recruitment-specialist.md"
+  },
+  {
+    "id": "specialized/report-distribution-agent",
+    "name": "Report Distribution Agent",
+    "category": "specialized",
+    "fileName": "report-distribution-agent.md"
+  },
+  {
+    "id": "specialized/sales-data-extraction-agent",
+    "name": "Sales Data Extraction Agent",
+    "category": "specialized",
+    "fileName": "sales-data-extraction-agent.md"
+  },
+  {
+    "id": "specialized/specialized-cultural-intelligence-strategist",
+    "name": "🌍 Cultural Intelligence Strategist",
+    "category": "specialized",
+    "fileName": "specialized-cultural-intelligence-strategist.md"
+  },
+  {
+    "id": "specialized/specialized-developer-advocate",
+    "name": "Developer Advocate Agent",
+    "category": "specialized",
+    "fileName": "specialized-developer-advocate.md"
+  },
+  {
+    "id": "specialized/specialized-document-generator",
+    "name": "Document Generator Agent",
+    "category": "specialized",
+    "fileName": "specialized-document-generator.md"
+  },
+  {
+    "id": "specialized/specialized-french-consulting-market",
+    "name": "🧠 Your Identity & Memory",
+    "category": "specialized",
+    "fileName": "specialized-french-consulting-market.md"
+  },
+  {
+    "id": "specialized/specialized-korean-business-navigator",
+    "name": "🧠 Your Identity & Memory",
+    "category": "specialized",
+    "fileName": "specialized-korean-business-navigator.md"
+  },
+  {
+    "id": "specialized/specialized-mcp-builder",
+    "name": "MCP Builder Agent",
+    "category": "specialized",
+    "fileName": "specialized-mcp-builder.md"
+  },
+  {
+    "id": "specialized/specialized-model-qa",
+    "name": "Model QA Specialist",
+    "category": "specialized",
+    "fileName": "specialized-model-qa.md"
+  },
+  {
+    "id": "specialized/specialized-salesforce-architect",
+    "name": "🧠 Your Identity & Memory",
+    "category": "specialized",
+    "fileName": "specialized-salesforce-architect.md"
+  },
+  {
+    "id": "specialized/specialized-workflow-architect",
+    "name": "Workflow Architect Agent Personality",
+    "category": "specialized",
+    "fileName": "specialized-workflow-architect.md"
+  },
+  {
+    "id": "specialized/study-abroad-advisor",
+    "name": "Study Abroad Advisor",
+    "category": "specialized",
+    "fileName": "study-abroad-advisor.md"
+  },
+  {
+    "id": "specialized/supply-chain-strategist",
+    "name": "Supply Chain Strategist Agent",
+    "category": "specialized",
+    "fileName": "supply-chain-strategist.md"
+  },
+  {
+    "id": "specialized/zk-steward",
+    "name": "ZK Steward Agent",
+    "category": "specialized",
+    "fileName": "zk-steward.md"
+  },
+  {
+    "id": "support/support-analytics-reporter",
+    "name": "Analytics Reporter Agent Personality",
+    "category": "support",
+    "fileName": "support-analytics-reporter.md"
+  },
+  {
+    "id": "support/support-executive-summary-generator",
+    "name": "Executive Summary Generator Agent Personality",
+    "category": "support",
+    "fileName": "support-executive-summary-generator.md"
+  },
+  {
+    "id": "support/support-finance-tracker",
+    "name": "Finance Tracker Agent Personality",
+    "category": "support",
+    "fileName": "support-finance-tracker.md"
+  },
+  {
+    "id": "support/support-infrastructure-maintainer",
+    "name": "Infrastructure Maintainer Agent Personality",
+    "category": "support",
+    "fileName": "support-infrastructure-maintainer.md"
+  },
+  {
+    "id": "support/support-legal-compliance-checker",
+    "name": "Legal Compliance Checker Agent Personality",
+    "category": "support",
+    "fileName": "support-legal-compliance-checker.md"
+  },
+  {
+    "id": "support/support-support-responder",
+    "name": "Support Responder Agent Personality",
+    "category": "support",
+    "fileName": "support-support-responder.md"
+  },
+  {
+    "id": "testing/testing-accessibility-auditor",
+    "name": "Accessibility Auditor Agent Personality",
+    "category": "testing",
+    "fileName": "testing-accessibility-auditor.md"
+  },
+  {
+    "id": "testing/testing-api-tester",
+    "name": "API Tester Agent Personality",
+    "category": "testing",
+    "fileName": "testing-api-tester.md"
+  },
+  {
+    "id": "testing/testing-evidence-collector",
+    "name": "QA Agent Personality",
+    "category": "testing",
+    "fileName": "testing-evidence-collector.md"
+  },
+  {
+    "id": "testing/testing-performance-benchmarker",
+    "name": "Performance Benchmarker Agent Personality",
+    "category": "testing",
+    "fileName": "testing-performance-benchmarker.md"
+  },
+  {
+    "id": "testing/testing-reality-checker",
+    "name": "Integration Agent Personality",
+    "category": "testing",
+    "fileName": "testing-reality-checker.md"
+  },
+  {
+    "id": "testing/testing-test-results-analyzer",
+    "name": "Test Results Analyzer Agent Personality",
+    "category": "testing",
+    "fileName": "testing-test-results-analyzer.md"
+  },
+  {
+    "id": "testing/testing-tool-evaluator",
+    "name": "Tool Evaluator Agent Personality",
+    "category": "testing",
+    "fileName": "testing-tool-evaluator.md"
+  },
+  {
+    "id": "testing/testing-workflow-optimizer",
+    "name": "Workflow Optimizer Agent Personality",
+    "category": "testing",
+    "fileName": "testing-workflow-optimizer.md"
+  }
+]
