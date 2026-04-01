@@ -1,12 +1,14 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { AgentsRepository } from '../repositories/agents.repository';
 import { TeamsRepository } from '../repositories/teams.repository';
+import { TasksRepository } from '../repositories/tasks.repository';
 import { Agent } from '../common/types';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { RolesService } from './roles.service';
 import { WorkspaceService } from './workspace.service';
 import { ClaudeMdGenerator } from './claude-md.generator';
+import { SessionPoolService } from '../claude/session-pool.service';
 
 @Injectable()
 export class AgentsService {
@@ -15,9 +17,12 @@ export class AgentsService {
   constructor(
     private readonly agentsRepo: AgentsRepository,
     private readonly teamsRepo: TeamsRepository,
+    private readonly tasksRepo: TasksRepository,
     private readonly rolesService: RolesService,
     private readonly workspaceService: WorkspaceService,
     private readonly claudeMdGenerator: ClaudeMdGenerator,
+    @Inject(forwardRef(() => SessionPoolService))
+    private readonly sessionPool: SessionPoolService,
   ) {}
 
   async create(dto: CreateAgentDto): Promise<Agent> {
@@ -84,6 +89,21 @@ export class AgentsService {
     const agent = await this.agentsRepo.findById(id);
     if (!agent) throw new NotFoundException(`Agent ${id} not found`);
 
+    // Kill running process if active
+    if (this.sessionPool.isRunning(id)) {
+      const proc = this.sessionPool.getProcess(id);
+      if (proc) {
+        this.logger.warn(`Killing running agent ${id} before archive`);
+        if (proc.pid) {
+          try { process.kill(-proc.pid, 'SIGTERM'); } catch {}
+        }
+      }
+      this.sessionPool.unregister(id);
+    }
+
+    // Reset in_progress tasks assigned to this agent back to backlog
+    await this.tasksRepo.unassignAgent(id);
+
     const archived = await this.agentsRepo.updateStatus(id, 'archived');
     if (!archived) throw new NotFoundException(`Agent ${id} not found`);
 
@@ -98,6 +118,12 @@ export class AgentsService {
   async resetSession(id: string): Promise<Agent> {
     const agent = await this.agentsRepo.findById(id);
     if (!agent) throw new NotFoundException(`Agent ${id} not found`);
+
+    // 409 if agent is currently running
+    if (this.sessionPool.isRunning(id)) {
+      throw new ConflictException(`Agent ${id} is currently running. Stop it first.`);
+    }
+
     await this.agentsRepo.resetSession(id);
     return this.findById(id);
   }

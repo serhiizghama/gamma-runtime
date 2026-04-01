@@ -3,13 +3,16 @@ import { TeamsController } from './teams.controller';
 import { TeamsService } from './teams.service';
 import { TeamsRepository } from '../repositories/teams.repository';
 import { AgentsRepository } from '../repositories/agents.repository';
+import { ProjectsRepository } from '../repositories/projects.repository';
+import { TasksRepository } from '../repositories/tasks.repository';
 import { DatabaseModule } from '../database/database.module';
 import { AgentsModule } from '../agents/agents.module';
+import { ClaudeModule } from '../claude/claude.module';
 
 @Module({
-  imports: [DatabaseModule, forwardRef(() => AgentsModule)],
+  imports: [DatabaseModule, forwardRef(() => AgentsModule), ClaudeModule],
   controllers: [TeamsController],
-  providers: [TeamsService, TeamsRepository, AgentsRepository],
+  providers: [TeamsService, TeamsRepository, AgentsRepository, ProjectsRepository, TasksRepository],
   exports: [TeamsService, TeamsRepository],
 })
 export class TeamsModule {}
