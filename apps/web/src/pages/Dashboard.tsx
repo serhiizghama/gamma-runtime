@@ -1,8 +1,13 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTeams } from '../hooks/useTeams';
 import { StatusBadge } from '../components/StatusBadge';
+import { CreateTeamModal } from '../components/CreateTeamModal';
 
 export function Dashboard() {
-  const { teams, loading } = useTeams();
+  const { teams, loading, refetch } = useTeams();
+  const [showCreate, setShowCreate] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <div>
@@ -20,10 +25,11 @@ export function Dashboard() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {teams.map((team) => {
             const leader = team.members.find((m) => m.is_leader);
-            const activeTasks: number = 0; // will be populated in later steps
+            const activeTasks: number = 0;
             return (
               <div
                 key={team.id}
+                onClick={() => navigate(`/teams/${team.id}`)}
                 className="group cursor-pointer rounded-xl border border-gray-800 bg-gray-850 p-5 transition-colors hover:border-gray-700 hover:bg-gray-800/80"
               >
                 <div className="mb-3 flex items-start justify-between">
@@ -48,8 +54,10 @@ export function Dashboard() {
             );
           })}
 
-          {/* Create Team Card */}
-          <button className="flex min-h-[160px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-700 p-5 text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-400">
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex min-h-[160px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-700 p-5 text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-400"
+          >
             <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
@@ -57,6 +65,12 @@ export function Dashboard() {
           </button>
         </div>
       )}
+
+      <CreateTeamModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={() => refetch()}
+      />
     </div>
   );
 }

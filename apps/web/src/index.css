@@ -1,3 +1,53 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.agent-running,
+.agent-error {
+  position: relative;
+  overflow: hidden;
+}
+
+.agent-running::before,
+.agent-error::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  animation: shimmer-sweep 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.agent-running::before {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(59, 130, 246, 0.15) 40%,
+    rgba(59, 130, 246, 0.3) 50%,
+    rgba(59, 130, 246, 0.15) 60%,
+    transparent 100%
+  );
+}
+
+.agent-error::before {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(239, 68, 68, 0.12) 40%,
+    rgba(239, 68, 68, 0.25) 50%,
+    rgba(239, 68, 68, 0.12) 60%,
+    transparent 100%
+  );
+}
+
+.agent-running > *,
+.agent-error > * {
+  position: relative;
+  z-index: 1;
+}

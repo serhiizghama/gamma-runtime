@@ -32,6 +32,10 @@ export class AgentsService {
     // Ensure team workspace exists
     this.workspaceService.createTeamWorkspace(team.id);
 
+    // Look up role emoji
+    const role = this.rolesService.findById(dto.roleId);
+    const avatarEmoji = role?.emoji || '🤖';
+
     // Create agent record
     const agent = await this.agentsRepo.create({
       name: dto.name,
@@ -39,6 +43,7 @@ export class AgentsService {
       team_id: dto.teamId,
       specialization: dto.specialization,
       description: dto.description,
+      avatar_emoji: avatarEmoji,
       is_leader: dto.isLeader,
     });
 

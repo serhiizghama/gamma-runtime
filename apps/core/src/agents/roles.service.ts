@@ -7,6 +7,9 @@ export interface RoleManifestEntry {
   name: string;
   category: string;
   fileName: string;
+  emoji?: string;
+  description?: string;
+  vibe?: string;
 }
 
 export interface RoleCategory {
@@ -63,12 +66,44 @@ export class RolesService implements OnModuleInit {
     const manifestPath = join(this.projectRoot, 'data', 'roles-manifest.json');
     try {
       const raw = readFileSync(manifestPath, 'utf-8');
-      this.manifest = JSON.parse(raw);
+      const entries: RoleManifestEntry[] = JSON.parse(raw);
+
+      // Enrich each entry with frontmatter (emoji, description, vibe)
+      for (const entry of entries) {
+        try {
+          const filePath = join(this.communityRolesPath, entry.category, entry.fileName);
+          const content = readFileSync(filePath, 'utf-8');
+          const fm = this.parseFrontmatter(content);
+          if (fm.name) entry.name = fm.name;
+          if (fm.emoji) entry.emoji = fm.emoji;
+          if (fm.description) entry.description = fm.description;
+          if (fm.vibe) entry.vibe = fm.vibe;
+        } catch {
+          // skip — file may not exist
+        }
+      }
+
+      this.manifest = entries;
       this.logger.log(`Loaded ${this.manifest.length} roles from manifest`);
     } catch (err) {
       this.logger.warn(`Could not load roles manifest: ${(err as Error).message}`);
       this.manifest = [];
     }
+  }
+
+  private parseFrontmatter(content: string): Record<string, string> {
+    const match = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!match) return {};
+    const result: Record<string, string> = {};
+    for (const line of match[1].split('\n')) {
+      const idx = line.indexOf(':');
+      if (idx > 0) {
+        const key = line.slice(0, idx).trim();
+        const val = line.slice(idx + 1).trim();
+        result[key] = val;
+      }
+    }
+    return result;
   }
 
   getGrouped(): { categories: RoleCategory[] } {

@@ -62,13 +62,20 @@ export const useStore = create<AppState>((set) => ({
   setAgents: (agents) => set({ agents }),
   selectTeam: (id) => set({ selectedTeamId: id }),
 
-  addNotification: (n) =>
+  addNotification: (n) => {
+    const id = `notif_${++notifCounter}`;
     set((s) => ({
       notifications: [
         ...s.notifications,
-        { ...n, id: `notif_${++notifCounter}`, timestamp: Date.now() },
+        { ...n, id, timestamp: Date.now() },
       ],
-    })),
+    }));
+    setTimeout(() => {
+      set((s) => ({
+        notifications: s.notifications.filter((notif) => notif.id !== id),
+      }));
+    }, 7000);
+  },
 
   dismissNotification: (id) =>
     set((s) => ({

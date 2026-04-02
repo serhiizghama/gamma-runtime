@@ -32,7 +32,10 @@ export class OrchestratorService implements OnModuleInit {
     private readonly workspace: WorkspaceService,
   ) {}
 
-  onModuleInit() {
+  async onModuleInit() {
+    // Reset any agents stuck in 'running' from a previous crash/restart
+    await this.resetStaleAgents();
+
     // Listen for task.assigned events to auto-spawn agents
     this.eventBus.onAll((event: GammaEvent) => {
       if (event.kind === 'task.assigned' && event.taskId && event.agentId) {
@@ -42,6 +45,18 @@ export class OrchestratorService implements OnModuleInit {
       }
     });
     this.logger.log('Orchestrator listening for task.assigned events');
+  }
+
+  private async resetStaleAgents() {
+    const allAgents = await this.agents.findAll();
+    const stale = allAgents.filter((a) => a.status === 'running');
+    for (const agent of stale) {
+      this.logger.warn(`Resetting stale agent "${agent.name}" (${agent.id}) from running → idle`);
+      await this.agents.updateStatus(agent.id, 'idle');
+    }
+    if (stale.length > 0) {
+      this.logger.log(`Reset ${stale.length} stale agent(s) to idle`);
+    }
   }
 
   private async handleTaskAssigned(taskId: string, agentId: string): Promise<void> {
@@ -220,11 +235,18 @@ export class OrchestratorService implements OnModuleInit {
 
       // 8. Save leader response to chat
       if (responseText) {
-        await this.chat.save({
+        const chatMsg = await this.chat.save({
           teamId,
           role: 'assistant',
           content: responseText,
           agentId: leader.id,
+        });
+
+        this.eventBus.emit({
+          kind: 'team.message',
+          teamId,
+          agentId: leader.id,
+          content: chatMsg,
         });
       }
 
@@ -260,6 +282,12 @@ export class OrchestratorService implements OnModuleInit {
       if (leader && leader.status === 'running') {
         await this.agents.updateStatus(leader.id, 'idle');
         this.pool.unregister(leader.id);
+        this.eventBus.emit({
+          kind: 'agent.error',
+          teamId,
+          agentId: leader.id,
+          content: { error: String(err) },
+        });
       }
       throw err;
     } finally {
@@ -473,6 +501,27 @@ export class OrchestratorService implements OnModuleInit {
         });
       }
 
+      // Save completion summary to team chat so it's visible in the chat panel
+      if (responseText) {
+        const summary = responseText.length > 2000
+          ? responseText.slice(0, 2000) + '…'
+          : responseText;
+        const chatMsg = await this.chat.save({
+          teamId: task.team_id,
+          role: 'assistant',
+          content: summary,
+          agentId: agent.id,
+        });
+
+        this.eventBus.emit({
+          kind: 'team.message',
+          teamId: task.team_id,
+          agentId: agent.id,
+          taskId: task.id,
+          content: chatMsg,
+        });
+      }
+
       await this.agents.updateStatus(agent.id, 'idle');
 
       this.eventBus.emit({
@@ -507,6 +556,14 @@ export class OrchestratorService implements OnModuleInit {
       );
       this.pool.unregister(agent.id);
       await this.agents.updateStatus(agent.id, 'error');
+
+      this.eventBus.emit({
+        kind: 'agent.error',
+        teamId: task.team_id,
+        agentId: agent.id,
+        taskId: task.id,
+        content: { error: String(err) },
+      });
 
       // Fail the task on error/timeout
       const currentTask = await this.tasks.findById(task.id);
