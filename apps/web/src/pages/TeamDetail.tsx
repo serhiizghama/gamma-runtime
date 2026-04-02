@@ -1,10 +1,12 @@
 import { useState, useCallback, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTeamDetail } from '../hooks/useTeamDetail';
 import { useTeamTasks, type Task } from '../hooks/useTeamTasks';
 import { useTeamChat } from '../hooks/useTeamChat';
 import { useTeamSse, type SseEvent } from '../hooks/useTeamSse';
 import { StatusBadge } from '../components/StatusBadge';
+import { del } from '../api/client';
+import { useStore } from '../store/useStore';
 import { TeamMap } from '../components/TeamMap';
 import { ChatPanel } from '../components/ChatPanel';
 import { TaskBoard } from '../components/TaskBoard';
@@ -19,6 +21,8 @@ type Tab = 'tasks' | 'app';
 
 export function TeamDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const addNotification = useStore((s) => s.addNotification);
   const { team, loading, refetch, updateMember } = useTeamDetail(id);
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTeamTasks(id);
   const { messages, loading: chatLoading, sending, sendMessage, appendMessage, refetch: refetchChat } = useTeamChat(id);
@@ -29,6 +33,8 @@ export function TeamDetail() {
   const [activeTab, setActiveTab] = useState<Tab>('tasks');
   const [leftWidth, setLeftWidth] = useState(300);
   const [rightWidth, setRightWidth] = useState(400);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Handle SSE events
@@ -110,15 +116,23 @@ export function TeamDetail() {
           <h1 className="text-xl font-bold text-white">{team.name}</h1>
           <StatusBadge status={team.status} />
         </div>
-        <button
-          onClick={() => setShowAddAgent(true)}
-          className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          Add Agent
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAddAgent(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Add Agent
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-red-900/30 px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-900/50"
+          >
+            Delete Team
+          </button>
+        </div>
       </div>
 
       {/* Three-panel layout */}
@@ -215,6 +229,48 @@ export function TeamDetail() {
           onClose={() => setSelectedAgent(null)}
           onAgentUpdate={refetch}
         />
+      )}
+
+      {/* Delete Team Confirmation */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-sm rounded-xl border border-gray-700 bg-gray-900 p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-white">Delete {team.name}?</h3>
+            <ul className="mt-3 space-y-1 text-sm text-gray-400">
+              <li>Kill all running agents</li>
+              <li>Archive all agents in the team</li>
+              <li>Fail all pending tasks</li>
+              <li>Archive the team</li>
+            </ul>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="rounded-lg bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    await del(`/teams/${team.id}`);
+                    addNotification({ type: 'success', message: `${team.name} deleted` });
+                    navigate('/');
+                  } catch (err) {
+                    addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Delete failed' });
+                  } finally {
+                    setDeleting(false);
+                    setShowDeleteConfirm(false);
+                  }
+                }}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete Team'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

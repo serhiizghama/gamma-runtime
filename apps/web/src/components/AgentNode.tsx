@@ -1,12 +1,30 @@
+import { useState, useEffect } from 'react';
 import type { Agent } from '../store/useStore';
 
-function contextColor(tokens: number, window: number): string {
-  if (window === 0) return 'bg-gray-600';
-  const pct = (tokens / window) * 100;
-  if (pct > 95) return 'bg-red-500';
-  if (pct > 80) return 'bg-orange-500';
-  if (pct > 50) return 'bg-yellow-500';
-  return 'bg-green-500';
+function useElapsed(since: number | null, active: boolean): string {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!active || !since) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active, since]);
+
+  if (!since) return '';
+  const diff = Math.max(0, Math.floor((now - since) / 1000));
+  if (diff < 60) return `${diff}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`;
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
+function timeAgo(ts: number | null): string {
+  if (!ts) return 'Never active';
+  const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 export function formatRoleName(roleId: string): string {
@@ -24,9 +42,8 @@ interface Props {
 }
 
 export function AgentNode({ agent, onClick }: Props) {
-  const pct = agent.context_window > 0
-    ? Math.round((agent.context_tokens / agent.context_window) * 100)
-    : 0;
+  const isRunning = agent.status === 'running';
+  const elapsed = useElapsed(agent.last_active_at, isRunning);
 
   const statusClass =
     agent.status === 'running'
@@ -57,14 +74,28 @@ export function AgentNode({ agent, onClick }: Props) {
           />
         </div>
         <div className="truncate text-xs text-gray-500">{formatRoleName(agent.role_id)}</div>
-        <div className="mt-1 flex items-center gap-2">
-          <div className="h-1 flex-1 rounded-full bg-gray-700">
-            <div
-              className={`h-1 rounded-full ${contextColor(agent.context_tokens, agent.context_window)}`}
-              style={{ width: `${Math.min(pct, 100)}%` }}
-            />
-          </div>
-          <span className="shrink-0 text-[10px] text-gray-500">{pct}%</span>
+        <div className="mt-1 flex items-center gap-1.5 text-[10px]">
+          {isRunning ? (
+            <>
+              <span className="text-blue-400">Running</span>
+              <span className="text-gray-500">{elapsed}</span>
+              {agent.total_turns > 0 && (
+                <span className="text-gray-600">· {agent.total_turns} turns</span>
+              )}
+            </>
+          ) : agent.status === 'error' ? (
+            <>
+              <span className="text-red-400">Error</span>
+              <span className="text-gray-500">{timeAgo(agent.last_active_at)}</span>
+            </>
+          ) : (
+            <>
+              <span className="text-gray-500">{timeAgo(agent.last_active_at)}</span>
+              {agent.total_turns > 0 && (
+                <span className="text-gray-600">· {agent.total_turns} turns</span>
+              )}
+            </>
+          )}
         </div>
       </div>
     </button>

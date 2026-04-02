@@ -165,9 +165,31 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
           </span>
         </div>
         {agent.session_id && (
-          <div className="mt-1 flex justify-between">
+          <div className="mt-1 flex items-center justify-between">
             <span>Session</span>
-            <span className="font-mono text-gray-400">{agent.session_id.slice(0, 12)}...</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-gray-400">{agent.session_id.slice(0, 12)}...</span>
+              <button
+                title="Copy: cd TEAM_WORKSPACE && claude --resume SESSION_ID"
+                onClick={async () => {
+                  // Agents run with cwd = team workspace (not agent workspace)
+                  // workspace_path is agent-level, so derive team path from it
+                  const teamPath = agent.workspace_path
+                    ? agent.workspace_path.replace(/\/agents\/agent_[^/]+$/, '')
+                    : '';
+                  const cmd = teamPath
+                    ? `cd ${teamPath} && claude --resume ${agent.session_id}`
+                    : `claude --resume ${agent.session_id}`;
+                  await navigator.clipboard.writeText(cmd);
+                  addNotification({ type: 'success', message: 'Copied to clipboard' });
+                }}
+                className="rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-300"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
       </div>

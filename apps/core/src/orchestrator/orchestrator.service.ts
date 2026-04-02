@@ -1,5 +1,6 @@
 import { Injectable, Logger, ConflictException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ClaudeCliAdapter } from '../claude/claude-cli.adapter';
+import type { UsageData } from '../claude/types';
 import { SessionPoolService } from '../claude/session-pool.service';
 import { AgentsRepository } from '../repositories/agents.repository';
 import { TasksRepository } from '../repositories/tasks.repository';
@@ -133,7 +134,7 @@ export class OrchestratorService implements OnModuleInit {
       // 6. Run leader CLI session
       let responseText = '';
       let lastSessionId = leader.session_id;
-      let lastUsage: { input_tokens: number; output_tokens: number } | undefined;
+      let lastUsage: UsageData | undefined;
       let lastNumTurns = 0;
 
       for await (const chunk of this.claude.run({
@@ -224,7 +225,10 @@ export class OrchestratorService implements OnModuleInit {
       }
 
       const contextTokens = lastUsage
-        ? lastUsage.input_tokens + lastUsage.output_tokens
+        ? (lastUsage.input_tokens ?? 0)
+          + (lastUsage.cache_read_input_tokens ?? 0)
+          + (lastUsage.cache_creation_input_tokens ?? 0)
+          + (lastUsage.output_tokens ?? 0)
         : 0;
       await this.agents.updateUsage(leader.id, {
         context_tokens: contextTokens,
@@ -355,7 +359,7 @@ export class OrchestratorService implements OnModuleInit {
 
       let responseText = '';
       let lastSessionId = agent.session_id;
-      let lastUsage: { input_tokens: number; output_tokens: number } | undefined;
+      let lastUsage: UsageData | undefined;
       let lastNumTurns = 0;
       let taskUpdatedByAgent = false;
 
@@ -461,7 +465,10 @@ export class OrchestratorService implements OnModuleInit {
       }
 
       const contextTokens = lastUsage
-        ? lastUsage.input_tokens + lastUsage.output_tokens
+        ? (lastUsage.input_tokens ?? 0)
+          + (lastUsage.cache_read_input_tokens ?? 0)
+          + (lastUsage.cache_creation_input_tokens ?? 0)
+          + (lastUsage.output_tokens ?? 0)
         : 0;
       await this.agents.updateUsage(agent.id, {
         context_tokens: contextTokens,
