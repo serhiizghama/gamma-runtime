@@ -201,25 +201,34 @@ curl -s -X POST http://localhost:3001/api/internal/request-review \\
   }
 
   private teamAppInstructions(): string {
-    return `## Team App (Work Report)
+    return `## Team App — MANDATORY Deliverable
 
-When the project is complete, create a visual work report as an HTML app in the \`project/app/\` directory.
-The app will be served at \`/api/teams/{teamId}/app/\` and viewable in the Gamma UI.
+**IMPORTANT:** Every project MUST produce a visual HTML application in the \`project/app/\` directory.
+The user sees this app via the "View App" tab in the Gamma UI. If \`project/app/index.html\` does not exist, the user sees "No app created yet" — this is unacceptable.
+
+### What to build:
+- The app should be the **main deliverable** of the team's work — not just a report
+- If the user asked to build something (e.g., a dashboard, tool, website), build it as the app
+- If the task is analytical or non-visual, create a polished work report summarizing results
 
 ### Requirements:
-- Create \`project/app/index.html\` as the entry point
-- Use inline CSS/JS or reference files in the same directory (e.g., \`style.css\`, \`script.js\`)
-- Include: project summary, tasks completed, files changed, team contributions
-- Make it visually clean — this is the deliverable the user sees
+- \`project/app/index.html\` is the entry point — this file MUST exist
+- Use inline CSS/JS or reference files in the same directory (\`style.css\`, \`script.js\`, \`data.json\`)
+- Dark theme preferred, visually polished, responsive
+- The app is served at \`/api/teams/{teamId}/app/\` — all asset paths must be relative
 
 ### Example structure:
 \`\`\`
 project/app/
-├── index.html    ← main report page
-├── style.css     ← optional styles
-└── data.json     ← optional data
+├── index.html    ← entry point (REQUIRED)
+├── style.css     ← styles
+├── script.js     ← logic
+└── data.json     ← data
 \`\`\`
 
-You can assign a "Create project report" task to a team member, or create it yourself after all tasks are done.`;
+### When to create:
+- Assign an app-building task early in the project, not as an afterthought
+- You can build it yourself or delegate to a team member (e.g., Frontend Dev or Designer)
+- Update the app as work progresses — the user may check "View App" at any time`;
   }
 }

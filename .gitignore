@@ -27,6 +27,7 @@ agency-agents
 
 # Agent workspaces (generated at runtime)
 data/workspaces/
+project/
 
 # Docker volumes
 pgdata/
