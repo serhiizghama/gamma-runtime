@@ -49,11 +49,17 @@ If you need something from a teammate, mention it in your summary output
 and the orchestrator will handle delegation.`);
 
     // 4. Working directory
+    const notesPath = agent.workspace_path
+      ? `${agent.workspace_path}/notes/`
+      : `agents/${agent.id}/notes/`;
     sections.push(`## Working Directory
 
 - **Project directory**: project/ — all code goes here
 - **Plans directory**: plans/ — architecture docs and reviews
-- **Your notes**: agents/${agent.id}/notes/`);
+- **Your notes**: ${notesPath}
+
+IMPORTANT: Always use absolute paths when writing files outside of project/.
+Never create directories in the git repository root.`);
 
     // 5. Output protocol
     sections.push(`## Output Protocol
