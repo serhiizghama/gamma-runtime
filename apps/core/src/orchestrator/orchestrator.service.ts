@@ -61,6 +61,9 @@ export class OrchestratorService implements OnModuleInit {
   }
 
   private async handleTaskAssigned(taskId: string, agentId: string): Promise<void> {
+    // Don't spawn new agents during emergency stop
+    if (this.pool.aborting) return;
+
     const task = await this.tasks.findById(taskId);
     if (!task) return;
 
@@ -219,6 +222,13 @@ export class OrchestratorService implements OnModuleInit {
 
       // 7. Update leader session state
       this.pool.unregister(leader.id);
+
+      // If aborted by emergency stop, skip all post-completion logic
+      // (DB statuses are already reset by the emergency-stop handler)
+      if (this.pool.aborting) {
+        this.logger.warn(`Leader ${leader.name} aborted by emergency stop, skipping post-completion`);
+        return;
+      }
 
       if (lastSessionId) {
         await this.agents.updateSessionId(leader.id, lastSessionId);
@@ -459,6 +469,12 @@ export class OrchestratorService implements OnModuleInit {
 
       // Agent run completed
       this.pool.unregister(agent.id);
+
+      // If aborted by emergency stop, skip all post-completion logic
+      if (this.pool.aborting) {
+        this.logger.warn(`Agent ${agent.name} aborted by emergency stop, skipping post-completion`);
+        return;
+      }
 
       if (lastSessionId) {
         await this.agents.updateSessionId(agent.id, lastSessionId);

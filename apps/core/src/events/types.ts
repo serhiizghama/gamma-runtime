@@ -28,4 +28,5 @@ export type EventKind =
   | 'message.broadcast'
   | 'project.completed'
   | 'agent.status_report'
-  | 'agent.review_request';
+  | 'agent.review_request'
+  | 'system.emergency_stop';

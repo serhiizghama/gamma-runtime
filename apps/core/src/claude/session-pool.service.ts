@@ -9,10 +9,16 @@ export class SessionPoolService implements OnApplicationShutdown {
   private queue: Array<{ resolve: () => void }> = [];
   private processes: Map<string, ChildProcess> = new Map();
   private readonly maxConcurrent: number;
+  private _aborting = false;
 
   constructor(private readonly cliAdapter: ClaudeCliAdapter) {
     this.maxConcurrent = parseInt(process.env.MAX_CONCURRENT_AGENTS ?? '2', 10);
     this.logger.log(`Session pool initialized: maxConcurrent=${this.maxConcurrent}`);
+  }
+
+  /** True while an emergency stop is in progress */
+  get aborting(): boolean {
+    return this._aborting;
   }
 
   async acquire(): Promise<void> {
@@ -64,9 +70,14 @@ export class SessionPoolService implements OnApplicationShutdown {
     };
   }
 
-  async abortAll(): Promise<void> {
+  /** Returns IDs of all agents that were running at abort time */
+  async abortAll(): Promise<string[]> {
+    this._aborting = true;
     const agentIds = Array.from(this.processes.keys());
-    if (agentIds.length === 0) return;
+    if (agentIds.length === 0) {
+      this._aborting = false;
+      return [];
+    }
 
     this.logger.warn(`Aborting ${agentIds.length} running agent(s)`);
 
@@ -110,8 +121,10 @@ export class SessionPoolService implements OnApplicationShutdown {
     }
     this.queue = [];
     this.running = 0;
+    this._aborting = false;
 
     this.logger.log('All agents aborted');
+    return agentIds;
   }
 
   async onApplicationShutdown(): Promise<void> {

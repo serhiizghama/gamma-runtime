@@ -72,9 +72,16 @@ export function TeamDetail() {
           if (msg) appendMessage(msg);
           break;
         }
+
+        case 'system.emergency_stop':
+          // All agents were killed — refresh everything
+          refetch();
+          refetchTasks();
+          refetchChat();
+          break;
       }
     },
-    [updateMember, appendMessage, refetchChat, refetchTasks],
+    [updateMember, appendMessage, refetch, refetchChat, refetchTasks],
   );
 
   useTeamSse(id, handleSseEvent);
