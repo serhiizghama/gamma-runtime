@@ -10,9 +10,10 @@ import { TasksRepository } from '../repositories/tasks.repository';
 import { DatabaseModule } from '../database/database.module';
 import { TeamsModule } from '../teams/teams.module';
 import { ClaudeModule } from '../claude/claude.module';
+import { EventsModule } from '../events/events.module';
 
 @Module({
-  imports: [DatabaseModule, forwardRef(() => TeamsModule), ClaudeModule],
+  imports: [DatabaseModule, forwardRef(() => TeamsModule), ClaudeModule, EventsModule],
   controllers: [AgentsController],
   providers: [
     AgentsService,

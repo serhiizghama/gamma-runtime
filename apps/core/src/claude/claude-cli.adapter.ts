@@ -15,7 +15,6 @@ export class ClaudeCliAdapter {
     const {
       message,
       cwd,
-      systemPrompt,
       sessionId,
       timeoutMs = DEFAULT_TIMEOUT_MS,
       maxTurns = DEFAULT_MAX_TURNS,
@@ -37,16 +36,11 @@ export class ClaudeCliAdapter {
     args.push('--verbose');
     args.push('--max-turns', String(maxTurns));
 
-    // System prompt (role + team context)
-    if (systemPrompt) {
-      args.push('--system-prompt', systemPrompt);
-    }
-
     this.logger.log(`Spawning Claude CLI: session=${sessionId ?? 'new'}, cwd=${cwd}`);
     this.logger.debug(`Args: claude ${args.map(a => a.length > 100 ? a.slice(0, 100) + '...' : a).join(' ')}`);
 
     const proc = spawn('claude', args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
       cwd,
     });

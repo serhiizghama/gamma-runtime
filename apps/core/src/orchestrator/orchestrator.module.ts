@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { OrchestratorService } from './orchestrator.service';
-import { PromptBuilder } from './prompt-builder';
 import { ClaudeModule } from '../claude/claude.module';
 import { AgentsModule } from '../agents/agents.module';
 import { ChatModule } from '../chat/chat.module';
@@ -16,7 +15,6 @@ import { AgentMessagesRepository } from '../repositories/agent-messages.reposito
   imports: [ClaudeModule, AgentsModule, ChatModule, EventsModule, DatabaseModule],
   providers: [
     OrchestratorService,
-    PromptBuilder,
     AgentsRepository,
     TeamsRepository,
     TasksRepository,

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { AgentsRepository } from '../repositories/agents.repository';
 import { TeamsRepository } from '../repositories/teams.repository';
 import { TasksRepository } from '../repositories/tasks.repository';
@@ -9,6 +10,7 @@ import { RolesService } from './roles.service';
 import { WorkspaceService } from './workspace.service';
 import { ClaudeMdGenerator } from './claude-md.generator';
 import { SessionPoolService } from '../claude/session-pool.service';
+import { EventBusService } from '../events/event-bus.service';
 
 @Injectable()
 export class AgentsService {
@@ -23,6 +25,7 @@ export class AgentsService {
     private readonly claudeMdGenerator: ClaudeMdGenerator,
     @Inject(forwardRef(() => SessionPoolService))
     private readonly sessionPool: SessionPoolService,
+    private readonly eventBus: EventBusService,
   ) {}
 
   async create(dto: CreateAgentDto): Promise<Agent> {
@@ -133,11 +136,13 @@ export class AgentsService {
     return this.findById(id);
   }
 
+  // TODO: Add POST /api/internal/regenerate-team-config endpoint so leader can trigger this via curl
   async regenerateTeamClaudeMd(teamId: string): Promise<void> {
     const team = await this.teamsRepo.findById(teamId);
     if (!team) return;
 
     const members = await this.agentsRepo.findByTeam(teamId);
+    const teamPath = this.workspaceService.getTeamPath(teamId);
 
     for (const agent of members) {
       const rolePrompt = await this.rolesService.getRolePrompt(agent.role_id);
@@ -147,8 +152,32 @@ export class AgentsService {
         teamMembers: members,
         rolePrompt,
         isLeader: agent.is_leader,
+        teamPath,
       });
       this.workspaceService.writeClaudeMd(teamId, agent.id, content);
+
+      // Hash the generated CLAUDE.md content
+      const newHash = createHash('sha256').update(content).digest('hex').slice(0, 16);
+      const oldHash = agent.claude_md_hash;
+
+      await this.agentsRepo.updateClaudeMdHash(agent.id, newHash);
+
+      // If hash changed and agent has an active session — notify UI
+      if (oldHash && oldHash !== newHash && agent.session_id) {
+        this.eventBus.emit({
+          kind: 'agent.config_changed',
+          teamId,
+          agentId: agent.id,
+          content: {
+            oldHash,
+            newHash,
+            message: 'CLAUDE.md updated — restart session to apply changes',
+          },
+        });
+        this.logger.warn(
+          `Agent ${agent.name} has stale session: CLAUDE.md hash changed ${oldHash} → ${newHash}`,
+        );
+      }
     }
 
     this.logger.log(`Regenerated CLAUDE.md for ${members.length} agents in team ${teamId}`);

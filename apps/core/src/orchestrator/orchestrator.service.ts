@@ -8,7 +8,6 @@ import { TraceRepository } from '../repositories/trace.repository';
 import { AgentMessagesRepository } from '../repositories/agent-messages.repository';
 import { EventBusService } from '../events/event-bus.service';
 import { ChatService } from '../chat/chat.service';
-import { PromptBuilder } from './prompt-builder';
 import { WorkspaceService } from '../agents/workspace.service';
 import { TeamsRepository } from '../repositories/teams.repository';
 import { Agent, Task } from '../common/types';
@@ -29,7 +28,6 @@ export class OrchestratorService implements OnModuleInit {
     private readonly messages: AgentMessagesRepository,
     private readonly eventBus: EventBusService,
     private readonly chat: ChatService,
-    private readonly promptBuilder: PromptBuilder,
     private readonly workspace: WorkspaceService,
   ) {}
 
@@ -105,15 +103,8 @@ export class OrchestratorService implements OnModuleInit {
       const leader = members.find((a) => a.is_leader);
       if (!leader) throw new NotFoundException('No leader found in team');
 
-      // 4. Build system prompt (includes gamma-tools docs)
-      const systemPrompt = await this.promptBuilder.buildLeaderPrompt(
-        leader,
-        team,
-        members,
-      );
-
-      // 5. Get project directory (shared workspace)
-      const projectDir = this.workspace.getTeamPath(teamId);
+      // 4. Get agent workspace (where CLAUDE.md lives)
+      const agentDir = this.workspace.getAgentPath(teamId, leader.id);
 
       this.logger.log(
         `Starting leader session for team ${teamId}: ${leader.name}`,
@@ -142,9 +133,8 @@ export class OrchestratorService implements OnModuleInit {
 
       for await (const chunk of this.claude.run({
         message,
-        systemPrompt,
         sessionId: leader.session_id ?? undefined,
-        cwd: projectDir,
+        cwd: agentDir,
         agentId: leader.id,
       })) {
         // Register process with pool on first system chunk
@@ -320,19 +310,10 @@ export class OrchestratorService implements OnModuleInit {
       return;
     }
 
-    const members = await this.agents.findByTeam(task.team_id);
-
-    const systemPrompt = await this.promptBuilder.buildAgentPrompt(
-      agent,
-      team,
-      members,
-      task,
-    );
-
-    const projectDir = this.workspace.getTeamPath(task.team_id);
+    const agentDir = this.workspace.getAgentPath(task.team_id, agent.id);
 
     // Run in background — fire and forget with error handler
-    this.runAgentInBackground(agent, task, systemPrompt, projectDir).catch((err) => {
+    this.runAgentInBackground(agent, task, agentDir).catch((err) => {
       this.logger.error(`Background agent spawn failed for task ${task.id}: ${err}`);
     });
   }
@@ -340,8 +321,7 @@ export class OrchestratorService implements OnModuleInit {
   private async runAgentInBackground(
     agent: Agent,
     task: Task,
-    systemPrompt: string,
-    projectDir: string,
+    agentDir: string,
   ): Promise<void> {
     try {
       await this.pool.acquire();
@@ -374,10 +354,9 @@ export class OrchestratorService implements OnModuleInit {
       let taskUpdatedByAgent = false;
 
       for await (const chunk of this.claude.run({
-        message: `Your task: ${task.title}\n\n${task.description || 'No additional description.'}`,
-        systemPrompt,
+        message: `Task ${task.id}: ${task.title}\n\n${task.description || 'No additional description.'}`,
         sessionId: agent.session_id ?? undefined,
-        cwd: projectDir,
+        cwd: agentDir,
         agentId: agent.id,
       })) {
         if (chunk.type === 'system' && chunk.subtype === '_process_started') {

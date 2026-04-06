@@ -5,7 +5,7 @@ import { useTeamTasks, type Task } from '../hooks/useTeamTasks';
 import { useTeamChat } from '../hooks/useTeamChat';
 import { useTeamSse, type SseEvent } from '../hooks/useTeamSse';
 import { StatusBadge } from '../components/StatusBadge';
-import { del } from '../api/client';
+import { del, post } from '../api/client';
 import { useStore } from '../store/useStore';
 import { TeamMap } from '../components/TeamMap';
 import { ChatPanel } from '../components/ChatPanel';
@@ -110,6 +110,16 @@ export function TeamDetail() {
   const leader = team.members.find((m) => m.is_leader);
   const members = team.members.filter((m) => !m.is_leader);
 
+  const handleResetSession = async (agent: Agent) => {
+    try {
+      await post(`/agents/${agent.id}/reset-session`, {});
+      addNotification({ type: 'success', message: `Session reset for ${agent.name}` });
+      refetch();
+    } catch (err) {
+      addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Reset failed' });
+    }
+  };
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -149,7 +159,7 @@ export function TeamDetail() {
           className="shrink-0 overflow-y-auto rounded-xl border border-gray-800 bg-gray-900/50 p-4"
           style={{ width: leftWidth }}
         >
-          <TeamMap leader={leader} members={members} onAgentClick={(agent) => setSelectedAgent((prev) => prev?.id === agent.id ? null : agent)} />
+          <TeamMap leader={leader} members={members} onAgentClick={(agent) => setSelectedAgent((prev) => prev?.id === agent.id ? null : agent)} onResetSession={handleResetSession} />
         </div>
 
         <ResizeHandle

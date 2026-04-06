@@ -123,6 +123,13 @@ export class AgentsRepository {
     return rows[0] ? this.mapAgent(rows[0]) : null;
   }
 
+  async updateClaudeMdHash(id: string, hash: string): Promise<void> {
+    await this.db.query(
+      'UPDATE agents SET claude_md_hash = $1, updated_at = $2 WHERE id = $3',
+      [hash, Date.now(), id],
+    );
+  }
+
   async archiveByTeam(teamId: string): Promise<void> {
     await this.db.query(
       `UPDATE agents SET status = 'archived', updated_at = $1 WHERE team_id = $2`,

@@ -36,7 +36,6 @@ export interface RunResult {
 export interface RunOptions {
   message: string;
   cwd: string;
-  systemPrompt?: string;
   sessionId?: string;
   timeoutMs?: number;
   maxTurns?: number;

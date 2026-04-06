@@ -29,4 +29,5 @@ export type EventKind =
   | 'project.completed'
   | 'agent.status_report'
   | 'agent.review_request'
+  | 'agent.config_changed'
   | 'system.emergency_stop';

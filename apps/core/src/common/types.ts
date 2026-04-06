@@ -23,6 +23,7 @@ export interface Agent {
   is_leader: boolean;
   session_id: string | null;
   workspace_path: string | null;
+  claude_md_hash: string | null;
   context_tokens: number;
   context_window: number;
   total_turns: number;

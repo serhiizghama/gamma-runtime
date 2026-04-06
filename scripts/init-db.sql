@@ -26,6 +26,7 @@ CREATE TABLE agents (
   is_leader       INTEGER DEFAULT 0,
   session_id      TEXT,
   workspace_path  TEXT,
+  claude_md_hash  TEXT,
   context_tokens  INTEGER DEFAULT 0,
   context_window  INTEGER DEFAULT 1000000,
   total_turns     INTEGER DEFAULT 0,
