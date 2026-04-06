@@ -10,6 +10,7 @@ export class SessionPoolService implements OnApplicationShutdown {
   private processes: Map<string, ChildProcess> = new Map();
   private readonly maxConcurrent: number;
   private _aborting = false;
+  private _killedAgents = new Set<string>();
 
   constructor(private readonly cliAdapter: ClaudeCliAdapter) {
     this.maxConcurrent = parseInt(process.env.MAX_CONCURRENT_AGENTS ?? '2', 10);
@@ -62,6 +63,16 @@ export class SessionPoolService implements OnApplicationShutdown {
     return this.processes.get(agentId);
   }
 
+  /** Check if a specific agent was killed by emergency stop */
+  wasKilled(agentId: string): boolean {
+    return this._killedAgents.has(agentId);
+  }
+
+  /** Clear killed flag for an agent (after orchestrator handled it) */
+  clearKilled(agentId: string): void {
+    this._killedAgents.delete(agentId);
+  }
+
   get stats(): { running: number; queued: number; maxConcurrent: number } {
     return {
       running: this.running,
@@ -80,6 +91,11 @@ export class SessionPoolService implements OnApplicationShutdown {
     }
 
     this.logger.warn(`Aborting ${agentIds.length} running agent(s)`);
+
+    // Remember which agents were killed (survives after _aborting resets)
+    for (const id of agentIds) {
+      this._killedAgents.add(id);
+    }
 
     // SIGTERM all process groups
     for (const [agentId, proc] of this.processes) {

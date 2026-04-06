@@ -215,7 +215,8 @@ export class OrchestratorService implements OnModuleInit {
 
       // If aborted by emergency stop, skip all post-completion logic
       // (DB statuses are already reset by the emergency-stop handler)
-      if (this.pool.aborting) {
+      if (this.pool.aborting || this.pool.wasKilled(leader.id)) {
+        this.pool.clearKilled(leader.id);
         this.logger.warn(`Leader ${leader.name} aborted by emergency stop, skipping post-completion`);
         return;
       }
@@ -450,7 +451,8 @@ export class OrchestratorService implements OnModuleInit {
       this.pool.unregister(agent.id);
 
       // If aborted by emergency stop, skip all post-completion logic
-      if (this.pool.aborting) {
+      if (this.pool.aborting || this.pool.wasKilled(agent.id)) {
+        this.pool.clearKilled(agent.id);
         this.logger.warn(`Agent ${agent.name} aborted by emergency stop, skipping post-completion`);
         return;
       }
