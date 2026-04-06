@@ -25,6 +25,7 @@ export class WorkspaceService {
     const dirs = [
       join(teamPath, 'project'),
       join(teamPath, 'plans'),
+      join(teamPath, 'shared'),
     ];
     for (const dir of dirs) {
       mkdirSync(dir, { recursive: true });

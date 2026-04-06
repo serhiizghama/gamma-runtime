@@ -25,7 +25,7 @@ export function TeamDetail() {
   const addNotification = useStore((s) => s.addNotification);
   const { team, loading, refetch, updateMember } = useTeamDetail(id);
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTeamTasks(id);
-  const { messages, loading: chatLoading, sending, sendMessage, appendMessage, refetch: refetchChat } = useTeamChat(id);
+  const { messages, loading: chatLoading, sending, hasMore, loadingMore, sendMessage, appendMessage, loadMore, refetch: refetchChat } = useTeamChat(id);
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -175,7 +175,10 @@ export function TeamDetail() {
             loading={chatLoading}
             sending={sending}
             members={team.members}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
             onSend={sendMessage}
+            onLoadMore={loadMore}
           />
         </div>
 

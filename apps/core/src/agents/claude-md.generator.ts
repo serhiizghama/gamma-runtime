@@ -54,6 +54,7 @@ and the orchestrator will handle delegation.`);
 
 - **Project directory**: ${teamPath}/project/ — all code goes here
 - **Plans directory**: ${teamPath}/plans/ — architecture docs and reviews
+- **Shared directory**: ${teamPath}/shared/ — team shared knowledge, discoveries, and reusable insights
 - **Your notes**: ${agent.workspace_path || `${teamPath}/agents/${agent.id}`}/notes/
 
 IMPORTANT: All paths above are absolute. Use them as-is.
@@ -338,6 +339,7 @@ project/app/
       testing: 'qa, generic',
       'project-management': 'planning, review, generic',
       product: 'planning, generic',
+      research: 'generic',
     };
     return mapping[category] ?? 'generic';
   }

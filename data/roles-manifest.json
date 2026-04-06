@@ -874,5 +874,23 @@
     "name": "Workflow Optimizer Agent Personality",
     "category": "testing",
     "fileName": "testing-workflow-optimizer.md"
+  },
+  {
+    "id": "research/research-director",
+    "name": "Research Director",
+    "category": "research",
+    "fileName": "research-director.md"
+  },
+  {
+    "id": "research/research-analyst",
+    "name": "Research Analyst",
+    "category": "research",
+    "fileName": "research-analyst.md"
+  },
+  {
+    "id": "research/research-synthesizer",
+    "name": "Research Synthesizer",
+    "category": "research",
+    "fileName": "research-synthesizer.md"
   }
 ]

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { get, post, ApiError } from '../api/client';
 import { useStore } from '../store/useStore';
 
@@ -11,18 +11,26 @@ export interface ChatMessage {
   created_at: number;
 }
 
+const PAGE_SIZE = 20;
+
 export function useTeamChat(teamId: string | undefined) {
   const addNotification = useStore((s) => s.addNotification);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const initialLoadDone = useRef(false);
 
-  const fetchHistory = useCallback(async () => {
+  // Load latest messages (initial load)
+  const fetchLatest = useCallback(async () => {
     if (!teamId) return;
     try {
       setLoading(true);
-      const data = await get<ChatMessage[]>(`/teams/${teamId}/chat`);
+      const data = await get<ChatMessage[]>(`/teams/${teamId}/chat?limit=${PAGE_SIZE}`);
       setMessages(data);
+      setHasMore(data.length >= PAGE_SIZE);
+      initialLoadDone.current = true;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to fetch chat';
       addNotification({ type: 'error', message });
@@ -32,8 +40,35 @@ export function useTeamChat(teamId: string | undefined) {
   }, [teamId, addNotification]);
 
   useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
+    initialLoadDone.current = false;
+    fetchLatest();
+  }, [fetchLatest]);
+
+  // Load older messages (infinite scroll up)
+  const loadMore = useCallback(async () => {
+    if (!teamId || loadingMore || !hasMore || messages.length === 0) return;
+    const oldest = messages[0];
+    try {
+      setLoadingMore(true);
+      const data = await get<ChatMessage[]>(
+        `/teams/${teamId}/chat?limit=${PAGE_SIZE}&before=${oldest.created_at}`,
+      );
+      if (data.length < PAGE_SIZE) setHasMore(false);
+      if (data.length > 0) {
+        setMessages((prev) => {
+          // Deduplicate
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMsgs = data.filter((m) => !existingIds.has(m.id));
+          return [...newMsgs, ...prev];
+        });
+      }
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load more messages';
+      addNotification({ type: 'error', message });
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [teamId, messages, loadingMore, hasMore, addNotification]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -68,5 +103,15 @@ export function useTeamChat(teamId: string | undefined) {
     });
   }, []);
 
-  return { messages, loading, sending, sendMessage, appendMessage, refetch: fetchHistory };
+  return {
+    messages,
+    loading,
+    sending,
+    hasMore,
+    loadingMore,
+    sendMessage,
+    appendMessage,
+    loadMore,
+    refetch: fetchLatest,
+  };
 }

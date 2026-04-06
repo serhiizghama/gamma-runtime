@@ -28,11 +28,13 @@ const LEADERSHIP_ROLE_IDS = [
   'specialized/agents-orchestrator',
   'specialized/specialized-workflow-architect',
   'job-hunting/job-hunting-squad-leader',
+  'research/research-director',
 ];
 
 const CATEGORY_NAMES: Record<string, string> = {
   academic: 'Academic',
   design: 'Design',
+  research: 'Research',
   engineering: 'Engineering',
   'game-development': 'Game Development',
   'job-hunting': 'Job Hunting',
