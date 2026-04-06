@@ -72,12 +72,35 @@ function renderMarkdown(text: string): string {
   return html;
 }
 
+const AGENT_COLORS = [
+  '#2dd4bf99', // teal
+  '#818cf899', // indigo
+  '#f59e0b99', // amber
+  '#fb718599', // rose
+  '#34d39999', // emerald
+  '#a78bfa99', // violet
+  '#38bdf899', // sky
+  '#fb923c99', // orange
+];
+
+function getAgentColor(agentId: string): string {
+  let hash = 0;
+  for (let i = 0; i < agentId.length; i++) {
+    hash = ((hash << 5) - hash + agentId.charCodeAt(i)) | 0;
+  }
+  return AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length];
+}
+
 interface Props {
   message: ChatMsg;
   agentName?: string;
+  isGrouped?: boolean;
+  agentColor?: string;
 }
 
-export function ChatMessage({ message, agentName }: Props) {
+export { getAgentColor };
+
+export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props) {
   if (message.role === 'system') {
     return (
       <div className="mx-auto max-w-md rounded-lg bg-gray-800/50 px-4 py-2 text-center text-xs text-gray-500">
@@ -91,13 +114,14 @@ export function ChatMessage({ message, agentName }: Props) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[95%] rounded-xl px-4 py-2.5 ${
+        className={`rounded-xl px-4 py-2.5 ${
           isUser
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-800 text-gray-200'
+            ? 'max-w-[80%] bg-blue-600 text-white'
+            : 'max-w-[85%] bg-gray-800 text-gray-200'
         }`}
+        style={!isUser && agentColor ? { borderLeft: `3px solid ${agentColor}` } : undefined}
       >
-        {!isUser && (
+        {!isUser && !isGrouped && (
           <div className="mb-1 text-xs font-medium text-gray-400">
             {agentName ?? 'Assistant'}
           </div>
