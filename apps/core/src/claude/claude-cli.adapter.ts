@@ -5,7 +5,7 @@ import { StreamChunk, RunOptions, RunResult } from './types';
 import { parseLine } from './ndjson-parser';
 
 const DEFAULT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS ?? '900000', 10);
-const DEFAULT_MAX_TURNS = parseInt(process.env.CLAUDE_MAX_TURNS ?? '50', 10);
+const DEFAULT_MAX_TURNS = parseInt(process.env.CLAUDE_MAX_TURNS ?? '200', 10);
 
 @Injectable()
 export class ClaudeCliAdapter {

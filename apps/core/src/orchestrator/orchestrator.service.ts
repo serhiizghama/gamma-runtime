@@ -126,10 +126,31 @@ export class OrchestratorService implements OnModuleInit {
       });
 
       // 6. Run leader CLI session
-      let responseText = '';
+      let totalResponseLength = 0;
+      let pendingText = '';
       let lastSessionId = leader.session_id;
       let lastUsage: UsageData | undefined;
       let lastNumTurns = 0;
+
+      // Flush accumulated text to chat as a message
+      const flushTextToChat = async () => {
+        const text = pendingText.trim();
+        pendingText = '';
+        if (!text) return;
+        totalResponseLength += text.length;
+        const chatMsg = await this.chat.save({
+          teamId,
+          role: 'assistant',
+          content: text,
+          agentId: leader.id,
+        });
+        this.eventBus.emit({
+          kind: 'team.message',
+          teamId,
+          agentId: leader.id,
+          content: chatMsg,
+        });
+      };
 
       for await (const chunk of this.claude.run({
         message,
@@ -155,7 +176,7 @@ export class OrchestratorService implements OnModuleInit {
             content: { text: chunk.content.slice(0, 500) },
           });
         } else if (chunk.type === 'text') {
-          responseText += chunk.content;
+          pendingText += chunk.content;
           this.eventBus.emit({
             kind: 'agent.message',
             teamId,
@@ -163,6 +184,9 @@ export class OrchestratorService implements OnModuleInit {
             content: { text: chunk.content },
           });
         } else if (chunk.type === 'tool_use') {
+          // Flush text before tool use — this is a logical message boundary
+          await flushTextToChat();
+
           this.eventBus.emit({
             kind: 'agent.tool_use',
             teamId,
@@ -191,10 +215,14 @@ export class OrchestratorService implements OnModuleInit {
             content: { text: chunk.content.slice(0, 500) },
           });
         } else if (chunk.type === 'result') {
+          // Flush any remaining text at end of session
+          await flushTextToChat();
+
           lastSessionId = chunk.sessionId ?? lastSessionId;
           lastUsage = chunk.usage;
           lastNumTurns = chunk.numTurns ?? 0;
         } else if (chunk.type === 'error') {
+          await flushTextToChat();
           this.eventBus.emit({
             kind: 'agent.error',
             teamId,
@@ -238,30 +266,13 @@ export class OrchestratorService implements OnModuleInit {
 
       await this.agents.updateStatus(leader.id, 'idle');
 
-      // 8. Save leader response to chat
-      if (responseText) {
-        const chatMsg = await this.chat.save({
-          teamId,
-          role: 'assistant',
-          content: responseText,
-          agentId: leader.id,
-        });
-
-        this.eventBus.emit({
-          kind: 'team.message',
-          teamId,
-          agentId: leader.id,
-          content: chatMsg,
-        });
-      }
-
       // Emit completed event
       this.eventBus.emit({
         kind: 'agent.completed',
         teamId,
         agentId: leader.id,
         content: {
-          responseLength: responseText.length,
+          responseLength: totalResponseLength,
           contextTokens,
           numTurns: lastNumTurns,
         },
@@ -271,14 +282,14 @@ export class OrchestratorService implements OnModuleInit {
         team_id: teamId,
         kind: 'agent.completed',
         content: JSON.stringify({
-          responseLength: responseText.length,
+          responseLength: totalResponseLength,
           contextTokens,
           numTurns: lastNumTurns,
         }),
       });
 
       this.logger.log(
-        `Leader session completed for team ${teamId}: ${responseText.length} chars, ${lastNumTurns} turns`,
+        `Leader session completed for team ${teamId}: ${totalResponseLength} chars, ${lastNumTurns} turns`,
       );
     } catch (err) {
       // On error, reset leader to idle so it can accept new messages
