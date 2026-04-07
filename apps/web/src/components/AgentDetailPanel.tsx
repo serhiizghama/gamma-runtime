@@ -170,18 +170,22 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
             <div className="flex items-center gap-1.5">
               <span className="font-mono text-gray-400">{agent.session_id.slice(0, 12)}...</span>
               <button
-                title="Copy: cd TEAM_WORKSPACE && claude --resume SESSION_ID"
+                title="Copy full command: cd AGENT_WORKSPACE && claude --resume SESSION_ID"
                 onClick={async () => {
-                  // Agents run with cwd = team workspace (not agent workspace)
-                  // workspace_path is agent-level, so derive team path from it
-                  const teamPath = agent.workspace_path
-                    ? agent.workspace_path.replace(/\/agents\/agent_[^/]+$/, '')
-                    : '';
-                  const cmd = teamPath
-                    ? `cd ${teamPath} && claude --resume ${agent.session_id}`
+                  // Fetch fresh agent data to ensure workspace_path is available
+                  let wp = agent.workspace_path;
+                  if (!wp) {
+                    try {
+                      const fresh = await get<Agent>(`/agents/${agent.id}`);
+                      wp = fresh.workspace_path;
+                      setAgent(fresh);
+                    } catch { /* ignore */ }
+                  }
+                  const cmd = wp
+                    ? `cd ${wp} && claude --resume ${agent.session_id}`
                     : `claude --resume ${agent.session_id}`;
                   await navigator.clipboard.writeText(cmd);
-                  addNotification({ type: 'success', message: 'Copied to clipboard' });
+                  addNotification({ type: 'success', message: 'Session command copied' });
                 }}
                 className="rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-300"
               >

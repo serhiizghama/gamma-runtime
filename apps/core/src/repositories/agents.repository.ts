@@ -78,11 +78,18 @@ export class AgentsRepository {
     );
   }
 
-  async updateUsage(id: string, data: { context_tokens: number; total_turns: number }): Promise<void> {
-    await this.db.query(
-      'UPDATE agents SET context_tokens = $1, total_turns = $2, last_active_at = $3, updated_at = $3 WHERE id = $4',
-      [data.context_tokens, data.total_turns, Date.now(), id],
-    );
+  async updateUsage(id: string, data: { context_tokens: number; total_turns: number; context_window?: number }): Promise<void> {
+    if (data.context_window) {
+      await this.db.query(
+        'UPDATE agents SET context_tokens = $1, total_turns = $2, context_window = $3, last_active_at = $4, updated_at = $4 WHERE id = $5',
+        [data.context_tokens, data.total_turns, data.context_window, Date.now(), id],
+      );
+    } else {
+      await this.db.query(
+        'UPDATE agents SET context_tokens = $1, total_turns = $2, last_active_at = $3, updated_at = $3 WHERE id = $4',
+        [data.context_tokens, data.total_turns, Date.now(), id],
+      );
+    }
   }
 
   async resetSession(id: string): Promise<void> {

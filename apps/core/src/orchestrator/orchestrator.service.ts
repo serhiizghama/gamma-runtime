@@ -130,6 +130,7 @@ export class OrchestratorService implements OnModuleInit {
       let pendingText = '';
       let lastSessionId = leader.session_id;
       let lastUsage: UsageData | undefined;
+      let lastModelUsage: Record<string, { contextWindow?: number; context_window?: number }> | undefined;
       let lastNumTurns = 0;
 
       // Flush accumulated text to chat as a message
@@ -220,6 +221,7 @@ export class OrchestratorService implements OnModuleInit {
 
           lastSessionId = chunk.sessionId ?? lastSessionId;
           lastUsage = chunk.usage;
+          lastModelUsage = chunk.modelUsage;
           lastNumTurns = chunk.numTurns ?? 0;
         } else if (chunk.type === 'error') {
           await flushTextToChat();
@@ -253,15 +255,15 @@ export class OrchestratorService implements OnModuleInit {
         await this.agents.updateSessionId(leader.id, lastSessionId);
       }
 
-      const contextTokens = lastUsage
-        ? (lastUsage.input_tokens ?? 0)
-          + (lastUsage.cache_read_input_tokens ?? 0)
-          + (lastUsage.cache_creation_input_tokens ?? 0)
-          + (lastUsage.output_tokens ?? 0)
-        : 0;
+      // input_tokens is the actual context size (includes cache hits)
+      const contextTokens = lastUsage?.input_tokens ?? 0;
+      // Extract real context window from model usage data
+      const modelEntry = lastModelUsage ? Object.values(lastModelUsage)[0] : undefined;
+      const contextWindow = modelEntry?.contextWindow ?? modelEntry?.context_window;
       await this.agents.updateUsage(leader.id, {
         context_tokens: contextTokens,
         total_turns: leader.total_turns + lastNumTurns,
+        context_window: contextWindow,
       });
 
       await this.agents.updateStatus(leader.id, 'idle');
@@ -292,9 +294,15 @@ export class OrchestratorService implements OnModuleInit {
         `Leader session completed for team ${teamId}: ${totalResponseLength} chars, ${lastNumTurns} turns`,
       );
     } catch (err) {
-      // On error, reset leader to idle so it can accept new messages
+      // If aborted by emergency stop, skip error handling
       const members = await this.agents.findByTeam(teamId);
       const leader = members.find((a) => a.is_leader);
+      if (leader && (this.pool.aborting || this.pool.wasKilled(leader.id))) {
+        this.pool.clearKilled(leader.id);
+        this.pool.unregister(leader.id);
+        return;
+      }
+      // On error, reset leader to idle so it can accept new messages
       if (leader && leader.status === 'running') {
         await this.agents.updateStatus(leader.id, 'idle');
         this.pool.unregister(leader.id);
@@ -362,6 +370,7 @@ export class OrchestratorService implements OnModuleInit {
       let responseText = '';
       let lastSessionId = agent.session_id;
       let lastUsage: UsageData | undefined;
+      let lastModelUsage: Record<string, { contextWindow?: number; context_window?: number }> | undefined;
       let lastNumTurns = 0;
       let taskUpdatedByAgent = false;
 
@@ -439,6 +448,7 @@ export class OrchestratorService implements OnModuleInit {
         } else if (chunk.type === 'result') {
           lastSessionId = chunk.sessionId ?? lastSessionId;
           lastUsage = chunk.usage;
+          lastModelUsage = chunk.modelUsage;
           lastNumTurns = chunk.numTurns ?? 0;
         } else if (chunk.type === 'error') {
           this.eventBus.emit({
@@ -472,15 +482,14 @@ export class OrchestratorService implements OnModuleInit {
         await this.agents.updateSessionId(agent.id, lastSessionId);
       }
 
-      const contextTokens = lastUsage
-        ? (lastUsage.input_tokens ?? 0)
-          + (lastUsage.cache_read_input_tokens ?? 0)
-          + (lastUsage.cache_creation_input_tokens ?? 0)
-          + (lastUsage.output_tokens ?? 0)
-        : 0;
+      // input_tokens is the actual context size (includes cache hits)
+      const contextTokens = lastUsage?.input_tokens ?? 0;
+      const modelEntry = lastModelUsage ? Object.values(lastModelUsage)[0] : undefined;
+      const contextWindow = modelEntry?.contextWindow ?? modelEntry?.context_window;
       await this.agents.updateUsage(agent.id, {
         context_tokens: contextTokens,
         total_turns: agent.total_turns + lastNumTurns,
+        context_window: contextWindow,
       });
 
       // If agent didn't call update-task itself, auto-complete
@@ -594,10 +603,19 @@ export class OrchestratorService implements OnModuleInit {
         `Agent ${agent.name} completed task "${task.title}": ${responseText.length} chars`,
       );
     } catch (err) {
+      this.pool.unregister(agent.id);
+
+      // If aborted by emergency stop, skip error handling —
+      // DB statuses are already reset by the emergency-stop handler
+      if (this.pool.aborting || this.pool.wasKilled(agent.id)) {
+        this.pool.clearKilled(agent.id);
+        this.logger.warn(`Agent ${agent.name} aborted by emergency stop (in catch), skipping error handling`);
+        return;
+      }
+
       this.logger.error(
         `Agent ${agent.name} failed on task "${task.title}": ${err}`,
       );
-      this.pool.unregister(agent.id);
       await this.agents.updateStatus(agent.id, 'error');
 
       this.eventBus.emit({

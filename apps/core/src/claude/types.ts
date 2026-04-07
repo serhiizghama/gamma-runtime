@@ -11,7 +11,7 @@ export interface StreamChunk {
   durationMs?: number;
   isError?: boolean;
   usage?: UsageData;
-  modelUsage?: Record<string, { contextWindow: number }>;
+  modelUsage?: Record<string, { contextWindow?: number; context_window?: number }>;
   numTurns?: number;
   subtype?: string;
 }
@@ -29,7 +29,7 @@ export interface RunResult {
   durationMs: number;
   costUsd: number;
   usage?: UsageData;
-  modelUsage?: Record<string, { contextWindow: number }>;
+  modelUsage?: Record<string, { contextWindow?: number; context_window?: number }>;
   numTurns: number;
 }
 

@@ -21,20 +21,19 @@ export class AppController {
   async emergencyStop() {
     const killedAgentIds = await this.sessionPool.abortAll();
 
-    if (killedAgentIds.length > 0) {
-      // Reset all killed agents to idle in DB
-      const placeholders = killedAgentIds.map((_, i) => `$${i + 2}`).join(', ');
-      await this.db.query(
-        `UPDATE agents SET status = 'idle', updated_at = $1 WHERE id IN (${placeholders})`,
-        [Date.now(), ...killedAgentIds],
-      );
+    // Reset ALL running agents to idle (not just pool-registered ones,
+    // since a process might not have been registered due to timing)
+    const now = Date.now();
+    await this.db.query(
+      `UPDATE agents SET status = 'idle', updated_at = $1 WHERE status = 'running'`,
+      [now],
+    );
 
-      // Fail any in-progress tasks assigned to killed agents
-      await this.db.query(
-        `UPDATE tasks SET stage = 'failed', updated_at = $1 WHERE assigned_to IN (${placeholders}) AND stage = 'in_progress'`,
-        [Date.now(), ...killedAgentIds],
-      );
-    }
+    // Fail ALL in-progress tasks (not just those assigned to pool-registered agents)
+    await this.db.query(
+      `UPDATE tasks SET stage = 'failed', updated_at = $1 WHERE stage = 'in_progress'`,
+      [now],
+    );
 
     this.eventBus.emit({
       kind: 'system.emergency_stop',

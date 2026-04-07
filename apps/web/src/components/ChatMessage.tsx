@@ -1,76 +1,45 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { marked, Renderer, type Tokens } from 'marked';
+import DOMPurify from 'dompurify';
 import type { ChatMessage as ChatMsg } from '../hooks/useTeamChat';
+import { highlightCode } from '../utils/highlight';
+
+function escapeForAttr(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+const renderer = new Renderer();
+
+renderer.code = ({ text, lang }: { text: string; lang?: string }) => {
+  const langLabel = lang ? `<span>${lang}</span>` : '';
+  const highlighted = highlightCode(text, lang || undefined);
+  return `<div class="chat-code-block"><div class="chat-code-header">${langLabel}<button class="chat-copy-btn" data-code="${escapeForAttr(text)}">Copy</button></div><pre class="chat-code-pre"><code class="hljs">${highlighted}</code></pre></div>`;
+};
+
+renderer.table = function ({ header, rows }: Tokens.Table) {
+  const alignAttr = (a: string | null) => a ? ` style="text-align:${a}"` : '';
+  const renderCell = (cell: Tokens.TableCell) => this.parser.parseInline(cell.tokens);
+  const headerHtml = '<tr>' + header.map((cell) =>
+    `<th${alignAttr(cell.align)}>${renderCell(cell)}</th>`
+  ).join('') + '</tr>';
+  const bodyHtml = rows.map((row) =>
+    '<tr>' + row.map((cell) =>
+      `<td${alignAttr(cell.align)}>${renderCell(cell)}</td>`
+    ).join('') + '</tr>'
+  ).join('');
+  return `<div class="chat-table-wrap"><table><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table></div>`;
+};
+
+renderer.image = ({ href, title, text }: { href: string; title?: string | null; text: string }) => {
+  const titleAttr = title ? ` title="${escapeForAttr(title)}"` : '';
+  return `<a href="${href}" target="_blank" rel="noopener noreferrer"><img class="chat-image" src="${href}" alt="${escapeForAttr(text)}"${titleAttr} loading="lazy" /></a>`;
+};
+
+marked.use({ renderer, gfm: true, breaks: true });
 
 function renderMarkdown(text: string): string {
-  // Escape HTML
-  let html = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  // Process line by line for block elements
-  const lines = html.split('\n');
-  const processed: string[] = [];
-  let inList = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Empty line = paragraph break
-    if (trimmed === '') {
-      if (inList) { processed.push('</ul>'); inList = false; }
-      processed.push('<div class="h-2"></div>');
-      continue;
-    }
-
-    // Headings
-    const h3 = trimmed.match(/^###\s+(.+)$/);
-    if (h3) {
-      if (inList) { processed.push('</ul>'); inList = false; }
-      processed.push(`<div class="mt-2 mb-0.5 font-semibold">${h3[1]}</div>`);
-      continue;
-    }
-    const h2 = trimmed.match(/^##\s+(.+)$/);
-    if (h2) {
-      if (inList) { processed.push('</ul>'); inList = false; }
-      processed.push(`<div class="mt-2 mb-0.5 font-semibold">${h2[1]}</div>`);
-      continue;
-    }
-
-    // Horizontal rule
-    if (/^---+$/.test(trimmed)) {
-      if (inList) { processed.push('</ul>'); inList = false; }
-      processed.push('<hr class="my-1.5 border-current opacity-20" />');
-      continue;
-    }
-
-    // List items
-    const li = trimmed.match(/^[-*]\s+(.+)$/);
-    if (li) {
-      if (!inList) { processed.push('<ul class="ml-3 my-0.5">'); inList = true; }
-      processed.push(`<li class="before:content-['•'] before:mr-1.5 before:opacity-40">${li[1]}</li>`);
-      continue;
-    }
-
-    // Regular line
-    if (inList) { processed.push('</ul>'); inList = false; }
-    processed.push(`${line}<br/>`);
-  }
-  if (inList) processed.push('</ul>');
-
-  html = processed.join('');
-
-  // Inline formatting
-  html = html
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code class="rounded bg-black/20 px-1 py-0.5 text-[13px] font-mono">$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="underline opacity-80 hover:opacity-100">$1</a>');
-
-  // Clean up trailing <br/> before block elements or at end
-  html = html.replace(/<br\/>(<div|<hr|<ul|$)/g, '$1');
-  html = html.replace(/(<\/ul>|<\/div>)<br\/>/g, '$1');
-
-  return html;
+  const html = marked.parse(text, { async: false }) as string;
+  return DOMPurify.sanitize(html);
 }
 
 const AGENT_COLORS = [
@@ -105,13 +74,32 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
   const contentRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState(true);
   const [needsCollapse, setNeedsCollapse] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const isAssistant = message.role === 'assistant';
+
+  const handleCopyMessage = () => {
+    navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   useEffect(() => {
     if (!isAssistant || !contentRef.current) return;
     setNeedsCollapse(contentRef.current.scrollHeight > 288);
   }, [message.content, isAssistant]);
+
+  const handleContentClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const btn = (e.target as HTMLElement).closest('.chat-copy-btn') as HTMLElement | null;
+    if (!btn) return;
+    e.preventDefault();
+    const code = btn.getAttribute('data-code') ?? '';
+    navigator.clipboard.writeText(code).then(() => {
+      const prev = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = prev; }, 1500);
+    });
+  }, []);
 
   if (message.role === 'system') {
     return (
@@ -127,13 +115,31 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`rounded-xl px-4 py-2.5 ${
+        className={`group relative rounded-xl px-4 py-2.5 ${
           isUser
             ? 'max-w-[80%] bg-blue-600 text-white'
             : 'max-w-[85%] bg-gray-800 text-gray-200'
         }`}
         style={!isUser && agentColor ? { borderLeft: `3px solid ${agentColor}` } : undefined}
       >
+        {!isUser && (
+          <button
+            onClick={handleCopyMessage}
+            className="absolute right-2 top-2 z-10 rounded bg-gray-700/50 p-1 text-gray-500 opacity-0 transition-opacity hover:bg-gray-700 hover:text-gray-300 group-hover:opacity-100"
+            title="Copy message"
+          >
+            {copied ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            )}
+          </button>
+        )}
         {!isUser && !isGrouped && (
           <div className="mb-1 text-xs font-medium text-gray-400">
             {agentName ?? 'Assistant'}
@@ -142,7 +148,8 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
         <div className="relative">
           <div
             ref={contentRef}
-            className={`text-sm leading-snug ${showCollapsed ? 'max-h-[192px] overflow-hidden' : ''}`}
+            onClick={handleContentClick}
+            className={`chat-content text-sm leading-relaxed ${showCollapsed ? 'max-h-[192px] overflow-hidden' : ''}`}
             dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
           />
           {showCollapsed && (

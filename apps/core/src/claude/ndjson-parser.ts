@@ -34,7 +34,7 @@ function classifyChunk(obj: unknown): StreamChunk {
       durationMs: data.duration_ms as number | undefined,
       isError: data.is_error as boolean | undefined,
       usage: data.usage as StreamChunk['usage'],
-      modelUsage: data.modelUsage as StreamChunk['modelUsage'],
+      modelUsage: (data.model_usage ?? data.modelUsage) as StreamChunk['modelUsage'],
       numTurns: data.num_turns as number | undefined,
     };
   }

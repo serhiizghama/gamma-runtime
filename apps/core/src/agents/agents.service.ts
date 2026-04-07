@@ -68,6 +68,14 @@ export class AgentsService {
   async findById(id: string): Promise<Agent> {
     const agent = await this.agentsRepo.findById(id);
     if (!agent) throw new NotFoundException(`Agent ${id} not found`);
+
+    // Backfill workspace_path if missing (legacy agents)
+    if (!agent.workspace_path && agent.team_id) {
+      const wp = this.workspaceService.getAgentPath(agent.team_id, agent.id);
+      await this.agentsRepo.updateWorkspacePath(agent.id, wp);
+      agent.workspace_path = wp;
+    }
+
     return agent;
   }
 

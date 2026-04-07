@@ -45,10 +45,11 @@ export class ClaudeCliAdapter {
       cwd,
     });
 
+    // Store proc reference BEFORE yield so consumer can read it via getLastProcess()
+    this._lastProc = proc;
+
     // Emit the process so session pool can register it
     yield { type: 'system', content: '', subtype: '_process_started' } as StreamChunk & { _proc?: ChildProcess };
-    // Store proc reference accessible via getLastProcess()
-    this._lastProc = proc;
 
     let timedOut = false;
     const timeout = setTimeout(() => {
