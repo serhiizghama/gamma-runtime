@@ -8,16 +8,18 @@ const columns: { key: TaskStage; label: string }[] = [
   { key: 'in_progress', label: 'In Progress' },
   { key: 'review', label: 'Review' },
   { key: 'done', label: 'Done' },
+  { key: 'failed', label: 'Failed' },
 ];
 
 interface Props {
   tasks: Task[];
   agents: Agent[];
   loading: boolean;
+  teamId: string;
   onTaskClick: (task: Task) => void;
 }
 
-export function TaskBoard({ tasks, agents, loading, onTaskClick }: Props) {
+export function TaskBoard({ tasks, agents, loading, teamId, onTaskClick }: Props) {
   return (
     <div className="flex h-full flex-col">
       <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-gray-500">Tasks</h3>
@@ -36,7 +38,7 @@ export function TaskBoard({ tasks, agents, loading, onTaskClick }: Props) {
           <p className="text-xs text-gray-600">Tasks will appear here when the team starts working</p>
         </div>
       ) : (
-        <div className="grid flex-1 grid-cols-4 gap-3 overflow-hidden">
+        <div className="grid flex-1 grid-cols-5 gap-3 overflow-hidden">
           {columns.map((col) => {
             const colTasks = tasks.filter((t) => {
               if (col.key === 'backlog') return t.stage === 'backlog' || t.stage === 'planning';
@@ -44,8 +46,8 @@ export function TaskBoard({ tasks, agents, loading, onTaskClick }: Props) {
             });
             return (
               <div key={col.key} className="flex flex-col overflow-hidden rounded-lg bg-gray-900/50">
-                <div className="flex items-center justify-between px-3 py-2">
-                  <span className="text-xs font-medium text-gray-400">{col.label}</span>
+                <div className={`flex items-center justify-between px-3 py-2 ${col.key === 'failed' ? 'bg-red-500/10' : ''}`}>
+                  <span className={`text-xs font-medium ${col.key === 'failed' ? 'text-red-400' : 'text-gray-400'}`}>{col.label}</span>
                   <span className="rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-500">
                     {colTasks.length}
                   </span>
@@ -56,6 +58,7 @@ export function TaskBoard({ tasks, agents, loading, onTaskClick }: Props) {
                       key={task.id}
                       task={task}
                       agents={agents}
+                      teamId={teamId}
                       onClick={() => onTaskClick(task)}
                     />
                   ))}

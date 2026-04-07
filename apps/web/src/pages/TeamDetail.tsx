@@ -220,6 +220,7 @@ export function TeamDetail() {
                 tasks={tasks}
                 agents={team.members}
                 loading={tasksLoading}
+                teamId={team.id}
                 onTaskClick={setSelectedTask}
               />
             ) : (

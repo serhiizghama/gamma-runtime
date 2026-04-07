@@ -514,6 +514,34 @@ export class OrchestratorService implements OnModuleInit {
           to_agent: leader.id,
           content: `Task "${task.title}" completed by ${agent.name}.`,
         });
+
+        // Auto-wake leader when all in-progress tasks are done
+        const allTasks = await this.tasks.findByTeam(task.team_id);
+        const pendingTasks = allTasks.filter(
+          (t) => t.stage === 'in_progress' || t.stage === 'planning',
+        );
+
+        if (pendingTasks.length === 0 && leader.status === 'idle' && !this.runningPipelines.has(task.team_id)) {
+          const doneTasks = allTasks.filter((t) => t.stage === 'done');
+          const summary = doneTasks
+            .slice(-10)
+            .map((t) => `- "${t.title}" → done`)
+            .join('\n');
+
+          this.logger.log(
+            `All tasks completed for team ${task.team_id}, waking leader ${leader.name}`,
+          );
+
+          // Small delay to let final events propagate
+          setTimeout(() => {
+            this.handleTeamMessage(
+              task.team_id,
+              `[SYSTEM] All assigned tasks have been completed by your team members. Here is the status:\n\n${summary}\n\nReview the results (check shared/discoveries/, read agent messages via read-messages, review task results) and continue with the next phase of work.`,
+            ).catch((err) => {
+              this.logger.error(`Failed to wake leader after task completion: ${err}`);
+            });
+          }, 2000);
+        }
       }
 
       // Save completion summary to team chat so it's visible in the chat panel

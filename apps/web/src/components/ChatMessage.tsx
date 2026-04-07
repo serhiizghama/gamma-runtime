@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import type { ChatMessage as ChatMsg } from '../hooks/useTeamChat';
 
 function renderMarkdown(text: string): string {
@@ -101,6 +102,17 @@ interface Props {
 export { getAgentColor };
 
 export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [collapsed, setCollapsed] = useState(true);
+  const [needsCollapse, setNeedsCollapse] = useState(false);
+
+  const isAssistant = message.role === 'assistant';
+
+  useEffect(() => {
+    if (!isAssistant || !contentRef.current) return;
+    setNeedsCollapse(contentRef.current.scrollHeight > 288);
+  }, [message.content, isAssistant]);
+
   if (message.role === 'system') {
     return (
       <div className="mx-auto max-w-md rounded-lg bg-gray-800/50 px-4 py-2 text-center text-xs text-gray-500">
@@ -110,6 +122,7 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
   }
 
   const isUser = message.role === 'user';
+  const showCollapsed = isAssistant && needsCollapse && collapsed;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -126,10 +139,24 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
             {agentName ?? 'Assistant'}
           </div>
         )}
-        <div
-          className="text-sm leading-snug"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
-        />
+        <div className="relative">
+          <div
+            ref={contentRef}
+            className={`text-sm leading-snug ${showCollapsed ? 'max-h-[192px] overflow-hidden' : ''}`}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+          />
+          {showCollapsed && (
+            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-gray-800 to-transparent" />
+          )}
+        </div>
+        {isAssistant && needsCollapse && (
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="mt-1 text-xs text-gray-400 hover:text-gray-300"
+          >
+            {collapsed ? 'Show more' : 'Show less'}
+          </button>
+        )}
         <div className={`mt-1 text-[10px] ${isUser ? 'text-blue-300' : 'text-gray-600'}`}>
           {new Date(Number(message.created_at)).toLocaleTimeString()}
         </div>

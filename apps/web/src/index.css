@@ -51,3 +51,12 @@
   position: relative;
   z-index: 1;
 }
+
+@keyframes pulse-border {
+  0%, 100% { box-shadow: 0 0 12px rgba(59, 130, 246, 0.1); }
+  50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.2); }
+}
+
+.team-active {
+  animation: pulse-border 2.5s ease-in-out infinite;
+}

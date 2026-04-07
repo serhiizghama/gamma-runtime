@@ -8,8 +8,11 @@
     "dev:web": "pnpm --filter @gamma/web dev",
     "build:core": "pnpm --filter @gamma/core build",
     "build:web": "pnpm --filter @gamma/web build",
+    "dev": "pnpm dev:core & pnpm dev:web",
+    "build": "pnpm build:core && pnpm build:web",
     "db:up": "docker compose up -d",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d"
   },
   "engines": {
     "node": ">=22"
