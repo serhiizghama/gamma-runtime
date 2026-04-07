@@ -12,6 +12,15 @@ const kindColors: Record<string, string> = {
   generic: 'bg-gray-500/20 text-gray-400',
 };
 
+const kindGlows: Record<string, string> = {
+  backend: 'hover:shadow-[0_4px_12px_rgba(168,85,247,0.15)]',
+  frontend: 'hover:shadow-[0_4px_12px_rgba(6,182,212,0.15)]',
+  qa: 'hover:shadow-[0_4px_12px_rgba(234,179,8,0.12)]',
+  design: 'hover:shadow-[0_4px_12px_rgba(236,72,153,0.15)]',
+  devops: 'hover:shadow-[0_4px_12px_rgba(249,115,22,0.15)]',
+  generic: 'hover:shadow-[0_4px_12px_rgba(255,255,255,0.05)]',
+};
+
 interface Props {
   task: Task;
   agents: Agent[];
@@ -42,10 +51,10 @@ export function TaskCard({ task, agents, teamId, onClick }: Props) {
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-lg border p-3 text-left transition-colors ${
+      className={`w-full card-hover rounded-lg border p-3 text-left transition-colors ${
         isFailed
-          ? 'border-red-800/50 bg-red-900/20 hover:border-red-700/50 hover:bg-red-900/30'
-          : 'border-gray-700 bg-gray-800/60 hover:border-gray-600 hover:bg-gray-800'
+          ? 'border-red-800/50 bg-red-900/20 hover:border-red-700/50 hover:bg-red-900/30 hover:shadow-[0_4px_12px_rgba(239,68,68,0.12)]'
+          : `border-gray-700 bg-gray-800/60 hover:border-gray-600 hover:bg-gray-800 ${kindGlows[task.kind] ?? kindGlows.generic}`
       }`}
     >
       <div className="mb-1.5 text-sm font-medium text-gray-200 line-clamp-2">{task.title}</div>

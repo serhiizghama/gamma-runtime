@@ -255,8 +255,12 @@ export class OrchestratorService implements OnModuleInit {
         await this.agents.updateSessionId(leader.id, lastSessionId);
       }
 
-      // input_tokens is the actual context size (includes cache hits)
-      const contextTokens = lastUsage?.input_tokens ?? 0;
+      // Total context = input + cached tokens (NOT output — those are generated, not context)
+      const contextTokens = lastUsage
+        ? (lastUsage.input_tokens ?? 0)
+          + (lastUsage.cache_read_input_tokens ?? 0)
+          + (lastUsage.cache_creation_input_tokens ?? 0)
+        : 0;
       // Extract real context window from model usage data
       const modelEntry = lastModelUsage ? Object.values(lastModelUsage)[0] : undefined;
       const contextWindow = modelEntry?.contextWindow ?? modelEntry?.context_window;
@@ -482,8 +486,12 @@ export class OrchestratorService implements OnModuleInit {
         await this.agents.updateSessionId(agent.id, lastSessionId);
       }
 
-      // input_tokens is the actual context size (includes cache hits)
-      const contextTokens = lastUsage?.input_tokens ?? 0;
+      // Total context = input + cached tokens (NOT output — those are generated, not context)
+      const contextTokens = lastUsage
+        ? (lastUsage.input_tokens ?? 0)
+          + (lastUsage.cache_read_input_tokens ?? 0)
+          + (lastUsage.cache_creation_input_tokens ?? 0)
+        : 0;
       const modelEntry = lastModelUsage ? Object.values(lastModelUsage)[0] : undefined;
       const contextWindow = modelEntry?.contextWindow ?? modelEntry?.context_window;
       await this.agents.updateUsage(agent.id, {

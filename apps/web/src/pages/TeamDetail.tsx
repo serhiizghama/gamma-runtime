@@ -154,8 +154,8 @@ export function TeamDetail() {
       <div ref={containerRef} className="flex flex-1 gap-0 overflow-hidden">
         {/* Left: Team Map */}
         <div
-          className="shrink-0 overflow-y-auto rounded-xl border border-gray-800 bg-gray-900/50 p-4"
-          style={{ width: leftWidth }}
+          className="shrink-0 overflow-y-auto rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 p-4"
+          style={{ width: leftWidth, boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}
         >
           <TeamMap leader={leader} members={members} onAgentClick={(agent) => setSelectedAgent((prev) => prev?.id === agent.id ? null : agent)} onResetSession={handleResetSession} />
         </div>
@@ -167,7 +167,7 @@ export function TeamDetail() {
         />
 
         {/* Center: Chat */}
-        <div className="flex min-w-[250px] flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+        <div className="flex min-w-[250px] flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 p-4" style={{ boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}>
           <ChatPanel
             messages={messages}
             loading={chatLoading}
@@ -188,8 +188,8 @@ export function TeamDetail() {
 
         {/* Right: Tasks / App tabs */}
         <div
-          className="shrink-0 flex flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-4"
-          style={{ width: rightWidth }}
+          className="shrink-0 flex flex-col overflow-hidden rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 p-4"
+          style={{ width: rightWidth, boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}
         >
           <div className="mb-3 flex gap-1">
             <button

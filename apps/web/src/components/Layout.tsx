@@ -16,10 +16,11 @@ export function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-900 text-gray-100">
+    <div className="flex h-screen ambient-bg text-gray-100">
+      <div className="noise-overlay" />
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center justify-between border-b border-gray-800 px-6">
+        <header className="header-accent flex h-14 items-center justify-between px-6">
           <div />
           <button
             onClick={handleEmergencyStop}

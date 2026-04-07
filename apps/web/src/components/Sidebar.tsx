@@ -7,6 +7,26 @@ const links = [
   { to: '/trace', label: 'Trace', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
 ];
 
+function GammaLogo() {
+  return (
+    <svg className="h-6 w-6 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="gamma-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#3b82f6" />
+          <stop offset="100%" stopColor="#8b5cf6" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M7 4.5C9.5 4.5 11.5 5 13 7c1.5 2 2.2 4.5 2.8 7.5.4 2 .7 3.8 1.2 5.5M13 7c-1 2.5-2 5.5-2.5 8.5-.3 1.8-.3 3.2 0 4.5"
+        stroke="url(#gamma-grad)"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function SidebarIcon({ d }: { d: string }) {
   return (
     <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -33,7 +53,10 @@ export function Sidebar() {
       }`}
     >
       <div className="flex h-14 items-center justify-between border-b border-gray-800 px-3">
-        {!collapsed && <span className="text-lg font-bold text-white pl-1">Gamma v2</span>}
+        <div className="flex items-center gap-2">
+          <GammaLogo />
+          {!collapsed && <span className="text-lg font-bold text-white">Gamma</span>}
+        </div>
         <button
           onClick={toggle}
           className="rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"

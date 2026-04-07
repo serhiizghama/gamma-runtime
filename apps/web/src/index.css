@@ -63,6 +63,23 @@
   animation: pulse-border 2.5s ease-in-out infinite;
 }
 
+/* ── Header accent line ── */
+
+.header-accent {
+  position: relative;
+  border-bottom: none;
+}
+
+.header-accent::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(59,130,246,0.4) 30%, rgba(139,92,246,0.4) 70%, transparent);
+}
+
 /* ── Chat rich content ── */
 
 .chat-content p {
@@ -232,4 +249,58 @@
   border-radius: 0.5rem;
   border: 1px solid rgb(55 65 81);
   margin: 0.5rem 0;
+}
+
+/* ── H1: Ambient Background ── */
+
+.ambient-bg {
+  background: radial-gradient(ellipse at 50% 0%, #1a1f2e 0%, #111827 50%, #0f1117 100%);
+}
+
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* ── H2: Breathing Status Dots ── */
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.4); opacity: 1; }
+}
+
+@keyframes breathe-urgent {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+
+.dot-breathing {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+.dot-breathing-urgent {
+  animation: breathe-urgent 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-breathing,
+  .dot-breathing-urgent {
+    animation: none;
+  }
+}
+
+/* ── H3: Card Hover Lift + Glow ── */
+
+.card-hover {
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
 }

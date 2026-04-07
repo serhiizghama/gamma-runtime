@@ -154,10 +154,10 @@ export function Dashboard() {
               <div
                 key={team.id}
                 onClick={() => navigate(`/teams/${team.id}`)}
-                className={`group cursor-pointer rounded-xl border p-5 transition-all ${
+                className={`group card-hover cursor-pointer rounded-xl border p-5 transition-all ${
                   hasRunning
-                    ? 'team-active border-blue-500/30 bg-gray-850'
-                    : 'border-gray-800 bg-gray-850 hover:border-gray-700 hover:bg-gray-800/80'
+                    ? 'team-active border-blue-500/30 bg-gray-850 hover:shadow-[0_4px_12px_rgba(59,130,246,0.15)]'
+                    : 'border-gray-800 bg-gray-850 hover:border-gray-700 hover:bg-gray-800/80 hover:shadow-[0_4px_12px_rgba(255,255,255,0.05)]'
                 }`}
               >
                 <div className="mb-3 flex items-start justify-between">

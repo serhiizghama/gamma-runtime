@@ -66,11 +66,11 @@ export function AgentNode({ agent, onClick, onResetSession }: Props) {
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium text-white">{agent.name}</span>
             <span
-              className={`shrink-0 h-1.5 w-1.5 rounded-full ${
+              className={`shrink-0 h-2 w-2 rounded-full ${
                 agent.status === 'running'
-                  ? 'bg-blue-400'
+                  ? 'bg-blue-400 dot-breathing'
                   : agent.status === 'error'
-                    ? 'bg-red-400'
+                    ? 'bg-red-400 dot-breathing-urgent'
                     : agent.status === 'idle'
                       ? 'bg-green-400'
                       : 'bg-gray-500'
