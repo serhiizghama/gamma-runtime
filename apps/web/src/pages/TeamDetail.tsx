@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTeamDetail } from '../hooks/useTeamDetail';
 import { useTeamTasks, type Task } from '../hooks/useTeamTasks';
@@ -6,7 +6,7 @@ import { useTeamChat } from '../hooks/useTeamChat';
 import { useTeamSse, type SseEvent } from '../hooks/useTeamSse';
 import { StatusBadge } from '../components/StatusBadge';
 import { Spinner } from '../components/Spinner';
-import { del, post } from '../api/client';
+import { del, patch, post } from '../api/client';
 import { useStore } from '../store/useStore';
 import { TeamMap } from '../components/TeamMap';
 import { ChatPanel } from '../components/ChatPanel';
@@ -24,7 +24,7 @@ export function TeamDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const addNotification = useStore((s) => s.addNotification);
-  const { team, loading, refetch, updateMember } = useTeamDetail(id);
+  const { team, loading, refetch, updateMember, updateTeam } = useTeamDetail(id);
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTeamTasks(id);
   const { messages, loading: chatLoading, sending, hasMore, loadingMore, sendMessage, appendMessage, loadMore, refetch: refetchChat } = useTeamChat(id);
 
@@ -36,7 +36,18 @@ export function TeamDetail() {
   const [rightWidth, setRightWidth] = useState(400);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [renaming, setRenaming] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingName && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+    }
+  }, [editingName]);
 
   // Handle SSE events
   const handleSseEvent = useCallback(
@@ -108,6 +119,26 @@ export function TeamDetail() {
   const leader = team.members.find((m) => m.is_leader);
   const members = team.members.filter((m) => !m.is_leader);
 
+  const commitRename = async () => {
+    if (!team) return;
+    const next = nameDraft.trim();
+    if (!next || next === team.name) {
+      setEditingName(false);
+      return;
+    }
+    setRenaming(true);
+    try {
+      const updated = await patch<typeof team>(`/teams/${team.id}`, { name: next });
+      updateTeam({ name: updated.name, updated_at: updated.updated_at });
+      addNotification({ type: 'success', message: 'Team renamed' });
+      setEditingName(false);
+    } catch (err) {
+      addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Rename failed' });
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const handleResetSession = async (agent: Agent) => {
     try {
       await post(`/agents/${agent.id}/reset-session`, {});
@@ -128,7 +159,39 @@ export function TeamDetail() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </Link>
-          <h1 className="text-xl font-bold text-white">{team.name}</h1>
+          {editingName ? (
+            <input
+              ref={nameInputRef}
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                else if (e.key === 'Escape') {
+                  setNameDraft(team.name);
+                  setEditingName(false);
+                }
+              }}
+              disabled={renaming}
+              maxLength={120}
+              className="rounded-md border border-gray-700 bg-gray-800 px-2 py-0.5 text-xl font-bold text-white outline-none focus:border-blue-500 disabled:opacity-60"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setNameDraft(team.name);
+                setEditingName(true);
+              }}
+              title="Click to rename"
+              className="group flex items-center gap-1.5 rounded-md px-1 text-xl font-bold text-white hover:bg-gray-800/60"
+            >
+              <span>{team.name}</span>
+              <svg className="h-3.5 w-3.5 text-gray-500 opacity-0 transition-opacity group-hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 11l6.586-6.586a2 2 0 112.828 2.828L11.828 13.828a2 2 0 01-.879.515l-3.535.884.884-3.535a2 2 0 01.515-.879z" />
+              </svg>
+            </button>
+          )}
           <StatusBadge status={team.status} />
         </div>
         <div className="flex items-center gap-2">
@@ -140,6 +203,19 @@ export function TeamDetail() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
             Add Agent
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                await post('/emergency-stop', {});
+                addNotification({ type: 'success', message: 'All agents stopped' });
+              } catch (err) {
+                addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Emergency stop failed' });
+              }
+            }}
+            className="rounded-lg bg-red-600/20 px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-600/30"
+          >
+            Emergency Stop
           </button>
           <button
             onClick={() => setShowDeleteConfirm(true)}

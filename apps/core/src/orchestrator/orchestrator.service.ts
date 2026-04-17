@@ -130,6 +130,7 @@ export class OrchestratorService implements OnModuleInit {
       let pendingText = '';
       let lastSessionId = leader.session_id;
       let lastUsage: UsageData | undefined;
+      let lastMessageUsage: UsageData | undefined; // per-API-call usage (actual context size)
       let lastModelUsage: Record<string, { contextWindow?: number; context_window?: number }> | undefined;
       let lastNumTurns = 0;
 
@@ -166,6 +167,11 @@ export class OrchestratorService implements OnModuleInit {
             this.pool.register(leader.id, proc);
           }
           continue;
+        }
+
+        // Track per-API-call usage from assistant messages (actual context size)
+        if (chunk.usage) {
+          lastMessageUsage = chunk.usage;
         }
 
         // Stream trace events to SSE
@@ -255,11 +261,13 @@ export class OrchestratorService implements OnModuleInit {
         await this.agents.updateSessionId(leader.id, lastSessionId);
       }
 
-      // Total context = input + cached tokens (NOT output — those are generated, not context)
-      const contextTokens = lastUsage
-        ? (lastUsage.input_tokens ?? 0)
-          + (lastUsage.cache_read_input_tokens ?? 0)
-          + (lastUsage.cache_creation_input_tokens ?? 0)
+      // Use per-API-call usage from the last assistant message (actual context size),
+      // NOT the cumulative result.usage which sums all API calls in the session
+      const actualUsage = lastMessageUsage ?? lastUsage;
+      const contextTokens = actualUsage
+        ? (actualUsage.input_tokens ?? 0)
+          + (actualUsage.cache_read_input_tokens ?? 0)
+          + (actualUsage.cache_creation_input_tokens ?? 0)
         : 0;
       // Extract real context window from model usage data
       const modelEntry = lastModelUsage ? Object.values(lastModelUsage)[0] : undefined;
@@ -374,6 +382,7 @@ export class OrchestratorService implements OnModuleInit {
       let responseText = '';
       let lastSessionId = agent.session_id;
       let lastUsage: UsageData | undefined;
+      let lastMessageUsage: UsageData | undefined; // per-API-call usage (actual context size)
       let lastModelUsage: Record<string, { contextWindow?: number; context_window?: number }> | undefined;
       let lastNumTurns = 0;
       let taskUpdatedByAgent = false;
@@ -390,6 +399,11 @@ export class OrchestratorService implements OnModuleInit {
             this.pool.register(agent.id, proc);
           }
           continue;
+        }
+
+        // Track per-API-call usage from assistant messages (actual context size)
+        if (chunk.usage) {
+          lastMessageUsage = chunk.usage;
         }
 
         if (chunk.type === 'text') {
@@ -486,11 +500,13 @@ export class OrchestratorService implements OnModuleInit {
         await this.agents.updateSessionId(agent.id, lastSessionId);
       }
 
-      // Total context = input + cached tokens (NOT output — those are generated, not context)
-      const contextTokens = lastUsage
-        ? (lastUsage.input_tokens ?? 0)
-          + (lastUsage.cache_read_input_tokens ?? 0)
-          + (lastUsage.cache_creation_input_tokens ?? 0)
+      // Use per-API-call usage from the last assistant message (actual context size),
+      // NOT the cumulative result.usage which sums all API calls in the session
+      const actualUsage = lastMessageUsage ?? lastUsage;
+      const contextTokens = actualUsage
+        ? (actualUsage.input_tokens ?? 0)
+          + (actualUsage.cache_read_input_tokens ?? 0)
+          + (actualUsage.cache_creation_input_tokens ?? 0)
         : 0;
       const modelEntry = lastModelUsage ? Object.values(lastModelUsage)[0] : undefined;
       const contextWindow = modelEntry?.contextWindow ?? modelEntry?.context_window;

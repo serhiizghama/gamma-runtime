@@ -39,5 +39,9 @@ export function useTeamDetail(teamId: string | undefined) {
     [],
   );
 
-  return { team, loading, refetch: fetchTeam, updateMember };
+  const updateTeam = useCallback((updates: Partial<Team>) => {
+    setTeam((prev) => (prev ? { ...prev, ...updates } : prev));
+  }, []);
+
+  return { team, loading, refetch: fetchTeam, updateMember, updateTeam };
 }

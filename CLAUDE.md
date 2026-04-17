@@ -23,10 +23,9 @@ pnpm db:reset         # Wipe and restart (drops all data)
 pnpm build            # Build both apps
 pnpm build:core       # Backend only
 pnpm build:web        # Frontend only
-
-# Tests (backend)
-pnpm --filter @gamma/core test
 ```
+
+No test suite is wired up yet (Jest is installed in `apps/core` but there are no `*.spec.ts` files and no `test` script). If adding tests, you'll need to add the `test` script and config first.
 
 ## Architecture
 
@@ -34,7 +33,7 @@ pnpm --filter @gamma/core test
 
 ### Backend (`apps/core/src/`)
 
-Key modules and their responsibilities:
+Key modules and their responsibilities (selective — also present: `chat/`, `teams/`, `team-app/`, `database/`, `common/`, and the top-level `app.controller.ts`):
 
 - **`orchestrator/`** — The heart of the system. Spawns leader agent on user message, spawns worker agents on task assignment, manages process lifecycle, auto-wakes leader when all tasks complete.
 - **`claude/`** — `ClaudeCliAdapter` spawns `claude` CLI via `child_process.spawn()` with `--output-format stream-json`, yielding NDJSON `StreamChunk` objects via async generator. `SessionPoolService` enforces concurrency limits and handles emergency stop (SIGTERM/SIGKILL).
@@ -102,3 +101,17 @@ AGENT_TIMEOUT_MS=600000
 **SSE**: `/api/sse/global`, `/api/sse/team/:teamId`, `/api/sse/agent/:agentId`
 
 **Internal (agent-facing)**: `/api/internal/assign-task`, `/api/internal/update-task`, `/api/internal/send-message`, `/api/internal/read-messages`, `/api/internal/broadcast`, `/api/internal/list-agents`, `/api/internal/mark-done`, `/api/internal/read-context`
+
+## Schema & Migrations
+
+- Source-of-truth schema: `apps/core/src/database/migrations/001-init.sql` (applied by `DatabaseInitService` on boot).
+- Ad-hoc migrations: `scripts/*.sql` — run manually against the running Postgres container when needed.
+- To blow away state and start clean: `pnpm db:reset`.
+
+## Design Docs
+
+Before making large architectural changes, read:
+- `docs/SPEC-v2.md` — product & system spec
+- `docs/IMPLEMENTATION-PLAN.md` — build plan and sequencing
+
+These explain *why* the runtime is shaped this way (local-first, no LLM gateway, CLI-as-agent, etc.).

@@ -1,15 +1,19 @@
+import { useState } from 'react';
 import type { Task, TaskStage } from '../hooks/useTeamTasks';
 import type { Agent } from '../store/useStore';
 import { TaskCard } from './TaskCard';
 import { Spinner } from './Spinner';
 
-const columns: { key: TaskStage; label: string }[] = [
-  { key: 'backlog', label: 'Backlog' },
-  { key: 'in_progress', label: 'In Progress' },
-  { key: 'review', label: 'Review' },
-  { key: 'done', label: 'Done' },
-  { key: 'failed', label: 'Failed' },
+const sections: { key: TaskStage; label: string; color: string; dotColor: string }[] = [
+  { key: 'in_progress', label: 'In Progress', color: 'text-blue-400', dotColor: 'bg-blue-400' },
+  { key: 'review', label: 'Review', color: 'text-amber-400', dotColor: 'bg-amber-400' },
+  { key: 'backlog', label: 'Backlog', color: 'text-gray-400', dotColor: 'bg-gray-500' },
+  { key: 'done', label: 'Done', color: 'text-green-400', dotColor: 'bg-green-400' },
+  { key: 'failed', label: 'Failed', color: 'text-red-400', dotColor: 'bg-red-400' },
 ];
+
+// Sections that are expanded by default
+const defaultExpanded = new Set<TaskStage>(['in_progress', 'review', 'failed']);
 
 interface Props {
   tasks: Task[];
@@ -20,6 +24,22 @@ interface Props {
 }
 
 export function TaskBoard({ tasks, agents, loading, teamId, onTaskClick }: Props) {
+  const [expanded, setExpanded] = useState<Set<TaskStage>>(() => new Set(defaultExpanded));
+
+  const toggle = (key: TaskStage) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const getTasksForSection = (key: TaskStage): Task[] => {
+    if (key === 'backlog') return tasks.filter((t) => t.stage === 'backlog' || t.stage === 'planning');
+    return tasks.filter((t) => t.stage === key);
+  };
+
   return (
     <div className="flex h-full flex-col">
       <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-gray-500">Tasks</h3>
@@ -38,31 +58,48 @@ export function TaskBoard({ tasks, agents, loading, teamId, onTaskClick }: Props
           <p className="text-xs text-gray-600">Tasks will appear here when the team starts working</p>
         </div>
       ) : (
-        <div className="grid flex-1 grid-cols-5 gap-3 overflow-hidden">
-          {columns.map((col) => {
-            const colTasks = tasks.filter((t) => {
-              if (col.key === 'backlog') return t.stage === 'backlog' || t.stage === 'planning';
-              return t.stage === col.key;
-            });
+        <div className="flex-1 space-y-1 overflow-y-auto">
+          {sections.map((section) => {
+            const sectionTasks = getTasksForSection(section.key);
+            if (sectionTasks.length === 0) return null;
+            const isOpen = expanded.has(section.key);
+
             return (
-              <div key={col.key} className="flex flex-col overflow-hidden rounded-lg bg-gray-900/50">
-                <div className={`flex items-center justify-between px-3 py-2 ${col.key === 'failed' ? 'bg-red-500/10' : ''}`}>
-                  <span className={`text-xs font-medium ${col.key === 'failed' ? 'text-red-400' : 'text-gray-400'}`}>{col.label}</span>
-                  <span className="rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-500">
-                    {colTasks.length}
+              <div key={section.key}>
+                <button
+                  onClick={() => toggle(section.key)}
+                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-gray-800/60 ${
+                    section.key === 'failed' ? 'bg-red-500/5' : ''
+                  }`}
+                >
+                  <svg
+                    className={`h-3 w-3 shrink-0 text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${section.dotColor}`} />
+                  <span className={`text-xs font-medium ${section.color}`}>{section.label}</span>
+                  <span className="ml-auto rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-500">
+                    {sectionTasks.length}
                   </span>
-                </div>
-                <div className="flex-1 space-y-2 overflow-y-auto px-2 pb-2">
-                  {colTasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      agents={agents}
-                      teamId={teamId}
-                      onClick={() => onTaskClick(task)}
-                    />
-                  ))}
-                </div>
+                </button>
+                {isOpen && (
+                  <div className="space-y-1.5 px-1 pb-2 pt-1">
+                    {sectionTasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        agents={agents}
+                        teamId={teamId}
+                        onClick={() => onTaskClick(task)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

@@ -1,34 +1,15 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { useStore } from '../store/useStore';
-import { post } from '../api/client';
 
 export function Layout() {
-  const { notifications, dismissNotification, addNotification } = useStore();
-
-  const handleEmergencyStop = async () => {
-    try {
-      await post('/emergency-stop', {});
-      addNotification({ type: 'success', message: 'All agents stopped' });
-    } catch (err) {
-      addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Emergency stop failed' });
-    }
-  };
+  const { notifications, dismissNotification } = useStore();
 
   return (
     <div className="flex h-screen ambient-bg text-gray-100">
       <div className="noise-overlay" />
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="header-accent flex h-14 items-center justify-between px-6">
-          <div />
-          <button
-            onClick={handleEmergencyStop}
-            className="rounded-lg bg-red-600/20 px-4 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-600/30"
-          >
-            Emergency Stop
-          </button>
-        </header>
         <main className="flex-1 overflow-auto p-6">
           <Outlet />
         </main>

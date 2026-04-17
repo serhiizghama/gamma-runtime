@@ -67,10 +67,13 @@ function classifyChunk(obj: unknown): StreamChunk {
       return { type: 'unknown', content: JSON.stringify(data) };
     }
 
+    // Extract per-API-call usage from the assistant message
+    const msgUsage = message?.usage as StreamChunk['usage'] | undefined;
+
     // Process each content block
     for (const block of contentArr) {
       if (block.type === 'text') {
-        return { type: 'text', content: block.text as string ?? '' };
+        return { type: 'text', content: block.text as string ?? '', usage: msgUsage };
       }
       if (block.type === 'tool_use') {
         return {
@@ -79,10 +82,11 @@ function classifyChunk(obj: unknown): StreamChunk {
           toolName: block.name as string,
           toolInput: block.input,
           toolUseId: block.id as string,
+          usage: msgUsage,
         };
       }
       if (block.type === 'thinking') {
-        return { type: 'thinking', content: block.thinking as string ?? '' };
+        return { type: 'thinking', content: block.thinking as string ?? '', usage: msgUsage };
       }
     }
 

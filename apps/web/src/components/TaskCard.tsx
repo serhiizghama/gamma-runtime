@@ -30,7 +30,6 @@ interface Props {
 
 export function TaskCard({ task, agents, teamId, onClick }: Props) {
   const assigned = task.assignedTo ? agents.find((a) => a.id === task.assignedTo) : null;
-  const creator = task.createdBy ? agents.find((a) => a.id === task.createdBy) : null;
   const isFailed = task.stage === 'failed';
   const [retrying, setRetrying] = useState(false);
 
@@ -51,41 +50,36 @@ export function TaskCard({ task, agents, teamId, onClick }: Props) {
   return (
     <button
       onClick={onClick}
-      className={`w-full card-hover rounded-lg border p-3 text-left transition-colors ${
+      className={`w-full card-hover rounded-lg border px-3 py-2 text-left transition-colors ${
         isFailed
           ? 'border-red-800/50 bg-red-900/20 hover:border-red-700/50 hover:bg-red-900/30 hover:shadow-[0_4px_12px_rgba(239,68,68,0.12)]'
-          : `border-gray-700 bg-gray-800/60 hover:border-gray-600 hover:bg-gray-800 ${kindGlows[task.kind] ?? kindGlows.generic}`
+          : `border-gray-700/50 bg-gray-800/40 hover:border-gray-600 hover:bg-gray-800/80 ${kindGlows[task.kind] ?? kindGlows.generic}`
       }`}
     >
-      <div className="mb-1.5 text-sm font-medium text-gray-200 line-clamp-2">{task.title}</div>
-      <div className="flex items-center gap-2">
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${kindColors[task.kind] ?? kindColors.generic}`}>
+      <div className="text-[13px] font-medium leading-snug text-gray-200 line-clamp-2">{task.title}</div>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${kindColors[task.kind] ?? kindColors.generic}`}>
           {task.kind}
         </span>
         {assigned && (
-          <span className="text-xs text-gray-500" title={`Assigned: ${assigned.name}`}>
-            {assigned.avatar_emoji}
+          <span className="text-xs text-gray-500" title={assigned.name}>
+            {assigned.avatar_emoji} <span className="text-[10px] text-gray-600">{assigned.name}</span>
+          </span>
+        )}
+        {isFailed && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={handleRetry}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRetry(e as unknown as React.MouseEvent); }}
+            className="ml-auto text-[10px] font-medium text-blue-400 hover:text-blue-300"
+          >
+            {retrying ? 'Retrying...' : 'Retry'}
           </span>
         )}
       </div>
       {isFailed && task.result?.summary && (
-        <div className="mt-1.5 text-xs text-red-300/80 line-clamp-2">{task.result.summary}</div>
-      )}
-      {creator && (
-        <div className="mt-1.5 text-[10px] text-gray-600 truncate">
-          by {creator.avatar_emoji} {creator.name}
-        </div>
-      )}
-      {isFailed && (
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={handleRetry}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleRetry(e as unknown as React.MouseEvent); }}
-          className="mt-2 text-xs text-blue-400 hover:text-blue-300 cursor-pointer"
-        >
-          {retrying ? 'Retrying...' : 'Retry'}
-        </div>
+        <div className="mt-1 text-[11px] leading-tight text-red-300/70 line-clamp-1">{task.result.summary}</div>
       )}
     </button>
   );

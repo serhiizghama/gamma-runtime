@@ -1,0 +1,15 @@
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gamma-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M7 4.5C9.5 4.5 11.5 5 13 7c1.5 2 2.2 4.5 2.8 7.5.4 2 .7 3.8 1.2 5.5M13 7c-1 2.5-2 5.5-2.5 8.5-.3 1.8-.3 3.2 0 4.5"
+    stroke="url(#gamma-grad)"
+    stroke-width="2.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
