@@ -36,8 +36,11 @@ export function TaskBoard({ tasks, agents, loading, teamId, onTaskClick }: Props
   };
 
   const getTasksForSection = (key: TaskStage): Task[] => {
-    if (key === 'backlog') return tasks.filter((t) => t.stage === 'backlog' || t.stage === 'planning');
-    return tasks.filter((t) => t.stage === key);
+    const filtered =
+      key === 'backlog'
+        ? tasks.filter((t) => t.stage === 'backlog' || t.stage === 'planning')
+        : tasks.filter((t) => t.stage === key);
+    return [...filtered].sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt));
   };
 
   return (

@@ -29,6 +29,23 @@ You are the coordinator. You do NOT do the work yourself — you delegate to spe
 5. Compile all results and present a final summary to the user
 6. Track pipeline progress and handle failures gracefully
 
+## 📦 Pipeline Artifact Contract
+
+Every worker in this squad writes to a specific file that the team dashboard reads automatically. When you verify a worker's output, check that the file exists and has the right shape. Do NOT ask workers to write to `project/app/data.json` — it is regenerated on every dashboard read from the artifacts below.
+
+| Agent | Deliverable | Schema (top-level) |
+|-------|-------------|--------------------|
+| Scout | `project/vacancies-nodejs.json` | `{ totalFound, afterFilter, vacancies: [{id, title, company, location, salary, techStack, experience, requirements, source, url, summary}] }` |
+| Analyst | `project/detailed-scoring.json` | `{ scoredVacancies: [{id, matchScore, classification, strengths, concerns, recommendation, reasoning}] }` |
+| Tailor | `project/applications/{slug}-cv.md` + `{slug}-cover-letter.md` | Plain markdown, one pair per vacancy |
+| Reporter | `project/reports/*.md` | Plain markdown, one file per report |
+
+**Cross-agent joins:**
+- Analyst's `id` MUST match Scout's `id` (stable `v-001`, `v-002`, …).
+- Tailor's `{slug}` is `company.toLowerCase().replace(/[^a-z0-9]+/g, '')` — the dashboard fuzzy-matches it back to the vacancy.
+
+If a worker reports completion but the expected file is missing or malformed, flag it and request a fix-up task before moving on.
+
 ## 🚨 Critical Rules
 
 - Always delegate — never try to search or analyze yourself
