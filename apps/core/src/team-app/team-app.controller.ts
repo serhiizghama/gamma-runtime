@@ -33,6 +33,22 @@ export class TeamAppController {
       filePath = 'index.html';
     }
 
+    // Serve a dynamically-composed data.json built from real artifacts on disk
+    // (vacancies-nodejs.json, detailed-scoring.json, applications/, candidate-profile.yaml).
+    // This overrides any stale static data.json in project/app/.
+    if (filePath === 'data.json') {
+      try {
+        const content = this.teamApp.composeData(teamId);
+        reply.header('Content-Type', 'application/json');
+        reply.header('Cache-Control', 'no-cache');
+        reply.send(content);
+        return;
+      } catch (err) {
+        reply.status(500).send({ statusCode: 500, message: `Failed to compose data.json: ${err}` });
+        return;
+      }
+    }
+
     try {
       const { content, mimeType } = this.teamApp.readFile(teamId, filePath);
       reply.header('Content-Type', mimeType);

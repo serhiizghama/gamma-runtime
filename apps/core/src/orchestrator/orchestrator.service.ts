@@ -17,6 +17,7 @@ import { GammaEvent } from '../events/types';
 export class OrchestratorService implements OnModuleInit {
   private readonly logger = new Logger(OrchestratorService.name);
   private runningPipelines = new Set<string>();
+  private turnStartedAt = new Map<string, number>();
 
   constructor(
     private readonly claude: ClaudeCliAdapter,
@@ -90,6 +91,7 @@ export class OrchestratorService implements OnModuleInit {
       throw new ConflictException('A pipeline is already running for this team');
     }
     this.runningPipelines.add(teamId);
+    this.turnStartedAt.set(teamId, Date.now());
 
     try {
       // 2. Save user message to chat
@@ -516,14 +518,19 @@ export class OrchestratorService implements OnModuleInit {
         context_window: contextWindow,
       });
 
-      // If agent didn't call update-task itself, auto-complete
+      // If agent didn't call update-task itself, auto-complete with their final text output.
+      // The lead reads task.result as the source of truth — we must not leave it as a stub.
       if (!taskUpdatedByAgent) {
         const currentTask = await this.tasks.findById(task.id);
         if (currentTask && currentTask.stage === 'in_progress') {
+          const trimmed = responseText.trim();
           await this.tasks.setResult(
             task.id,
             JSON.stringify({
-              summary: 'Agent completed work (auto-detected)',
+              summary: trimmed
+                ? trimmed.slice(0, 500) + (trimmed.length > 500 ? '…' : '')
+                : 'Agent completed work but produced no text output',
+              fullOutput: trimmed || null,
               autoCompleted: true,
             }),
           );
@@ -555,22 +562,47 @@ export class OrchestratorService implements OnModuleInit {
         );
 
         if (pendingTasks.length === 0 && leader.status === 'idle' && !this.runningPipelines.has(task.team_id)) {
-          const doneTasks = allTasks.filter((t) => t.stage === 'done');
-          const summary = doneTasks
-            .slice(-10)
-            .map((t) => `- "${t.title}" → done`)
+          // Scope to tasks that belong to the current leader turn.
+          // Fallback to last 10 minutes if the map was lost (e.g. after a backend restart).
+          const turnStart =
+            this.turnStartedAt.get(task.team_id) ?? Date.now() - 10 * 60 * 1000;
+          const thisRoundTasks = allTasks
+            .filter(
+              (t) =>
+                t.created_at >= turnStart &&
+                (t.stage === 'done' || t.stage === 'failed'),
+            )
+            .sort((a, b) => a.created_at - b.created_at);
+
+          const agentNameById = new Map(teamMembers.map((m) => [m.id, m.name]));
+          const tasksList = thisRoundTasks
+            .map((t) => {
+              const owner = t.assigned_to
+                ? agentNameById.get(t.assigned_to) ?? 'unknown'
+                : 'unassigned';
+              const marker = t.stage === 'failed' ? ' [FAILED]' : '';
+              return `- ${t.id} — "${t.title}" by ${owner}${marker}`;
+            })
             .join('\n');
 
+          const wakeMessage = tasksList
+            ? `[SYSTEM] Round completed. Tasks ready for review (scoped to this turn):
+
+${tasksList}
+
+Protocol:
+1. FIRST action: call \`get-task/{id}\` for EACH task above to read the actual results.
+2. Only after reading all results, write your consolidated response to the user.
+3. DO NOT skip step 1 — the list above contains only task IDs and titles, not results. \`task.result\` is the source of truth. Responding based on titles alone leads to hallucinated outputs.`
+            : `[SYSTEM] Round completed but no tasks were created in this turn. If you expected team activity, check recent inbox via \`read-messages\` before responding.`;
+
           this.logger.log(
-            `All tasks completed for team ${task.team_id}, waking leader ${leader.name}`,
+            `All tasks completed for team ${task.team_id}, waking leader ${leader.name} (${thisRoundTasks.length} tasks in scope)`,
           );
 
           // Small delay to let final events propagate
           setTimeout(() => {
-            this.handleTeamMessage(
-              task.team_id,
-              `[SYSTEM] All assigned tasks have been completed by your team members. Here is the status:\n\n${summary}\n\nReview the results (check shared/discoveries/, read agent messages via read-messages, review task results) and continue with the next phase of work.`,
-            ).catch((err) => {
+            this.handleTeamMessage(task.team_id, wakeMessage).catch((err) => {
               this.logger.error(`Failed to wake leader after task completion: ${err}`);
             });
           }, 2000);

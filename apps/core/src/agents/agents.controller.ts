@@ -45,4 +45,10 @@ export class AgentsController {
   resetSession(@Param('id') id: string) {
     return this.agentsService.resetSession(id);
   }
+
+  @Post('regenerate-team/:teamId')
+  async regenerateTeam(@Param('teamId') teamId: string) {
+    await this.agentsService.regenerateTeamClaudeMd(teamId);
+    return { ok: true, teamId };
+  }
 }
