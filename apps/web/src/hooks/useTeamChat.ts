@@ -28,7 +28,22 @@ export function useTeamChat(teamId: string | undefined) {
     try {
       setLoading(true);
       const data = await get<ChatMessage[]>(`/teams/${teamId}/chat?limit=${PAGE_SIZE}`);
-      setMessages(data);
+      setMessages((prev) => {
+        // Preserve optimistic entries (temp_ ids) that the server hasn't
+        // persisted yet — otherwise a send that races the initial fetch
+        // visually disappears until the next reload.
+        const pending = prev.filter(
+          (m) =>
+            m.id.startsWith('temp_') &&
+            !data.some(
+              (d) =>
+                d.role === m.role &&
+                d.content === m.content &&
+                Math.abs(Number(d.created_at) - Number(m.created_at)) < 10000,
+            ),
+        );
+        return pending.length === 0 ? data : [...data, ...pending];
+      });
       setHasMore(data.length >= PAGE_SIZE);
       initialLoadDone.current = true;
     } catch (err) {
@@ -99,6 +114,23 @@ export function useTeamChat(teamId: string | undefined) {
   const appendMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => {
       if (prev.find((m) => m.id === msg.id)) return prev;
+      // Reconcile optimistic user messages: when the server broadcasts the
+      // persisted record, swap the matching temp_ entry in place so we don't
+      // end up with the same message twice.
+      if (msg.role === 'user' && !msg.id.startsWith('temp_')) {
+        const idx = prev.findIndex(
+          (m) =>
+            m.role === 'user' &&
+            m.id.startsWith('temp_') &&
+            m.content === msg.content &&
+            Math.abs(Number(m.created_at) - Number(msg.created_at)) < 10000,
+        );
+        if (idx !== -1) {
+          const next = prev.slice();
+          next[idx] = msg;
+          return next;
+        }
+      }
       return [...prev, msg];
     });
   }, []);

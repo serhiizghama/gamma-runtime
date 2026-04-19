@@ -37,10 +37,15 @@ function ActivityPill({ activity, agent, compact }: PillProps) {
   const isError = activity.kind === 'error';
   const tooltipLines = activity.recentTools.slice(1); // first is current
 
+  // Key the volatile bits (icon + label/detail) so React remounts them on
+  // change and the CSS keyframe re-fires — gives a soft fade instead of a
+  // hard text swap when "Thinking" → "Writing" → tool name rolls through.
+  const labelKey = `${activity.kind}:${activity.label}:${activity.detail ?? ''}`;
+
   return (
     <div
       className={`group relative flex items-center gap-2 rounded-md bg-gray-800/50 px-2.5 py-1.5 text-xs transition-all duration-500 ${
-        activity.fadingOut ? 'scale-95 opacity-0' : 'opacity-100'
+        activity.fadingOut ? 'scale-95 opacity-0' : 'activity-pill-enter opacity-100'
       } ${compact ? 'flex-1' : ''}`}
       style={{ borderLeft: `2px solid ${isError ? '#f87171' : color}` }}
     >
@@ -52,21 +57,29 @@ function ActivityPill({ activity, agent, compact }: PillProps) {
           />
         )}
         <span
-          className="relative inline-flex h-2 w-2 rounded-full"
+          className="relative inline-flex h-2 w-2 rounded-full transition-colors duration-300"
           style={{ backgroundColor: isError ? '#f87171' : color }}
         />
       </span>
-      <span className="text-sm leading-none" aria-hidden>{activity.icon}</span>
+      <span
+        key={`icon-${labelKey}`}
+        className="activity-label-swap text-sm leading-none"
+        aria-hidden
+      >
+        {activity.icon}
+      </span>
       <span className="truncate text-gray-300">
         <span className="font-medium text-gray-400">{name}</span>
         <span className="mx-1.5 text-gray-600">·</span>
-        <span className={isError ? 'text-red-300' : 'text-gray-300'}>{activity.label}</span>
-        {activity.detail && (
-          <>
-            <span className="mx-1 text-gray-600">·</span>
-            <span className="text-gray-500">{activity.detail}</span>
-          </>
-        )}
+        <span key={`label-${labelKey}`} className="activity-label-swap inline-block">
+          <span className={isError ? 'text-red-300' : 'text-gray-300'}>{activity.label}</span>
+          {activity.detail && (
+            <>
+              <span className="mx-1 text-gray-600">·</span>
+              <span className="text-gray-500">{activity.detail}</span>
+            </>
+          )}
+        </span>
       </span>
       <span className="ml-auto flex-shrink-0 text-[10px] tabular-nums text-gray-600">{elapsed}</span>
 

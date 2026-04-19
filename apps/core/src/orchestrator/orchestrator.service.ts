@@ -94,8 +94,15 @@ export class OrchestratorService implements OnModuleInit {
     this.turnStartedAt.set(teamId, Date.now());
 
     try {
-      // 2. Save user message to chat
-      await this.chat.save({ teamId, role: 'user', content: message });
+      // 2. Save user message to chat and broadcast it so all connected UIs
+      //    (including the originating tab) can reconcile optimistic entries
+      //    with the persisted record that carries a real ULID.
+      const userChatMsg = await this.chat.save({ teamId, role: 'user', content: message });
+      this.eventBus.emit({
+        kind: 'team.message',
+        teamId,
+        content: userChatMsg,
+      });
 
       // 3. Find leader
       const team = await this.teams.findById(teamId);

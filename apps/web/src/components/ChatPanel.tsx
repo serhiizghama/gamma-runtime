@@ -17,64 +17,95 @@ interface Props {
   onLoadMore?: () => void;
 }
 
+const NEAR_BOTTOM_PX = 150;
+const AUTO_SCROLL_ANIMATION_MS = 500;
+
 export function ChatPanel({ messages, loading, sending, members, hasMore, loadingMore, activities, onSend, onLoadMore }: Props) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevMsgCountRef = useRef(0);
-  const isInitialMount = useRef(true);
+  const prevFirstIdRef = useRef<string | null>(null);
   const prevScrollHeightRef = useRef(0);
+  // Snapshot of "was the user near the bottom" captured BEFORE the current
+  // render. This is the key to bug #5: measuring distance-to-bottom AFTER a
+  // tall message is inserted gives a false negative (distance > threshold)
+  // and the user gets stranded mid-chat. Updated on scroll events and at the
+  // end of each layout effect run.
+  const wasNearBottomRef = useRef(true);
+  // While we run a smooth auto-scroll, the browser fires scroll events that
+  // would otherwise flip wasNearBottomRef to false mid-animation. The lock
+  // tells handleScroll and the layout effect to trust the committed intent
+  // until the animation settles.
+  const isAutoScrollingRef = useRef(false);
+  const autoScrollTimerRef = useRef<number | null>(null);
 
-  // Scroll to bottom instantly on initial load
   useEffect(() => {
-    if (!loading && isInitialMount.current && messages.length > 0) {
-      isInitialMount.current = false;
-      bottomRef.current?.scrollIntoView();
-    }
-  }, [loading, messages.length]);
+    return () => {
+      if (autoScrollTimerRef.current !== null) {
+        window.clearTimeout(autoScrollTimerRef.current);
+      }
+    };
+  }, []);
 
-  // Scroll to bottom when new messages are appended at the end
-  useEffect(() => {
-    if (isInitialMount.current) return;
-    const prevCount = prevMsgCountRef.current;
-    const newCount = messages.length;
-    prevMsgCountRef.current = newCount;
-
-    if (newCount <= prevCount) return;
-
-    // Check if user is near bottom (within 150px)
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
 
-    if (isNearBottom) {
-      // Use instant scroll — no smooth animation through entire history
-      bottomRef.current?.scrollIntoView();
+    const prevCount = prevMsgCountRef.current;
+    const newCount = messages.length;
+    const newFirstId = messages[0]?.id ?? null;
+    const prevFirstId = prevFirstIdRef.current;
+
+    const wasPrepend =
+      prevFirstId !== null &&
+      newFirstId !== prevFirstId &&
+      messages.some((m) => m.id === prevFirstId);
+
+    if (wasPrepend && prevScrollHeightRef.current > 0) {
+      const diff = el.scrollHeight - prevScrollHeightRef.current;
+      if (diff > 0) el.scrollTop += diff;
+    } else if (newCount > prevCount && wasNearBottomRef.current) {
+      isAutoScrollingRef.current = true;
+      if (autoScrollTimerRef.current !== null) {
+        window.clearTimeout(autoScrollTimerRef.current);
+      }
+      autoScrollTimerRef.current = window.setTimeout(() => {
+        isAutoScrollingRef.current = false;
+        autoScrollTimerRef.current = null;
+        const el2 = scrollRef.current;
+        if (el2) {
+          wasNearBottomRef.current =
+            el2.scrollHeight - el2.scrollTop - el2.clientHeight < NEAR_BOTTOM_PX;
+        }
+      }, AUTO_SCROLL_ANIMATION_MS);
+      // On the very first paint there is no prior content to animate from —
+      // jumping instantly avoids a visible scroll-through-empty-history.
+      const firstPaint = prevCount === 0;
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: firstPaint ? 'auto' : 'smooth',
+      });
     }
-  }, [messages.length]);
 
-  // Preserve scroll position when older messages are prepended
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !prevScrollHeightRef.current) return;
-
-    const newScrollHeight = el.scrollHeight;
-    const diff = newScrollHeight - prevScrollHeightRef.current;
-    if (diff > 0) {
-      el.scrollTop += diff;
+    prevMsgCountRef.current = newCount;
+    prevFirstIdRef.current = newFirstId;
+    prevScrollHeightRef.current = el.scrollHeight;
+    if (!isAutoScrollingRef.current) {
+      wasNearBottomRef.current =
+        el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
     }
-    prevScrollHeightRef.current = 0;
   }, [messages]);
 
-  // Infinite scroll up — load older messages
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (!el || !hasMore || loadingMore) return;
-
-    if (el.scrollTop < 100 && onLoadMore) {
-      prevScrollHeightRef.current = el.scrollHeight;
-      onLoadMore();
+    if (!el) return;
+    if (!isAutoScrollingRef.current) {
+      wasNearBottomRef.current =
+        el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
     }
+    if (!hasMore || loadingMore) return;
+    if (el.scrollTop < 100 && onLoadMore) onLoadMore();
   }, [hasMore, loadingMore, onLoadMore]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -91,13 +122,28 @@ export function ChatPanel({ messages, loading, sending, members, hasMore, loadin
     resizeTextarea();
   }, [input, resizeTextarea]);
 
+  // Return focus to the input once the team goes idle again, so the user
+  // can type a follow-up immediately without clicking the field.
+  const prevBusyRef = useRef(false);
+  useEffect(() => {
+    const anyRunning = members.some((m) => m.status === 'running');
+    const busy = sending || anyRunning;
+    if (prevBusyRef.current && !busy) {
+      const active = document.activeElement;
+      // Only grab focus if nothing else holds it — don't yank the caret out
+      // of a modal or another input the user may have opened.
+      if (!active || active === document.body) {
+        textareaRef.current?.focus();
+      }
+    }
+    prevBusyRef.current = busy;
+  }, [sending, members]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || sending) return;
     onSend(input);
     setInput('');
-    // Scroll to bottom after sending
-    setTimeout(() => bottomRef.current?.scrollIntoView(), 50);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

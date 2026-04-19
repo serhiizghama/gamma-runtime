@@ -91,7 +91,10 @@ export function TeamDetail() {
           if (event.agentId) {
             updateMember(event.agentId, { status: 'idle' as const });
           }
-          refetchChat();
+          // Note: we intentionally do NOT refetchChat() here — assistant
+          // messages already arrive via team.message SSE during the run,
+          // and a full refetch replaces the array (losing scroll position
+          // and paginated history).
           refetchTasks();
           break;
 

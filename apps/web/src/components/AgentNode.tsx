@@ -66,7 +66,7 @@ export function AgentNode({ agent, onClick, onResetSession }: Props) {
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium text-white">{agent.name}</span>
             <span
-              className={`shrink-0 h-2 w-2 rounded-full ${
+              className={`shrink-0 h-2 w-2 rounded-full transition-colors duration-300 ${
                 agent.status === 'running'
                   ? 'bg-blue-400 dot-breathing'
                   : agent.status === 'error'
@@ -78,7 +78,10 @@ export function AgentNode({ agent, onClick, onResetSession }: Props) {
             />
           </div>
           <div className="truncate text-xs text-gray-500">{formatRoleName(agent.role_id)}</div>
-          <div className="mt-1 flex items-center gap-1.5 text-[10px]">
+          <div
+            key={agent.status}
+            className="status-text-swap mt-1 flex items-center gap-1.5 text-[10px]"
+          >
             {isRunning ? (
               <>
                 <span className="text-blue-400">Running</span>

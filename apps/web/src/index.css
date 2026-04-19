@@ -295,6 +295,59 @@
   }
 }
 
+/* ── Activity indicator & status transitions ── */
+
+@keyframes activity-pill-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.activity-pill-enter {
+  animation: activity-pill-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes activity-label-swap {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.activity-label-swap {
+  animation: activity-label-swap 220ms ease-out both;
+}
+
+@keyframes status-text-swap {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.status-text-swap {
+  animation: status-text-swap 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-pill-enter,
+  .activity-label-swap,
+  .status-text-swap {
+    animation: none;
+  }
+}
+
 /* ── H3: Card Hover Lift + Glow ── */
 
 .card-hover {
