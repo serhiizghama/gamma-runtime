@@ -175,14 +175,17 @@ export class TeamAppService {
         matchScore: Math.round(s.matchScore ?? s.totalScore ?? 0),
         classification: s.classification,
         reasoning: s.reasoning,
-        strengths: s.strengths,
-        concerns: s.concerns,
-        recommendation: s.recommendation,
+        breakdown: this.normalizeBreakdown(s.reasoning),
+        strengths: s.strengths ?? [],
+        concerns: s.concerns ?? [],
+        recommendation: s.recommendation ?? '',
       };
     }
 
     const applications = this.readApplications(projectDir, enrichedVacancies);
-    const currentBrief = this.readCandidateBrief(projectDir);
+    const reports = this.readReports(projectDir);
+    const candidate = this.readCandidateFull(projectDir);
+    const currentBrief = this.briefFromFullProfile(candidate);
     const sources = this.countSources(enrichedVacancies);
     // Scout's raw totalFound (before filtering); afterFilter is what actually ended up in the file.
     const totalFound = typeof vacanciesFile?.totalFound === 'number' ? vacanciesFile.totalFound : vacancies.length;
@@ -201,6 +204,8 @@ export class TeamAppService {
       vacancies: enrichedVacancies,
       analyses,
       applications,
+      reports,
+      candidate,
       activityLog: [],
       runMeta: {
         currentRunId: null,
@@ -282,21 +287,143 @@ export class TeamAppService {
     }
 
     for (const [slug, bundle] of grouped) {
-      const vac = vacByCompany.get(slug.toLowerCase().replace(/[^a-z0-9]+/g, ''));
+      const normalizedSlug = slug.toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const vac = vacByCompany.get(normalizedSlug);
       const vacId = vac?.id ?? slug;
       const coverLetter = bundle.coverLetter ?? '';
+      const cv = bundle.cv ?? '';
+      const ats = this.computeAts(cv, vac);
       result[vacId] = {
         status: 'draft',
-        atsScore: 0,
-        cv: bundle.cv ?? '',
+        atsScore: ats.atsScore,
+        cv,
         coverLetter,
+        coverLetterPreview: this.excerpt(coverLetter, 600),
         coverLetterLangs: { en: coverLetter },
         cvChanges: [],
-        keywordsMatched: [],
-        keywordsMissing: [],
+        keywordsMatched: ats.keywordsMatched,
+        keywordsMissing: ats.keywordsMissing,
+        slug: normalizedSlug,
+        company: vac?.company ?? slug,
+        vacancyTitle: vac?.title ?? null,
+        vacancyUrl: vac?.url ?? null,
+        orphan: !vac,
       };
     }
     return result;
+  }
+
+  private computeAts(
+    cv: string,
+    vac: any,
+  ): { keywordsMatched: string[]; keywordsMissing: string[]; atsScore: number } {
+    const stack: string[] = Array.isArray(vac?.techStack) ? vac.techStack : [];
+    if (!cv || !stack.length) {
+      return { keywordsMatched: [], keywordsMissing: stack, atsScore: 0 };
+    }
+    const cvLower = cv.toLowerCase();
+    const matched: string[] = [];
+    const missing: string[] = [];
+    for (const raw of stack) {
+      const tech = String(raw);
+      // Normalize common variants: "NestJS" vs "Nest.js", "AWS (Lambda, S3)" vs "AWS"
+      const base = tech.replace(/\s*\(.*\)\s*/g, '').trim().toLowerCase();
+      const variants = new Set<string>([tech.toLowerCase(), base]);
+      if (base.includes('.')) variants.add(base.replace(/\./g, ''));
+      if (base.includes(' ')) variants.add(base.replace(/\s+/g, ''));
+      const hit = Array.from(variants).some((v) => v && cvLower.includes(v));
+      (hit ? matched : missing).push(tech);
+    }
+    const total = stack.length;
+    const atsScore = total > 0 ? Math.round((matched.length / total) * 100) : 0;
+    return { keywordsMatched: matched, keywordsMissing: missing, atsScore };
+  }
+
+  private excerpt(text: string, maxChars: number): string {
+    if (!text) return '';
+    const trimmed = text.trim();
+    if (trimmed.length <= maxChars) return trimmed;
+    return trimmed.slice(0, maxChars).replace(/\s+\S*$/, '').trim() + '…';
+  }
+
+  private normalizeBreakdown(reasoning: any): any {
+    if (!reasoning || typeof reasoning !== 'object') return null;
+    const pick = (keys: string[]) => {
+      for (const k of keys) {
+        if (reasoning[k] && typeof reasoning[k] === 'object') return reasoning[k];
+      }
+      return null;
+    };
+    const out: Record<string, any> = {};
+    const techStack = pick(['techStack', 'tech_stack', 'tech']);
+    if (techStack) out.techStack = techStack;
+    const experience = pick(['experienceLevel', 'experience', 'experience_level', 'seniority']);
+    if (experience) out.experienceLevel = experience;
+    const location = pick(['location', 'geo', 'timezone']);
+    if (location) out.location = location;
+    const salary = pick(['salary', 'comp', 'compensation']);
+    if (salary) out.salary = salary;
+    const growth = pick(['growthAndCulture', 'growth_and_culture', 'growth', 'culture']);
+    if (growth) out.growthAndCulture = growth;
+    return Object.keys(out).length ? out : null;
+  }
+
+  private readReports(projectDir: string): any[] {
+    const reportsDir = join(projectDir, 'reports');
+    if (!existsSync(reportsDir)) return [];
+    let entries: string[];
+    try {
+      entries = readdirSync(reportsDir);
+    } catch {
+      return [];
+    }
+    const out: any[] = [];
+    for (const filename of entries) {
+      if (!filename.toLowerCase().endsWith('.md')) continue;
+      const full = join(reportsDir, filename);
+      try {
+        const stat = statSync(full);
+        const content = readFileSync(full, 'utf8');
+        const titleMatch = content.match(/^#\s+(.+)$/m);
+        out.push({
+          filename,
+          title: titleMatch ? titleMatch[1].trim() : filename.replace(/\.md$/i, ''),
+          content,
+          modifiedAt: Math.floor(stat.mtimeMs),
+          sizeBytes: stat.size,
+        });
+      } catch {
+        // ignore broken entry
+      }
+    }
+    return out.sort((a, b) => b.modifiedAt - a.modifiedAt);
+  }
+
+  private readCandidateFull(projectDir: string): any | null {
+    const jsonPath = join(projectDir, 'candidate-profile.json');
+    const json = this.readJsonSafe(jsonPath);
+    if (json) return json;
+    const yamlPath = join(projectDir, 'candidate-profile.yaml');
+    if (!existsSync(yamlPath)) return null;
+    try {
+      return this.parseYaml(readFileSync(yamlPath, 'utf8'));
+    } catch (err) {
+      this.logger.warn(`Failed to parse candidate-profile.yaml: ${err}`);
+      return null;
+    }
+  }
+
+  private briefFromFullProfile(profile: any | null): any {
+    const fallback = {
+      targetRole: 'Backend Developer',
+      techStack: ['Node.js', 'TypeScript', 'NestJS'],
+      locations: ['Remote'],
+      salaryMin: 5000,
+      experienceYears: 6,
+      employmentTypes: ['full-time'],
+    };
+    if (!profile) return fallback;
+    return { ...fallback, ...this.briefFromProfile(profile) };
   }
 
   private countSources(vacancies: any[]): any[] {
@@ -354,32 +481,6 @@ export class TeamAppService {
         stage('Reporter', '📝', reportCount),
       ],
     };
-  }
-
-  private readCandidateBrief(projectDir: string): any {
-    const fallback = {
-      targetRole: 'Backend Developer',
-      techStack: ['Node.js', 'TypeScript', 'NestJS'],
-      locations: ['Remote'],
-      salaryMin: 5000,
-      experienceYears: 6,
-      employmentTypes: ['full-time'],
-    };
-
-    // Try JSON first (forward-compat), then YAML
-    const jsonPath = join(projectDir, 'candidate-profile.json');
-    const json = this.readJsonSafe(jsonPath);
-    if (json) return { ...fallback, ...this.briefFromProfile(json) };
-
-    const yamlPath = join(projectDir, 'candidate-profile.yaml');
-    if (!existsSync(yamlPath)) return fallback;
-    try {
-      const parsed = this.parseYaml(readFileSync(yamlPath, 'utf8'));
-      return { ...fallback, ...this.briefFromProfile(parsed) };
-    } catch (err) {
-      this.logger.warn(`Failed to parse candidate-profile.yaml: ${err}`);
-      return fallback;
-    }
   }
 
   private briefFromProfile(p: any): any {

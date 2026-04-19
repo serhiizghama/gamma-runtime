@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { ChatMessage, getAgentColor } from './ChatMessage';
+import { ActivityIndicator } from './ActivityIndicator';
 import type { ChatMessage as ChatMsg } from '../hooks/useTeamChat';
 import type { Agent } from '../store/useStore';
+import type { AgentActivity } from '../hooks/useAgentActivities';
 
 interface Props {
   messages: ChatMsg[];
@@ -10,11 +12,12 @@ interface Props {
   members: Agent[];
   hasMore?: boolean;
   loadingMore?: boolean;
+  activities?: AgentActivity[];
   onSend: (text: string) => void;
   onLoadMore?: () => void;
 }
 
-export function ChatPanel({ messages, loading, sending, members, hasMore, loadingMore, onSend, onLoadMore }: Props) {
+export function ChatPanel({ messages, loading, sending, members, hasMore, loadingMore, activities, onSend, onLoadMore }: Props) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -152,6 +155,12 @@ export function ChatPanel({ messages, loading, sending, members, hasMore, loadin
         )}
         <div ref={bottomRef} />
       </div>
+
+      {activities && activities.length > 0 && (
+        <div className="mt-2">
+          <ActivityIndicator activities={activities} members={members} />
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="mt-3 flex items-end gap-2">
         <textarea

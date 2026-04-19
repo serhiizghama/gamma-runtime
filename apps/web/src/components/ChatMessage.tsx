@@ -70,13 +70,29 @@ interface Props {
 
 export { getAgentColor };
 
+function parseWakeUpPreview(content: string): string {
+  const taskLineMatches = content.match(/^-\s+task_\w+/gm);
+  if (taskLineMatches && taskLineMatches.length > 0) {
+    const n = taskLineMatches.length;
+    return `Round completed · ${n} task${n === 1 ? '' : 's'} ready for review`;
+  }
+  if (/no tasks were created/i.test(content)) {
+    return 'Round completed · no tasks in this turn';
+  }
+  // Fallback: first non-[SYSTEM] line
+  const firstLine = content.replace(/^\[SYSTEM\]\s*/, '').split('\n')[0];
+  return firstLine.length > 80 ? firstLine.slice(0, 79) + '…' : firstLine;
+}
+
 export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState(true);
   const [needsCollapse, setNeedsCollapse] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [wakeExpanded, setWakeExpanded] = useState(false);
 
   const isAssistant = message.role === 'assistant';
+  const isWakeUp = message.role === 'user' && message.content.startsWith('[SYSTEM]');
 
   const handleCopyMessage = () => {
     navigator.clipboard.writeText(message.content);
@@ -105,6 +121,42 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
     return (
       <div className="mx-auto max-w-md rounded-lg bg-gray-800/50 px-4 py-2 text-center text-xs text-gray-500">
         {message.content}
+      </div>
+    );
+  }
+
+  if (isWakeUp) {
+    const preview = parseWakeUpPreview(message.content);
+    const timeStr = new Date(Number(message.created_at)).toLocaleTimeString();
+    return (
+      <div className="mx-auto w-full max-w-xl">
+        <button
+          type="button"
+          onClick={() => setWakeExpanded((v) => !v)}
+          className="flex w-full items-center gap-2 rounded-lg border border-gray-800 bg-gray-800/40 px-3 py-2 text-left text-xs text-gray-400 transition-colors hover:bg-gray-800/70"
+        >
+          <span aria-hidden className="text-sm">⚙️</span>
+          <span className="flex-shrink-0 font-medium text-gray-300">Orchestrator wake-up</span>
+          <span className="mx-1 text-gray-600">·</span>
+          <span className="truncate text-gray-500">{preview}</span>
+          <span className="ml-auto flex-shrink-0 text-[10px] text-gray-600">{timeStr}</span>
+          <svg
+            className={`h-3 w-3 flex-shrink-0 text-gray-500 transition-transform ${wakeExpanded ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {wakeExpanded && (
+          <div
+            onClick={handleContentClick}
+            className="chat-content mt-1 rounded-lg border border-gray-800 bg-gray-900/40 px-4 py-3 text-xs leading-relaxed text-gray-400"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
+          />
+        )}
       </div>
     );
   }

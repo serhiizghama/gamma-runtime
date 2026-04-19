@@ -4,6 +4,7 @@ import { useTeamDetail } from '../hooks/useTeamDetail';
 import { useTeamTasks, type Task } from '../hooks/useTeamTasks';
 import { useTeamChat } from '../hooks/useTeamChat';
 import { useTeamSse, type SseEvent } from '../hooks/useTeamSse';
+import { useAgentActivities } from '../hooks/useAgentActivities';
 import { StatusBadge } from '../components/StatusBadge';
 import { Spinner } from '../components/Spinner';
 import { del, patch, post } from '../api/client';
@@ -27,6 +28,7 @@ export function TeamDetail() {
   const { team, loading, refetch, updateMember, updateTeam } = useTeamDetail(id);
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTeamTasks(id);
   const { messages, loading: chatLoading, sending, hasMore, loadingMore, sendMessage, appendMessage, loadMore, refetch: refetchChat } = useTeamChat(id);
+  const { activities, handleEvent: handleActivityEvent, seedPlaceholder, reset: resetActivities } = useAgentActivities();
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -49,9 +51,30 @@ export function TeamDetail() {
     }
   }, [editingName]);
 
+  // Reset activities when switching teams
+  useEffect(() => {
+    resetActivities();
+  }, [id, resetActivities]);
+
+  // Seed placeholder activities for agents that were already running when the page mounted
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || !team) return;
+    seededRef.current = true;
+    for (const m of team.members) {
+      if (m.status === 'running') seedPlaceholder(m.id);
+    }
+  }, [team, seedPlaceholder]);
+  useEffect(() => {
+    seededRef.current = false;
+  }, [id]);
+
   // Handle SSE events
   const handleSseEvent = useCallback(
     (event: SseEvent) => {
+      // Forward activity-relevant events to the live indicator
+      handleActivityEvent(event);
+
       switch (event.kind) {
         case 'agent.started':
         case 'agent.error':
@@ -93,7 +116,7 @@ export function TeamDetail() {
           break;
       }
     },
-    [updateMember, appendMessage, refetch, refetchChat, refetchTasks],
+    [updateMember, appendMessage, refetch, refetchChat, refetchTasks, handleActivityEvent],
   );
 
   useTeamSse(id, handleSseEvent);
@@ -251,6 +274,7 @@ export function TeamDetail() {
             members={team.members}
             hasMore={hasMore}
             loadingMore={loadingMore}
+            activities={activities}
             onSend={sendMessage}
             onLoadMore={loadMore}
           />
