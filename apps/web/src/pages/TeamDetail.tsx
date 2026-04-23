@@ -36,6 +36,7 @@ export function TeamDetail() {
   const [activeTab, setActiveTab] = useState<Tab>('tasks');
   const [leftWidth, setLeftWidth] = useState(300);
   const [rightWidth, setRightWidth] = useState(400);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -283,54 +284,81 @@ export function TeamDetail() {
           />
         </div>
 
-        <ResizeHandle
-          onResize={(delta) =>
-            setRightWidth((w) => Math.max(250, Math.min(700, w - delta)))
-          }
-        />
+        {!rightCollapsed && (
+          <ResizeHandle
+            onResize={(delta) =>
+              setRightWidth((w) => Math.max(250, Math.min(700, w - delta)))
+            }
+          />
+        )}
 
-        {/* Right: Tasks / App tabs */}
-        <div
-          className="shrink-0 flex flex-col overflow-hidden rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 p-4"
-          style={{ width: rightWidth, boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}
-        >
-          <div className="mb-3 flex gap-1">
-            <button
-              onClick={() => setActiveTab('tasks')}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                activeTab === 'tasks'
-                  ? 'bg-gray-800 text-white'
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
-            >
+        {/* Right: Tasks / App tabs (collapsible) */}
+        {rightCollapsed ? (
+          <button
+            onClick={() => setRightCollapsed(false)}
+            title="Expand tasks panel"
+            className="ml-2 flex w-10 shrink-0 flex-col items-center gap-2 rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 py-3 text-gray-500 transition-colors hover:bg-gray-800/60 hover:text-gray-300"
+            style={{ boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="text-[11px] font-medium tracking-wide [writing-mode:vertical-rl] [transform:rotate(180deg)]">
               Tasks
-            </button>
-            <button
-              onClick={() => setActiveTab('app')}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                activeTab === 'app'
-                  ? 'bg-gray-800 text-white'
-                  : 'text-gray-500 hover:text-gray-300'
-              }`}
-            >
-              View App
-            </button>
-          </div>
+            </span>
+          </button>
+        ) : (
+          <div
+            className="shrink-0 flex flex-col overflow-hidden rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 p-4"
+            style={{ width: rightWidth, boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}
+          >
+            <div className="mb-3 flex items-center gap-1">
+              <button
+                onClick={() => setActiveTab('tasks')}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  activeTab === 'tasks'
+                    ? 'bg-gray-800 text-white'
+                    : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                Tasks
+              </button>
+              <button
+                onClick={() => setActiveTab('app')}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  activeTab === 'app'
+                    ? 'bg-gray-800 text-white'
+                    : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                View App
+              </button>
+              <button
+                onClick={() => setRightCollapsed(true)}
+                title="Collapse panel"
+                className="ml-auto rounded-md p-1 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
 
-          <div className="flex-1 overflow-hidden">
-            {activeTab === 'tasks' ? (
-              <TaskBoard
-                tasks={tasks}
-                agents={team.members}
-                loading={tasksLoading}
-                teamId={team.id}
-                onTaskClick={setSelectedTask}
-              />
-            ) : (
-              <AppViewer teamId={team.id} />
-            )}
+            <div className="flex-1 overflow-hidden">
+              {activeTab === 'tasks' ? (
+                <TaskBoard
+                  tasks={tasks}
+                  agents={team.members}
+                  loading={tasksLoading}
+                  teamId={team.id}
+                  onTaskClick={setSelectedTask}
+                />
+              ) : (
+                <AppViewer teamId={team.id} />
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Modals */}
