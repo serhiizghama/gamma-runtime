@@ -2,7 +2,7 @@
 
 Карта всех R&D-документов, манифестов и стресс-тестов архитектуры Gamma Runtime. **Перед добавлением нового концепта — прочитайте этот индекс**, чтобы не повторять уже исследованные направления. Правила оформления — в [`rules.md`](rules.md).
 
-Всего: **15 документов** в **5 тематических папках**.
+Всего: **17 документов** в **5 тематических папках**.
 
 ---
 
@@ -27,6 +27,8 @@
 |------|---------|------|------|
 | [speculative-branch-racing-2026-04-24](bleeding-edge/speculative-branch-racing-2026-04-24.md) | SBR-FV | Спекулятивные branch-races: 1 задача → k draft-агентов в COW-workspaces (APFS `clonefile`) → fingerprint-Verifier (детерминированный, не LLM) промоутит победителя в каноническую `tasks`-строку через row-level lock. Гарантирует backwards-compat при `branches:1`. | 2026-04-24 |
 | [cognitive-prefetch-mesh-2026-04-24](bleeding-edge/cognitive-prefetch-mesh-2026-04-24.md) | CPM | Спекулятивный prefetch read-only тулов (Read/Glob/Grep/WebFetch) через Claude Code `PreToolUse` hook на loopback. Idempotence Lattice как формальная граница безопасности. Phase 1 — heuristic-предиктор, Phase 2 — MLX Shadow Model в worker_thread. Фоллбэк через version probe. | 2026-04-24 |
+| [shadow-team-replay-2026-04-24](bleeding-edge/shadow-team-replay-2026-04-24.md) | STR / Synapses | Трансплантация arXiv:2604.01987 (Shapley-Replay, март 2026): после `task.completed` — O(n) null-ablation replay на Haiku в COW-workspace, структурный Jaccard на tool-call sequence даёт детерминированный marginal contribution. Агрегированная capability-map + force-directed Synapses-граф + Composition Assistant по task description. Ортогонально: post-action / observational / causal-attribution — ранее не занятый квадрант архива. | 2026-04-24 |
+| [counterfactual-residual-routing-2026-04-24](bleeding-edge/counterfactual-residual-routing-2026-04-24.md) | CRR | Трансплантация arXiv:2604.07914 (Kaneko et al., апрель 2026): инверсия знака координационного ядра — роутинг задач не по сходству (как в Resonance OS), а по **дивергенции**. Для кандидатного множества агентов запускаются дешёвые Haiku-превью (128 токенов), эмбеддятся, residual `r(α,τ) = 1 − max_{β≠α} cos(ĥ(α,τ), ĥ(β,τ))`, победитель — argmax-residual. Четырёхуровневая фоллбэк-лестница (cache → live → stale → leader-pick), оппортунистический prefetch в idle-циклах, эмерджентные `discovered_role`. По теореме 3.1 статьи — сходимость к энтропия-максимизирующему распределению ролей без явного supervision. | 2026-04-24 |
 
 ---
 
@@ -71,7 +73,7 @@
 Несколько концептов сознательно ортогональны друг другу — их можно реализовать одновременно:
 
 - **TTT (форма мышления) ⊥ PSC (актуация субстрата)** — TTT наблюдает, PSC изменяет.
-- **Resonance OS (притяжение) ⊥ Apophatic Agent (исключение)** — противоположные знаки в пространстве координации.
+- **Resonance OS (притяжение) ⊥ Apophatic Agent (исключение) ⊥ CRR (дивергенция)** — минимальная тройка полюсов координационного ядра: притянуть похожее, исключить неверное, разнести непохожее. Три независимых знака, композируемы все вместе.
 - **Semantic Field (поле как субстрат) ⊃ Resonance OS** — Field обобщает Resonance до непрерывной физики.
 
 Несколько концептов прямо конкурируют за одну точку прививки:
@@ -79,6 +81,11 @@
 - **SBR-FV vs Cognitive Mesh DAG** — оба претендуют на замену реактивного `task.assigned` в `OrchestratorService`.
 - **CPM vs PSC** — оба используют Claude-хуки и предвосхищающее изменение FS, но из разных сигналов (heuristic токенов vs `thinking`-проекция).
 - **Chronarchy vs Thermal Gnosis** — оба модулируют `maxConcurrent` и интервалы из физических сенсоров; разная глубина (планетарная vs локальная).
+- **STR vs GTLM** — оба накапливают derived knowledge после `task.completed`, но из разных срезов: GTLM извлекает *факты о мире*, STR — *атрибуции о команде*. Ко-реализуемы и взаимно усиливают друг друга (capability + knowledge).
+- **STR зависит от SBR-FV** — reused COW-workspace primitive и structural-fingerprint utility. Если SBR-FV отгружен первым, STR собирается наполовину быстрее.
+- **CRR ↔ Resonance OS** — не конкуренция, а композиция: Resonance OS дешёво ранжирует весь пул агентов по сходству с задачей и отдаёт top-K как кандидатный набор; CRR выбирает из этих K максимально расходящегося. Оба включены одновременно → «pull candidate pool, spread the pick».
+- **CRR ↔ STR** — встречное движение: STR атрибутирует contribution *после* факта (post-hoc), CRR выбирает агента *до* факта (ex-ante) на основе divergence. STR-capability-map можно инжектить как prior в CRR preview pipeline.
+- **CRR ↔ SBR-FV** — композируемые слои: CRR сначала выбирает одного агента (по divergence), SBR-FV опционально запускает k драфтов уже выбранного агента. Не конкурируют за точку прививки; CRR — `task.pending → agent.selected`, SBR-FV — `agent.selected → task.completed`.
 
 ---
 
