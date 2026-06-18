@@ -32,8 +32,11 @@ There are **no external LLM gateways and no API keys**. All model calls go
 through the local `claude` CLI under your existing subscription. State lives in a
 local Postgres instance; everything runs with a single `docker compose up`.
 
-> This project is the engineering artifact of an MSc thesis on browser-native
-> multi-agent runtime systems.
+> This project is the engineering artifact of an MSc thesis on multi-agent
+> runtime systems. It is the **local-first** approach — a focused rewrite that
+> trades infrastructure for simplicity. An earlier, heavier architecture (a
+> microkernel runtime with a Redis Streams memory bus and agent-generated
+> micro-apps) is preserved on the [`legacy-v1`](../../tree/legacy-v1) branch.
 
 ### Why it's different
 
