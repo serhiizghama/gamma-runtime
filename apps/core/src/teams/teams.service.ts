@@ -65,7 +65,9 @@ export class TeamsService {
         const proc = this.sessionPool.getProcess(agent.id);
         if (proc?.pid) {
           this.logger.warn(`Killing running agent ${agent.id} during team archive`);
-          try { process.kill(-proc.pid, 'SIGTERM'); } catch {}
+          try {
+            process.kill(-proc.pid, 'SIGTERM');
+          } catch {}
         }
         this.sessionPool.unregister(agent.id);
       }

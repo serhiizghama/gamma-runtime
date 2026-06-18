@@ -27,8 +27,23 @@ export function TeamDetail() {
   const addNotification = useStore((s) => s.addNotification);
   const { team, loading, refetch, updateMember, updateTeam } = useTeamDetail(id);
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTeamTasks(id);
-  const { messages, loading: chatLoading, sending, hasMore, loadingMore, sendMessage, appendMessage, loadMore, refetch: refetchChat } = useTeamChat(id);
-  const { activities, handleEvent: handleActivityEvent, seedPlaceholder, reset: resetActivities } = useAgentActivities();
+  const {
+    messages,
+    loading: chatLoading,
+    sending,
+    hasMore,
+    loadingMore,
+    sendMessage,
+    appendMessage,
+    loadMore,
+    refetch: refetchChat,
+  } = useTeamChat(id);
+  const {
+    activities,
+    handleEvent: handleActivityEvent,
+    seedPlaceholder,
+    reset: resetActivities,
+  } = useAgentActivities();
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -107,7 +122,16 @@ export function TeamDetail() {
           break;
 
         case 'team.message': {
-          const msg = event.content as { id: string; team_id: string; role: 'user' | 'assistant' | 'system'; agent_id: string | null; content: string; created_at: number } | undefined;
+          const msg = event.content as
+            | {
+                id: string;
+                team_id: string;
+                role: 'user' | 'assistant' | 'system';
+                agent_id: string | null;
+                content: string;
+                created_at: number;
+              }
+            | undefined;
           if (msg) appendMessage(msg);
           break;
         }
@@ -138,7 +162,9 @@ export function TeamDetail() {
     return (
       <div className="text-gray-400">
         Team not found.{' '}
-        <Link to="/" className="text-blue-400 hover:underline">Back to Dashboard</Link>
+        <Link to="/" className="text-blue-400 hover:underline">
+          Back to Dashboard
+        </Link>
       </div>
     );
   }
@@ -160,7 +186,10 @@ export function TeamDetail() {
       addNotification({ type: 'success', message: 'Team renamed' });
       setEditingName(false);
     } catch (err) {
-      addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Rename failed' });
+      addNotification({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Rename failed',
+      });
     } finally {
       setRenaming(false);
     }
@@ -172,7 +201,10 @@ export function TeamDetail() {
       addNotification({ type: 'success', message: `Session reset for ${agent.name}` });
       refetch();
     } catch (err) {
-      addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Reset failed' });
+      addNotification({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Reset failed',
+      });
     }
   };
 
@@ -182,7 +214,13 @@ export function TeamDetail() {
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link to="/" className="text-gray-500 transition-colors hover:text-gray-300">
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </Link>
@@ -214,8 +252,18 @@ export function TeamDetail() {
               className="group flex items-center gap-1.5 rounded-md px-1 text-xl font-bold text-white hover:bg-gray-800/60"
             >
               <span>{team.name}</span>
-              <svg className="h-3.5 w-3.5 text-gray-500 opacity-0 transition-opacity group-hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 11l6.586-6.586a2 2 0 112.828 2.828L11.828 13.828a2 2 0 01-.879.515l-3.535.884.884-3.535a2 2 0 01.515-.879z" />
+              <svg
+                className="h-3.5 w-3.5 text-gray-500 opacity-0 transition-opacity group-hover:opacity-100"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.232 5.232l3.536 3.536M9 11l6.586-6.586a2 2 0 112.828 2.828L11.828 13.828a2 2 0 01-.879.515l-3.535.884.884-3.535a2 2 0 01.515-.879z"
+                />
               </svg>
             </button>
           )}
@@ -226,7 +274,13 @@ export function TeamDetail() {
             onClick={() => setShowAddAgent(true)}
             className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
             Add Agent
@@ -237,7 +291,10 @@ export function TeamDetail() {
                 await post('/emergency-stop', {});
                 addNotification({ type: 'success', message: 'All agents stopped' });
               } catch (err) {
-                addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Emergency stop failed' });
+                addNotification({
+                  type: 'error',
+                  message: err instanceof Error ? err.message : 'Emergency stop failed',
+                });
               }
             }}
             className="rounded-lg bg-red-600/20 px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-600/30"
@@ -260,17 +317,25 @@ export function TeamDetail() {
           className="shrink-0 overflow-y-auto rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 p-4"
           style={{ width: leftWidth, boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}
         >
-          <TeamMap leader={leader} members={members} onAgentClick={(agent) => setSelectedAgent((prev) => prev?.id === agent.id ? null : agent)} onResetSession={handleResetSession} />
+          <TeamMap
+            leader={leader}
+            members={members}
+            onAgentClick={(agent) =>
+              setSelectedAgent((prev) => (prev?.id === agent.id ? null : agent))
+            }
+            onResetSession={handleResetSession}
+          />
         </div>
 
         <ResizeHandle
-          onResize={(delta) =>
-            setLeftWidth((w) => Math.max(200, Math.min(500, w + delta)))
-          }
+          onResize={(delta) => setLeftWidth((w) => Math.max(200, Math.min(500, w + delta)))}
         />
 
         {/* Center: Chat */}
-        <div className="flex min-w-[250px] flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 p-4" style={{ boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}>
+        <div
+          className="flex min-w-[250px] flex-1 flex-col overflow-hidden rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 p-4"
+          style={{ boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}
+        >
           <ChatPanel
             messages={messages}
             loading={chatLoading}
@@ -286,9 +351,7 @@ export function TeamDetail() {
 
         {!rightCollapsed && (
           <ResizeHandle
-            onResize={(delta) =>
-              setRightWidth((w) => Math.max(250, Math.min(700, w - delta)))
-            }
+            onResize={(delta) => setRightWidth((w) => Math.max(250, Math.min(700, w - delta)))}
           />
         )}
 
@@ -300,7 +363,13 @@ export function TeamDetail() {
             className="ml-2 flex w-10 shrink-0 flex-col items-center gap-2 rounded-xl border border-gray-800 border-t-white/[0.03] bg-gray-900/50 py-3 text-gray-500 transition-colors hover:bg-gray-800/60 hover:text-gray-300"
             style={{ boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
             <span className="text-[11px] font-medium tracking-wide [writing-mode:vertical-rl] [transform:rotate(180deg)]">
@@ -338,7 +407,13 @@ export function TeamDetail() {
                 title="Collapse panel"
                 className="ml-auto rounded-md p-1 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
               </button>
@@ -408,7 +483,10 @@ export function TeamDetail() {
                     addNotification({ type: 'success', message: `${team.name} deleted` });
                     navigate('/');
                   } catch (err) {
-                    addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Delete failed' });
+                    addNotification({
+                      type: 'error',
+                      message: err instanceof Error ? err.message : 'Delete failed',
+                    });
                   } finally {
                     setDeleting(false);
                     setShowDeleteConfirm(false);

@@ -103,7 +103,9 @@ export function CreateTeamModal({ open, onClose, onCreated }: Props) {
         </div>
 
         <div>
-          {errors.leaderRoleId && <p className="mb-1 text-xs text-red-400">{errors.leaderRoleId}</p>}
+          {errors.leaderRoleId && (
+            <p className="mb-1 text-xs text-red-400">{errors.leaderRoleId}</p>
+          )}
           <RolePicker
             defaultCategory="leadership"
             value={leaderRoleId}

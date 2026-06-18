@@ -37,10 +37,9 @@ export class AgentMessagesRepository {
   }
 
   async markAllRead(agentId: string): Promise<void> {
-    await this.db.query(
-      'UPDATE agent_messages SET read = 1 WHERE to_agent = $1 AND read = 0',
-      [agentId],
-    );
+    await this.db.query('UPDATE agent_messages SET read = 1 WHERE to_agent = $1 AND read = 0', [
+      agentId,
+    ]);
   }
 
   async findByTeam(teamId: string, limit = 100): Promise<AgentMessage[]> {

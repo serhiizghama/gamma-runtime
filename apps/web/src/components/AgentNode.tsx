@@ -30,7 +30,10 @@ function timeAgo(ts: number | null): string {
 export function formatRoleName(roleId: string): string {
   const slug = roleId.split('/').pop() ?? roleId;
   return slug
-    .replace(/^(engineering|design|product|testing|support|specialized|project-management|sales|marketing|academic|game-development|job-hunting|paid-media|spatial-computing)-/, '')
+    .replace(
+      /^(engineering|design|product|testing|support|specialized|project-management|sales|marketing|academic|game-development|job-hunting|paid-media|spatial-computing)-/,
+      '',
+    )
     .split('-')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
@@ -56,11 +59,10 @@ export function AgentNode({ agent, onClick, onResetSession }: Props) {
   const hasSession = !!agent.session_id;
 
   return (
-    <div className={`relative flex w-full items-center gap-3 rounded-lg bg-gray-800/80 px-3 py-2.5 text-left transition-colors hover:bg-gray-800 border ${statusClass}`}>
-      <button
-        onClick={onClick}
-        className="flex flex-1 items-center gap-3 min-w-0"
-      >
+    <div
+      className={`relative flex w-full items-center gap-3 rounded-lg bg-gray-800/80 px-3 py-2.5 text-left transition-colors hover:bg-gray-800 border ${statusClass}`}
+    >
+      <button onClick={onClick} className="flex flex-1 items-center gap-3 min-w-0">
         <span className="shrink-0 text-xl">{agent.avatar_emoji}</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -116,7 +118,17 @@ export function AgentNode({ agent, onClick, onResetSession }: Props) {
           title="Reset session"
           className="shrink-0 rounded p-1 text-gray-600 transition-colors hover:bg-gray-700 hover:text-gray-300"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
             <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />

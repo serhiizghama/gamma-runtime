@@ -54,9 +54,10 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
     setAgent(initialAgent);
   }, [initialAgent.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pct = agent.context_window > 0
-    ? Math.round((Number(agent.context_tokens) / Number(agent.context_window)) * 100)
-    : 0;
+  const pct =
+    agent.context_window > 0
+      ? Math.round((Number(agent.context_tokens) / Number(agent.context_window)) * 100)
+      : 0;
 
   // SSE for live trace updates + refresh agent stats
   const handleSseEvent = useCallback(
@@ -94,7 +95,10 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
       addNotification({ type: 'success', message: `Session reset for ${agent.name}` });
       onAgentUpdate?.();
     } catch (err) {
-      addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Reset failed' });
+      addNotification({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Reset failed',
+      });
     } finally {
       setResetting(false);
     }
@@ -107,7 +111,10 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
       onAgentUpdate?.();
       onClose();
     } catch (err) {
-      addNotification({ type: 'error', message: err instanceof Error ? err.message : 'Delete failed' });
+      addNotification({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Delete failed',
+      });
     }
   };
 
@@ -131,7 +138,13 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
         <div className="flex items-center gap-2">
           <StatusBadge status={agent.status} />
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -142,7 +155,9 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
       <div className="border-b border-gray-800 px-4 py-3">
         <div className="mb-1 flex items-center justify-between text-xs text-gray-400">
           <span>Context</span>
-          <span>{formatTokens(agent.context_tokens)} / {formatTokens(agent.context_window)} ({pct}%)</span>
+          <span>
+            {formatTokens(agent.context_tokens)} / {formatTokens(agent.context_window)} ({pct}%)
+          </span>
         </div>
         <div className="h-2 rounded-full bg-gray-800">
           <div
@@ -161,7 +176,9 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
         <div className="mt-1 flex justify-between">
           <span>Last active</span>
           <span className="text-gray-300">
-            {agent.last_active_at ? new Date(Number(agent.last_active_at)).toLocaleTimeString() : 'Never'}
+            {agent.last_active_at
+              ? new Date(Number(agent.last_active_at)).toLocaleTimeString()
+              : 'Never'}
           </span>
         </div>
         {agent.session_id && (
@@ -179,7 +196,9 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
                       const fresh = await get<Agent>(`/agents/${agent.id}`);
                       wp = fresh.workspace_path;
                       setAgent(fresh);
-                    } catch { /* ignore */ }
+                    } catch {
+                      /* ignore */
+                    }
                   }
                   const cmd = wp
                     ? `cd ${wp} && claude --resume ${agent.session_id}`
@@ -189,8 +208,18 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
                 }}
                 className="rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-300"
               >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                <svg
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
                 </svg>
               </button>
             </div>
@@ -217,7 +246,9 @@ export function AgentDetailPanel({ agent: initialAgent, onClose, onAgentUpdate }
 
       {/* Trace Stream */}
       <div className="flex-1 overflow-y-auto p-3">
-        <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">Activity</h4>
+        <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+          Activity
+        </h4>
         {chronological.length === 0 ? (
           <div className="py-8 text-center text-xs text-gray-600">No activity yet</div>
         ) : (

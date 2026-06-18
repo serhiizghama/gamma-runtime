@@ -5,7 +5,11 @@ import type { ChatMessage as ChatMsg } from '../hooks/useTeamChat';
 import { highlightCode } from '../utils/highlight';
 
 function escapeForAttr(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 const renderer = new Renderer();
@@ -17,16 +21,20 @@ renderer.code = ({ text, lang }: { text: string; lang?: string }) => {
 };
 
 renderer.table = function ({ header, rows }: Tokens.Table) {
-  const alignAttr = (a: string | null) => a ? ` style="text-align:${a}"` : '';
+  const alignAttr = (a: string | null) => (a ? ` style="text-align:${a}"` : '');
   const renderCell = (cell: Tokens.TableCell) => this.parser.parseInline(cell.tokens);
-  const headerHtml = '<tr>' + header.map((cell) =>
-    `<th${alignAttr(cell.align)}>${renderCell(cell)}</th>`
-  ).join('') + '</tr>';
-  const bodyHtml = rows.map((row) =>
-    '<tr>' + row.map((cell) =>
-      `<td${alignAttr(cell.align)}>${renderCell(cell)}</td>`
-    ).join('') + '</tr>'
-  ).join('');
+  const headerHtml =
+    '<tr>' +
+    header.map((cell) => `<th${alignAttr(cell.align)}>${renderCell(cell)}</th>`).join('') +
+    '</tr>';
+  const bodyHtml = rows
+    .map(
+      (row) =>
+        '<tr>' +
+        row.map((cell) => `<td${alignAttr(cell.align)}>${renderCell(cell)}</td>`).join('') +
+        '</tr>',
+    )
+    .join('');
   return `<div class="chat-table-wrap"><table><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table></div>`;
 };
 
@@ -113,7 +121,9 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
     navigator.clipboard.writeText(code).then(() => {
       const prev = btn.textContent;
       btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = prev; }, 1500);
+      setTimeout(() => {
+        btn.textContent = prev;
+      }, 1500);
     });
   }, []);
 
@@ -135,7 +145,9 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
           onClick={() => setWakeExpanded((v) => !v)}
           className="flex w-full items-center gap-2 rounded-lg border border-gray-800 bg-gray-800/40 px-3 py-2 text-left text-xs text-gray-400 transition-colors hover:bg-gray-800/70"
         >
-          <span aria-hidden className="text-sm">⚙️</span>
+          <span aria-hidden className="text-sm">
+            ⚙️
+          </span>
           <span className="flex-shrink-0 font-medium text-gray-300">Orchestrator wake-up</span>
           <span className="mx-1 text-gray-600">·</span>
           <span className="truncate text-gray-500">{preview}</span>
@@ -168,9 +180,7 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
         className={`group relative rounded-xl px-4 py-2.5 ${
-          isUser
-            ? 'max-w-[80%] bg-blue-600 text-white'
-            : 'max-w-[85%] bg-gray-800 text-gray-200'
+          isUser ? 'max-w-[80%] bg-blue-600 text-white' : 'max-w-[85%] bg-gray-800 text-gray-200'
         }`}
         style={!isUser && agentColor ? { borderLeft: `3px solid ${agentColor}` } : undefined}
       >
@@ -181,11 +191,29 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
             title="Copy message"
           >
             {copied ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <rect x="9" y="9" width="13" height="13" rx="2" />
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
@@ -193,9 +221,7 @@ export function ChatMessage({ message, agentName, isGrouped, agentColor }: Props
           </button>
         )}
         {!isUser && !isGrouped && (
-          <div className="mb-1 text-xs font-medium text-gray-400">
-            {agentName ?? 'Assistant'}
-          </div>
+          <div className="mb-1 text-xs font-medium text-gray-400">{agentName ?? 'Assistant'}</div>
         )}
         <div className="relative">
           <div

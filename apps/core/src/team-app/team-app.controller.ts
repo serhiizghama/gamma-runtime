@@ -12,17 +12,11 @@ export class TeamAppController {
   }
 
   @Get('*')
-  serveFile(
-    @Param('id') teamId: string,
-    @Req() req: FastifyRequest,
-    @Res() reply: FastifyReply,
-  ) {
+  serveFile(@Param('id') teamId: string, @Req() req: FastifyRequest, @Res() reply: FastifyReply) {
     // Extract the wildcard portion after /api/teams/:id/app/
     const url = req.url;
     const prefix = `/api/teams/${teamId}/app/`;
-    let filePath = url.startsWith(prefix)
-      ? url.slice(prefix.length)
-      : 'index.html';
+    let filePath = url.startsWith(prefix) ? url.slice(prefix.length) : 'index.html';
 
     // Strip query string
     const qIdx = filePath.indexOf('?');

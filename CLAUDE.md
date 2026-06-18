@@ -111,7 +111,8 @@ AGENT_TIMEOUT_MS=600000
 ## Design Docs
 
 Before making large architectural changes, read:
+
 - `docs/SPEC-v2.md` — product & system spec
 - `docs/IMPLEMENTATION-PLAN.md` — build plan and sequencing
 
-These explain *why* the runtime is shaped this way (local-first, no LLM gateway, CLI-as-agent, etc.).
+These explain _why_ the runtime is shaped this way (local-first, no LLM gateway, CLI-as-agent, etc.).

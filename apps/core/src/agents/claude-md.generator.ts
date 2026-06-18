@@ -34,12 +34,14 @@ ${rolePrompt}`);
 You are part of team **"${team.name}"** (${team.description || 'No description'}).
 
 ### Your position
-${isLeader
-  ? '- **You are the team leader.**'
-  : `- **You report to**: ${this.findLeader(teamMembers)}`}
+${
+  isLeader
+    ? '- **You are the team leader.**'
+    : `- **You report to**: ${this.findLeader(teamMembers)}`
+}
 
 ### Team members
-${teamMembers.map(m => `- **${m.name}** (${m.role_id}: ${m.specialization || 'general'}) — status: ${m.status}`).join('\n')}
+${teamMembers.map((m) => `- **${m.name}** (${m.role_id}: ${m.specialization || 'general'}) — status: ${m.status}`).join('\n')}
 
 ### Communication
 You do NOT communicate directly with other agents. The orchestration system
@@ -101,7 +103,7 @@ Only use external task trackers (ClickUp, etc.) if the user **explicitly** asks 
 
     // 8. Leader-specific additions
     if (isLeader) {
-      const nonLeaders = teamMembers.filter(m => !m.is_leader);
+      const nonLeaders = teamMembers.filter((m) => !m.is_leader);
       sections.push(`## Leadership Responsibilities
 
 You are the **team leader**. You are responsible for:
@@ -165,7 +167,7 @@ Respond with a JSON plan block:
 \`\`\`
 
 Match task \`kind\` to your team members' specializations:
-${nonLeaders.map(m => `- ${m.name} (${m.role_id}) → best for: ${this.getTaskKinds(m.role_id)}`).join('\n')}
+${nonLeaders.map((m) => `- ${m.name} (${m.role_id}) → best for: ${this.getTaskKinds(m.role_id)}`).join('\n')}
 
 ### Wake-Up Protocol — how to handle \`[SYSTEM] Round completed\` messages
 
@@ -407,7 +409,7 @@ The app is YOUR responsibility. Workers (all non-leader agents) are explicitly f
   }
 
   private findLeader(members: Agent[]): string {
-    const leader = members.find(m => m.is_leader);
+    const leader = members.find((m) => m.is_leader);
     return leader ? `${leader.name} (${leader.role_id})` : 'None assigned';
   }
 

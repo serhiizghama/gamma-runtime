@@ -100,9 +100,7 @@ function TeamCardStats({ team, tasks }: { team: Team; tasks: Task[] | undefined 
                   style={{ width: `${Math.round((done / total) * 100)}%` }}
                 />
               </div>
-              <span className="whitespace-nowrap text-blue-400">
-                {inProgress} in progress
-              </span>
+              <span className="whitespace-nowrap text-blue-400">{inProgress} in progress</span>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -122,9 +120,7 @@ function TeamCardStats({ team, tasks }: { team: Team; tasks: Task[] | undefined 
 
       {/* Last activity */}
       {lastActivityStr && (
-        <div className="text-xs text-gray-600">
-          Active {lastActivityStr.toLowerCase()}
-        </div>
+        <div className="text-xs text-gray-600">Active {lastActivityStr.toLowerCase()}</div>
       )}
     </div>
   );
@@ -187,7 +183,13 @@ export function Dashboard() {
             onClick={() => setShowCreate(true)}
             className="flex min-h-[160px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-700 p-5 text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-400"
           >
-            <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg
+              className="h-10 w-10"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
             <span className="text-sm font-medium">Create Team</span>

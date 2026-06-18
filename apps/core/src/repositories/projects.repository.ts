@@ -7,11 +7,7 @@ import { projectId } from '../common/ulid';
 export class ProjectsRepository {
   constructor(private readonly db: DatabaseService) {}
 
-  async create(data: {
-    name: string;
-    team_id: string;
-    description?: string;
-  }): Promise<Project> {
+  async create(data: { name: string; team_id: string; description?: string }): Promise<Project> {
     const now = Date.now();
     const id = projectId();
     const { rows } = await this.db.query<Project>(
@@ -24,10 +20,7 @@ export class ProjectsRepository {
   }
 
   async findById(id: string): Promise<Project | null> {
-    const { rows } = await this.db.query<Project>(
-      'SELECT * FROM projects WHERE id = $1',
-      [id],
-    );
+    const { rows } = await this.db.query<Project>('SELECT * FROM projects WHERE id = $1', [id]);
     return rows[0] ?? null;
   }
 

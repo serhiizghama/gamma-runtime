@@ -56,14 +56,19 @@ export function TaskCard({ task, agents, teamId, onClick }: Props) {
           : `border-gray-700/50 bg-gray-800/40 hover:border-gray-600 hover:bg-gray-800/80 ${kindGlows[task.kind] ?? kindGlows.generic}`
       }`}
     >
-      <div className="text-[13px] font-medium leading-snug text-gray-200 line-clamp-2">{task.title}</div>
+      <div className="text-[13px] font-medium leading-snug text-gray-200 line-clamp-2">
+        {task.title}
+      </div>
       <div className="mt-1.5 flex items-center gap-1.5">
-        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${kindColors[task.kind] ?? kindColors.generic}`}>
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${kindColors[task.kind] ?? kindColors.generic}`}
+        >
           {task.kind}
         </span>
         {assigned && (
           <span className="text-xs text-gray-500" title={assigned.name}>
-            {assigned.avatar_emoji} <span className="text-[10px] text-gray-600">{assigned.name}</span>
+            {assigned.avatar_emoji}{' '}
+            <span className="text-[10px] text-gray-600">{assigned.name}</span>
           </span>
         )}
         {isFailed && (
@@ -71,7 +76,9 @@ export function TaskCard({ task, agents, teamId, onClick }: Props) {
             role="button"
             tabIndex={0}
             onClick={handleRetry}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleRetry(e as unknown as React.MouseEvent); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleRetry(e as unknown as React.MouseEvent);
+            }}
             className="ml-auto text-[10px] font-medium text-blue-400 hover:text-blue-300"
           >
             {retrying ? 'Retrying...' : 'Retry'}
@@ -79,7 +86,9 @@ export function TaskCard({ task, agents, teamId, onClick }: Props) {
         )}
       </div>
       {isFailed && task.result?.summary && (
-        <div className="mt-1 text-[11px] leading-tight text-red-300/70 line-clamp-1">{task.result.summary}</div>
+        <div className="mt-1 text-[11px] leading-tight text-red-300/70 line-clamp-1">
+          {task.result.summary}
+        </div>
       )}
     </button>
   );

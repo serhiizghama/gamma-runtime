@@ -22,11 +22,7 @@ export class WorkspaceService {
 
   createTeamWorkspace(teamId: string): string {
     const teamPath = this.getTeamPath(teamId);
-    const dirs = [
-      join(teamPath, 'project'),
-      join(teamPath, 'plans'),
-      join(teamPath, 'shared'),
-    ];
+    const dirs = [join(teamPath, 'project'), join(teamPath, 'plans'), join(teamPath, 'shared')];
     for (const dir of dirs) {
       mkdirSync(dir, { recursive: true });
     }

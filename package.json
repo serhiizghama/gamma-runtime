@@ -10,6 +10,11 @@
     "build:web": "pnpm --filter @gamma/web build",
     "dev": "pnpm dev:core & pnpm dev:web",
     "build": "pnpm build:core && pnpm build:web",
+    "typecheck": "pnpm --filter @gamma/core exec tsc --noEmit && pnpm --filter @gamma/web exec tsc -b --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md}\"",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d"
@@ -17,5 +22,13 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@9.15.4"
+  "packageManager": "pnpm@9.15.4",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.8.4",
+    "typescript-eslint": "^8"
+  }
 }

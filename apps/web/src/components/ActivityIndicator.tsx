@@ -81,13 +81,17 @@ function ActivityPill({ activity, agent, compact }: PillProps) {
           )}
         </span>
       </span>
-      <span className="ml-auto flex-shrink-0 text-[10px] tabular-nums text-gray-600">{elapsed}</span>
+      <span className="ml-auto flex-shrink-0 text-[10px] tabular-nums text-gray-600">
+        {elapsed}
+      </span>
 
       {tooltipLines.length > 0 && (
         <div className="pointer-events-none absolute bottom-full left-0 right-0 z-10 mb-1 rounded-md border border-gray-700 bg-gray-900 p-2 text-[11px] text-gray-400 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
           <div className="mb-1 text-[10px] uppercase tracking-wider text-gray-600">Recent</div>
           {tooltipLines.map((line, i) => (
-            <div key={i} className="truncate">· {line}</div>
+            <div key={i} className="truncate">
+              · {line}
+            </div>
           ))}
         </div>
       )}

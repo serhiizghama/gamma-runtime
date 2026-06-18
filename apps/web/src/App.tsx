@@ -11,10 +11,31 @@ export default function App() {
     <ErrorBoundary>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-          <Route path="/teams/:id" element={<ErrorBoundary><TeamDetail /></ErrorBoundary>} />
+          <Route
+            path="/"
+            element={
+              <ErrorBoundary>
+                <Dashboard />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/teams/:id"
+            element={
+              <ErrorBoundary>
+                <TeamDetail />
+              </ErrorBoundary>
+            }
+          />
           <Route path="/tasks" element={<div className="text-gray-400">Tasks — coming soon</div>} />
-          <Route path="/trace" element={<ErrorBoundary><TraceViewer /></ErrorBoundary>} />
+          <Route
+            path="/trace"
+            element={
+              <ErrorBoundary>
+                <TraceViewer />
+              </ErrorBoundary>
+            }
+          />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { createHash } from 'crypto';
 import { AgentsRepository } from '../repositories/agents.repository';
 import { TeamsRepository } from '../repositories/teams.repository';
@@ -111,7 +118,9 @@ export class AgentsService {
       if (proc) {
         this.logger.warn(`Killing running agent ${id} before archive`);
         if (proc.pid) {
-          try { process.kill(-proc.pid, 'SIGTERM'); } catch {}
+          try {
+            process.kill(-proc.pid, 'SIGTERM');
+          } catch {}
         }
       }
       this.sessionPool.unregister(id);

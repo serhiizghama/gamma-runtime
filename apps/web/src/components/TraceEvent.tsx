@@ -39,11 +39,12 @@ export function TraceEvent({ event, agentName, agentEmoji, compact }: Props) {
   const content = parseContent(event.content);
   const badge = kindBadge[event.kind] ?? 'bg-gray-700 text-gray-400';
 
-  const textContent = typeof content === 'string'
-    ? content
-    : content && typeof content === 'object' && 'text' in (content as Record<string, unknown>)
-      ? String((content as Record<string, string>).text)
-      : null;
+  const textContent =
+    typeof content === 'string'
+      ? content
+      : content && typeof content === 'object' && 'text' in (content as Record<string, unknown>)
+        ? String((content as Record<string, string>).text)
+        : null;
 
   // Specialized rendering for certain kinds
   if (!compact) {
@@ -55,7 +56,13 @@ export function TraceEvent({ event, agentName, agentEmoji, compact }: Props) {
       return (
         <ToolCallBlock
           toolName={String(c.tool ?? c.name ?? 'tool')}
-          input={c.input ? (typeof c.input === 'string' ? c.input : JSON.stringify(c.input, null, 2)) : undefined}
+          input={
+            c.input
+              ? typeof c.input === 'string'
+                ? c.input
+                : JSON.stringify(c.input, null, 2)
+              : undefined
+          }
         />
       );
     }

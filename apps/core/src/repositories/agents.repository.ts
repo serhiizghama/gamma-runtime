@@ -48,10 +48,7 @@ export class AgentsRepository {
   }
 
   async findById(id: string): Promise<Agent | null> {
-    const { rows } = await this.db.query<Agent>(
-      'SELECT * FROM agents WHERE id = $1',
-      [id],
-    );
+    const { rows } = await this.db.query<Agent>('SELECT * FROM agents WHERE id = $1', [id]);
     return rows[0] ? this.mapAgent(rows[0]) : null;
   }
 
@@ -72,13 +69,17 @@ export class AgentsRepository {
   }
 
   async updateSessionId(id: string, sessionId: string | null): Promise<void> {
-    await this.db.query(
-      'UPDATE agents SET session_id = $1, updated_at = $2 WHERE id = $3',
-      [sessionId, Date.now(), id],
-    );
+    await this.db.query('UPDATE agents SET session_id = $1, updated_at = $2 WHERE id = $3', [
+      sessionId,
+      Date.now(),
+      id,
+    ]);
   }
 
-  async updateUsage(id: string, data: { context_tokens: number; total_turns: number; context_window?: number }): Promise<void> {
+  async updateUsage(
+    id: string,
+    data: { context_tokens: number; total_turns: number; context_window?: number },
+  ): Promise<void> {
     if (data.context_window) {
       await this.db.query(
         'UPDATE agents SET context_tokens = $1, total_turns = $2, context_window = $3, last_active_at = $4, updated_at = $4 WHERE id = $5',
@@ -100,10 +101,11 @@ export class AgentsRepository {
   }
 
   async updateWorkspacePath(id: string, path: string): Promise<void> {
-    await this.db.query(
-      'UPDATE agents SET workspace_path = $1, updated_at = $2 WHERE id = $3',
-      [path, Date.now(), id],
-    );
+    await this.db.query('UPDATE agents SET workspace_path = $1, updated_at = $2 WHERE id = $3', [
+      path,
+      Date.now(),
+      id,
+    ]);
   }
 
   async updateFields(id: string, fields: Record<string, unknown>): Promise<Agent | null> {
@@ -131,10 +133,11 @@ export class AgentsRepository {
   }
 
   async updateClaudeMdHash(id: string, hash: string): Promise<void> {
-    await this.db.query(
-      'UPDATE agents SET claude_md_hash = $1, updated_at = $2 WHERE id = $3',
-      [hash, Date.now(), id],
-    );
+    await this.db.query('UPDATE agents SET claude_md_hash = $1, updated_at = $2 WHERE id = $3', [
+      hash,
+      Date.now(),
+      id,
+    ]);
   }
 
   async archiveByTeam(teamId: string): Promise<void> {

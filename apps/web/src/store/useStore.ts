@@ -65,10 +65,7 @@ export const useStore = create<AppState>((set) => ({
   addNotification: (n) => {
     const id = `notif_${++notifCounter}`;
     set((s) => ({
-      notifications: [
-        ...s.notifications,
-        { ...n, id, timestamp: Date.now() },
-      ],
+      notifications: [...s.notifications, { ...n, id, timestamp: Date.now() }],
     }));
     setTimeout(() => {
       set((s) => ({

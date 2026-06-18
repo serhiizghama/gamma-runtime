@@ -27,10 +27,7 @@ export class TeamsRepository {
   }
 
   async findById(id: string): Promise<Team | null> {
-    const { rows } = await this.db.query<Team>(
-      'SELECT * FROM teams WHERE id = $1',
-      [id],
-    );
+    const { rows } = await this.db.query<Team>('SELECT * FROM teams WHERE id = $1', [id]);
     return rows[0] ?? null;
   }
 

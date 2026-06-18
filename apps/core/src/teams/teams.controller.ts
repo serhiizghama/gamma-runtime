@@ -55,10 +55,7 @@ export class TeamsController {
   }
 
   @Post(':id/message')
-  async sendMessage(
-    @Param('id') id: string,
-    @Body() body: { message: string },
-  ) {
+  async sendMessage(@Param('id') id: string, @Body() body: { message: string }) {
     await this.orchestrator.handleTeamMessage(id, body.message);
     return { success: true };
   }

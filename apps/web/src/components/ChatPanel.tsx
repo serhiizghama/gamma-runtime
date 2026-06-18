@@ -20,7 +20,17 @@ interface Props {
 const NEAR_BOTTOM_PX = 150;
 const AUTO_SCROLL_ANIMATION_MS = 500;
 
-export function ChatPanel({ messages, loading, sending, members, hasMore, loadingMore, activities, onSend, onLoadMore }: Props) {
+export function ChatPanel({
+  messages,
+  loading,
+  sending,
+  members,
+  hasMore,
+  loadingMore,
+  activities,
+  onSend,
+  onLoadMore,
+}: Props) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -92,8 +102,7 @@ export function ChatPanel({ messages, loading, sending, members, hasMore, loadin
     prevFirstIdRef.current = newFirstId;
     prevScrollHeightRef.current = el.scrollHeight;
     if (!isAutoScrollingRef.current) {
-      wasNearBottomRef.current =
-        el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+      wasNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
     }
   }, [messages]);
 
@@ -101,8 +110,7 @@ export function ChatPanel({ messages, loading, sending, members, hasMore, loadin
     const el = scrollRef.current;
     if (!el) return;
     if (!isAutoScrollingRef.current) {
-      wasNearBottomRef.current =
-        el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+      wasNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
     }
     if (!hasMore || loadingMore) return;
     if (el.scrollTop < 100 && onLoadMore) onLoadMore();
@@ -179,11 +187,12 @@ export function ChatPanel({ messages, loading, sending, members, hasMore, loadin
         ) : (
           messages.map((msg, i) => {
             const prev = i > 0 ? messages[i - 1] : null;
-            const sameAgent = prev
-              && prev.role === 'assistant'
-              && msg.role === 'assistant'
-              && prev.agent_id === msg.agent_id
-              && Math.abs(Number(msg.created_at) - Number(prev.created_at)) < 60000;
+            const sameAgent =
+              prev &&
+              prev.role === 'assistant' &&
+              msg.role === 'assistant' &&
+              prev.agent_id === msg.agent_id &&
+              Math.abs(Number(msg.created_at) - Number(prev.created_at)) < 60000;
             const agentId = msg.agent_id ?? '';
             const color = msg.role === 'assistant' ? getAgentColor(agentId) : undefined;
 
@@ -228,8 +237,20 @@ export function ChatPanel({ messages, loading, sending, members, hasMore, loadin
           {sending ? (
             <span className="text-sm text-white">...</span>
           ) : (
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M9 15V3M9 3L3.5 8.5M9 3L14.5 8.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 18 18"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M9 15V3M9 3L3.5 8.5M9 3L14.5 8.5"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           )}
         </button>

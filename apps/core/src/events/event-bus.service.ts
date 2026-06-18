@@ -7,7 +7,9 @@ import { traceEventId } from '../common/ulid';
 export class EventBusService {
   constructor(private readonly emitter: EventEmitter2) {}
 
-  emit(event: Omit<GammaEvent, 'id' | 'createdAt'> & { id?: string; createdAt?: number }): GammaEvent {
+  emit(
+    event: Omit<GammaEvent, 'id' | 'createdAt'> & { id?: string; createdAt?: number },
+  ): GammaEvent {
     const full: GammaEvent = {
       id: event.id ?? traceEventId(),
       createdAt: event.createdAt ?? Date.now(),

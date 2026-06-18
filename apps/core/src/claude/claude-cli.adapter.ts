@@ -37,7 +37,9 @@ export class ClaudeCliAdapter {
     args.push('--max-turns', String(maxTurns));
 
     this.logger.log(`Spawning Claude CLI: session=${sessionId ?? 'new'}, cwd=${cwd}`);
-    this.logger.debug(`Args: claude ${args.map(a => a.length > 100 ? a.slice(0, 100) + '...' : a).join(' ')}`);
+    this.logger.debug(
+      `Args: claude ${args.map((a) => (a.length > 100 ? a.slice(0, 100) + '...' : a)).join(' ')}`,
+    );
 
     const proc = spawn('claude', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -49,7 +51,9 @@ export class ClaudeCliAdapter {
     this._lastProc = proc;
 
     // Emit the process so session pool can register it
-    yield { type: 'system', content: '', subtype: '_process_started' } as StreamChunk & { _proc?: ChildProcess };
+    yield { type: 'system', content: '', subtype: '_process_started' } as StreamChunk & {
+      _proc?: ChildProcess;
+    };
 
     let timedOut = false;
     const timeout = setTimeout(() => {

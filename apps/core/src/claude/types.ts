@@ -1,7 +1,15 @@
 import { ChildProcess } from 'child_process';
 
 export interface StreamChunk {
-  type: 'text' | 'tool_use' | 'tool_result' | 'thinking' | 'result' | 'system' | 'error' | 'unknown';
+  type:
+    | 'text'
+    | 'tool_use'
+    | 'tool_result'
+    | 'thinking'
+    | 'result'
+    | 'system'
+    | 'error'
+    | 'unknown';
   content: string;
   toolName?: string;
   toolInput?: unknown;

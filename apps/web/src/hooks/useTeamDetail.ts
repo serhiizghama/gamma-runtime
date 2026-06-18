@@ -26,18 +26,15 @@ export function useTeamDetail(teamId: string | undefined) {
     fetchTeam();
   }, [fetchTeam]);
 
-  const updateMember = useCallback(
-    (agentId: string, updates: Partial<Team['members'][number]>) => {
-      setTeam((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          members: prev.members.map((m) => (m.id === agentId ? { ...m, ...updates } : m)),
-        };
-      });
-    },
-    [],
-  );
+  const updateMember = useCallback((agentId: string, updates: Partial<Team['members'][number]>) => {
+    setTeam((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        members: prev.members.map((m) => (m.id === agentId ? { ...m, ...updates } : m)),
+      };
+    });
+  }, []);
 
   const updateTeam = useCallback((updates: Partial<Team>) => {
     setTeam((prev) => (prev ? { ...prev, ...updates } : prev));

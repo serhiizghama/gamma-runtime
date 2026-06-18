@@ -73,7 +73,7 @@ function classifyChunk(obj: unknown): StreamChunk {
     // Process each content block
     for (const block of contentArr) {
       if (block.type === 'text') {
-        return { type: 'text', content: block.text as string ?? '', usage: msgUsage };
+        return { type: 'text', content: (block.text as string) ?? '', usage: msgUsage };
       }
       if (block.type === 'tool_use') {
         return {
@@ -86,7 +86,7 @@ function classifyChunk(obj: unknown): StreamChunk {
         };
       }
       if (block.type === 'thinking') {
-        return { type: 'thinking', content: block.thinking as string ?? '', usage: msgUsage };
+        return { type: 'thinking', content: (block.thinking as string) ?? '', usage: msgUsage };
       }
     }
 
@@ -103,7 +103,10 @@ function classifyChunk(obj: unknown): StreamChunk {
         if (block.type === 'tool_result') {
           return {
             type: 'tool_result',
-            content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content ?? ''),
+            content:
+              typeof block.content === 'string'
+                ? block.content
+                : JSON.stringify(block.content ?? ''),
             toolUseId: block.tool_use_id as string,
           };
         }

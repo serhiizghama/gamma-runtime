@@ -15,14 +15,23 @@ export function TeamMap({ leader, members, onAgentClick, onResetSession }: Props
 
       {leader && (
         <div className="mb-2">
-          <AgentNode agent={leader} onClick={() => onAgentClick?.(leader)} onResetSession={onResetSession} />
+          <AgentNode
+            agent={leader}
+            onClick={() => onAgentClick?.(leader)}
+            onResetSession={onResetSession}
+          />
         </div>
       )}
 
       {members.length > 0 && leader && (
         <div className="ml-4 border-l border-gray-700 pl-3 space-y-2">
           {members.map((agent) => (
-            <AgentNode key={agent.id} agent={agent} onClick={() => onAgentClick?.(agent)} onResetSession={onResetSession} />
+            <AgentNode
+              key={agent.id}
+              agent={agent}
+              onClick={() => onAgentClick?.(agent)}
+              onResetSession={onResetSession}
+            />
           ))}
         </div>
       )}

@@ -46,9 +46,7 @@ export class InternalService {
 
     // 2. Find active project for team (if any)
     const projects = await this.projects.findByTeam(dto.teamId);
-    const activeProject = projects.find(
-      (p) => p.status === 'planning' || p.status === 'active',
-    );
+    const activeProject = projects.find((p) => p.status === 'planning' || p.status === 'active');
 
     // 3. Create task
     const task = await this.tasks.create({
@@ -87,9 +85,7 @@ export class InternalService {
       content: { agentName: agent.name },
     });
 
-    this.logger.log(
-      `Task "${dto.title}" assigned to ${agent.name} (${task.id})`,
-    );
+    this.logger.log(`Task "${dto.title}" assigned to ${agent.name} (${task.id})`);
 
     return { success: true, taskId: task.id, agentId: agent.id };
   }
@@ -129,10 +125,13 @@ export class InternalService {
       );
       // Store summary as result even for non-done statuses if provided
       if (dto.summary) {
-        await this.tasks.setResult(dto.taskId, JSON.stringify({
-          summary: dto.summary,
-          filesChanged: dto.filesChanged ?? [],
-        }));
+        await this.tasks.setResult(
+          dto.taskId,
+          JSON.stringify({
+            summary: dto.summary,
+            filesChanged: dto.filesChanged ?? [],
+          }),
+        );
         // setResult forces stage to 'done', so re-set if not done
         if (dto.status !== 'done') {
           await this.tasks.updateStage(
@@ -159,8 +158,7 @@ export class InternalService {
       });
     }
 
-    const eventKind =
-      dto.status === 'done' ? 'task.completed' : 'task.stage_changed';
+    const eventKind = dto.status === 'done' ? 'task.completed' : 'task.stage_changed';
 
     this.eventBus.emit({
       kind: eventKind,
@@ -180,11 +178,7 @@ export class InternalService {
     return { success: true, taskId: dto.taskId, stage: newStage };
   }
 
-  async listTasks(query: {
-    teamId?: string;
-    status?: string;
-    assignedTo?: string;
-  }) {
+  async listTasks(query: { teamId?: string; status?: string; assignedTo?: string }) {
     if (!query.teamId) {
       return { success: false, error: 'teamId query parameter is required' };
     }
@@ -226,9 +220,7 @@ export class InternalService {
     let assignedAgent = null;
     if (task.assigned_to) {
       const agent = await this.agents.findById(task.assigned_to);
-      assignedAgent = agent
-        ? { id: agent.id, name: agent.name, status: agent.status }
-        : null;
+      assignedAgent = agent ? { id: agent.id, name: agent.name, status: agent.status } : null;
     }
 
     return {
@@ -262,9 +254,7 @@ export class InternalService {
     // Resolve recipient by name or ID within the sender's team
     const teamAgents = await this.agents.findByTeam(sender.team_id!);
     const recipient = teamAgents.find(
-      (a) =>
-        a.id === dto.to ||
-        a.name.toLowerCase() === dto.to.toLowerCase(),
+      (a) => a.id === dto.to || a.name.toLowerCase() === dto.to.toLowerCase(),
     );
 
     if (!recipient) {
@@ -399,9 +389,7 @@ export class InternalService {
       },
     });
 
-    this.logger.log(
-      `Broadcast from ${sender.name} to ${recipients.length} agents`,
-    );
+    this.logger.log(`Broadcast from ${sender.name} to ${recipients.length} agents`);
 
     return {
       success: true,
@@ -446,9 +434,7 @@ export class InternalService {
 
     // Find active project for team
     const projects = await this.projects.findByTeam(dto.teamId);
-    const activeProject = projects.find(
-      (p) => p.status === 'planning' || p.status === 'active',
-    );
+    const activeProject = projects.find((p) => p.status === 'planning' || p.status === 'active');
 
     if (activeProject) {
       await this.projects.updateStatus(activeProject.id, 'completed');
@@ -546,9 +532,7 @@ export class InternalService {
       },
     });
 
-    this.logger.log(
-      `Review requested by ${agent.name} for task ${task.title}`,
-    );
+    this.logger.log(`Review requested by ${agent.name} for task ${task.title}`);
 
     return {
       success: true,
@@ -614,9 +598,7 @@ export class InternalService {
 
     // Get project info
     const projects = await this.projects.findByTeam(teamId);
-    const activeProject = projects.find(
-      (p) => p.status === 'planning' || p.status === 'active',
-    );
+    const activeProject = projects.find((p) => p.status === 'planning' || p.status === 'active');
 
     // Get all tasks with results
     const tasks = await this.tasks.findByTeam(teamId);

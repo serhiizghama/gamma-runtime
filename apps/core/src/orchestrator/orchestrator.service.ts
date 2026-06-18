@@ -1,4 +1,10 @@
-import { Injectable, Logger, ConflictException, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ConflictException,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ClaudeCliAdapter } from '../claude/claude-cli.adapter';
 import type { UsageData } from '../claude/types';
 import { SessionPoolService } from '../claude/session-pool.service';
@@ -115,9 +121,7 @@ export class OrchestratorService implements OnModuleInit {
       // 4. Get agent workspace (where CLAUDE.md lives)
       const agentDir = this.workspace.getAgentPath(teamId, leader.id);
 
-      this.logger.log(
-        `Starting leader session for team ${teamId}: ${leader.name}`,
-      );
+      this.logger.log(`Starting leader session for team ${teamId}: ${leader.name}`);
 
       // Emit start event
       await this.agents.updateStatus(leader.id, 'running');
@@ -140,7 +144,9 @@ export class OrchestratorService implements OnModuleInit {
       let lastSessionId = leader.session_id;
       let lastUsage: UsageData | undefined;
       let lastMessageUsage: UsageData | undefined; // per-API-call usage (actual context size)
-      let lastModelUsage: Record<string, { contextWindow?: number; context_window?: number }> | undefined;
+      let lastModelUsage:
+        | Record<string, { contextWindow?: number; context_window?: number }>
+        | undefined;
       let lastNumTurns = 0;
 
       // Flush accumulated text to chat as a message
@@ -218,9 +224,10 @@ export class OrchestratorService implements OnModuleInit {
             kind: 'agent.tool_use',
             content: JSON.stringify({
               tool: chunk.toolName,
-              input: typeof chunk.toolInput === 'string'
-                ? chunk.toolInput.slice(0, 500)
-                : JSON.stringify(chunk.toolInput).slice(0, 500),
+              input:
+                typeof chunk.toolInput === 'string'
+                  ? chunk.toolInput.slice(0, 500)
+                  : JSON.stringify(chunk.toolInput).slice(0, 500),
             }),
           });
         } else if (chunk.type === 'tool_result') {
@@ -262,7 +269,9 @@ export class OrchestratorService implements OnModuleInit {
       // (DB statuses are already reset by the emergency-stop handler)
       if (this.pool.aborting || this.pool.wasKilled(leader.id)) {
         this.pool.clearKilled(leader.id);
-        this.logger.warn(`Leader ${leader.name} aborted by emergency stop, skipping post-completion`);
+        this.logger.warn(
+          `Leader ${leader.name} aborted by emergency stop, skipping post-completion`,
+        );
         return;
       }
 
@@ -274,9 +283,9 @@ export class OrchestratorService implements OnModuleInit {
       // NOT the cumulative result.usage which sums all API calls in the session
       const actualUsage = lastMessageUsage ?? lastUsage;
       const contextTokens = actualUsage
-        ? (actualUsage.input_tokens ?? 0)
-          + (actualUsage.cache_read_input_tokens ?? 0)
-          + (actualUsage.cache_creation_input_tokens ?? 0)
+        ? (actualUsage.input_tokens ?? 0) +
+          (actualUsage.cache_read_input_tokens ?? 0) +
+          (actualUsage.cache_creation_input_tokens ?? 0)
         : 0;
       // Extract real context window from model usage data
       const modelEntry = lastModelUsage ? Object.values(lastModelUsage)[0] : undefined;
@@ -359,11 +368,7 @@ export class OrchestratorService implements OnModuleInit {
     });
   }
 
-  private async runAgentInBackground(
-    agent: Agent,
-    task: Task,
-    agentDir: string,
-  ): Promise<void> {
+  private async runAgentInBackground(agent: Agent, task: Task, agentDir: string): Promise<void> {
     try {
       await this.pool.acquire();
       await this.agents.updateStatus(agent.id, 'running');
@@ -384,15 +389,15 @@ export class OrchestratorService implements OnModuleInit {
         content: JSON.stringify({ taskTitle: task.title }),
       });
 
-      this.logger.log(
-        `Spawning agent ${agent.name} for task "${task.title}" (${task.id})`,
-      );
+      this.logger.log(`Spawning agent ${agent.name} for task "${task.title}" (${task.id})`);
 
       let responseText = '';
       let lastSessionId = agent.session_id;
       let lastUsage: UsageData | undefined;
       let lastMessageUsage: UsageData | undefined; // per-API-call usage (actual context size)
-      let lastModelUsage: Record<string, { contextWindow?: number; context_window?: number }> | undefined;
+      let lastModelUsage:
+        | Record<string, { contextWindow?: number; context_window?: number }>
+        | undefined;
       let lastNumTurns = 0;
       let taskUpdatedByAgent = false;
 
@@ -439,9 +444,10 @@ export class OrchestratorService implements OnModuleInit {
             kind: 'agent.tool_use',
             content: JSON.stringify({
               tool: chunk.toolName,
-              input: typeof chunk.toolInput === 'string'
-                ? chunk.toolInput.slice(0, 500)
-                : JSON.stringify(chunk.toolInput).slice(0, 500),
+              input:
+                typeof chunk.toolInput === 'string'
+                  ? chunk.toolInput.slice(0, 500)
+                  : JSON.stringify(chunk.toolInput).slice(0, 500),
             }),
           });
 
@@ -513,9 +519,9 @@ export class OrchestratorService implements OnModuleInit {
       // NOT the cumulative result.usage which sums all API calls in the session
       const actualUsage = lastMessageUsage ?? lastUsage;
       const contextTokens = actualUsage
-        ? (actualUsage.input_tokens ?? 0)
-          + (actualUsage.cache_read_input_tokens ?? 0)
-          + (actualUsage.cache_creation_input_tokens ?? 0)
+        ? (actualUsage.input_tokens ?? 0) +
+          (actualUsage.cache_read_input_tokens ?? 0) +
+          (actualUsage.cache_creation_input_tokens ?? 0)
         : 0;
       const modelEntry = lastModelUsage ? Object.values(lastModelUsage)[0] : undefined;
       const contextWindow = modelEntry?.contextWindow ?? modelEntry?.context_window;
@@ -568,16 +574,17 @@ export class OrchestratorService implements OnModuleInit {
           (t) => t.stage === 'in_progress' || t.stage === 'planning',
         );
 
-        if (pendingTasks.length === 0 && leader.status === 'idle' && !this.runningPipelines.has(task.team_id)) {
+        if (
+          pendingTasks.length === 0 &&
+          leader.status === 'idle' &&
+          !this.runningPipelines.has(task.team_id)
+        ) {
           // Scope to tasks that belong to the current leader turn.
           // Fallback to last 10 minutes if the map was lost (e.g. after a backend restart).
-          const turnStart =
-            this.turnStartedAt.get(task.team_id) ?? Date.now() - 10 * 60 * 1000;
+          const turnStart = this.turnStartedAt.get(task.team_id) ?? Date.now() - 10 * 60 * 1000;
           const thisRoundTasks = allTasks
             .filter(
-              (t) =>
-                t.created_at >= turnStart &&
-                (t.stage === 'done' || t.stage === 'failed'),
+              (t) => t.created_at >= turnStart && (t.stage === 'done' || t.stage === 'failed'),
             )
             .sort((a, b) => a.created_at - b.created_at);
 
@@ -585,7 +592,7 @@ export class OrchestratorService implements OnModuleInit {
           const tasksList = thisRoundTasks
             .map((t) => {
               const owner = t.assigned_to
-                ? agentNameById.get(t.assigned_to) ?? 'unknown'
+                ? (agentNameById.get(t.assigned_to) ?? 'unknown')
                 : 'unassigned';
               const marker = t.stage === 'failed' ? ' [FAILED]' : '';
               return `- ${t.id} — "${t.title}" by ${owner}${marker}`;
@@ -618,9 +625,8 @@ Protocol:
 
       // Save completion summary to team chat so it's visible in the chat panel
       if (responseText) {
-        const summary = responseText.length > 2000
-          ? responseText.slice(0, 2000) + '…'
-          : responseText;
+        const summary =
+          responseText.length > 2000 ? responseText.slice(0, 2000) + '…' : responseText;
         const chatMsg = await this.chat.save({
           teamId: task.team_id,
           role: 'assistant',
@@ -672,13 +678,13 @@ Protocol:
       // DB statuses are already reset by the emergency-stop handler
       if (this.pool.aborting || this.pool.wasKilled(agent.id)) {
         this.pool.clearKilled(agent.id);
-        this.logger.warn(`Agent ${agent.name} aborted by emergency stop (in catch), skipping error handling`);
+        this.logger.warn(
+          `Agent ${agent.name} aborted by emergency stop (in catch), skipping error handling`,
+        );
         return;
       }
 
-      this.logger.error(
-        `Agent ${agent.name} failed on task "${task.title}": ${err}`,
-      );
+      this.logger.error(`Agent ${agent.name} failed on task "${task.title}": ${err}`);
       await this.agents.updateStatus(agent.id, 'error');
 
       this.eventBus.emit({

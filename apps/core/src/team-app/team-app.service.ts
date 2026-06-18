@@ -188,11 +188,18 @@ export class TeamAppService {
     const currentBrief = this.briefFromFullProfile(candidate);
     const sources = this.countSources(enrichedVacancies);
     // Scout's raw totalFound (before filtering); afterFilter is what actually ended up in the file.
-    const totalFound = typeof vacanciesFile?.totalFound === 'number' ? vacanciesFile.totalFound : vacancies.length;
-    const afterFilter = typeof vacanciesFile?.afterFilter === 'number' ? vacanciesFile.afterFilter : vacancies.length;
+    const totalFound =
+      typeof vacanciesFile?.totalFound === 'number' ? vacanciesFile.totalFound : vacancies.length;
+    const afterFilter =
+      typeof vacanciesFile?.afterFilter === 'number' ? vacanciesFile.afterFilter : vacancies.length;
 
     const data = {
-      pipeline: this.buildPipeline(projectDir, enrichedVacancies.length, Object.keys(analyses).length, Object.keys(applications).length),
+      pipeline: this.buildPipeline(
+        projectDir,
+        enrichedVacancies.length,
+        Object.keys(analyses).length,
+        Object.keys(applications).length,
+      ),
       scoutStatus: {
         status: afterFilter > 0 ? 'completed' : 'idle',
         sources,
@@ -267,7 +274,7 @@ export class TeamAppService {
       const m = file.match(/^(.+?)-(cv|cover-letter)\.md$/i);
       if (!m) continue;
       const [, slug, kind] = m;
-      let content = '';
+      let content: string;
       try {
         content = readFileSync(join(appsDir, file), 'utf8');
       } catch {
@@ -327,7 +334,10 @@ export class TeamAppService {
     for (const raw of stack) {
       const tech = String(raw);
       // Normalize common variants: "NestJS" vs "Nest.js", "AWS (Lambda, S3)" vs "AWS"
-      const base = tech.replace(/\s*\(.*\)\s*/g, '').trim().toLowerCase();
+      const base = tech
+        .replace(/\s*\(.*\)\s*/g, '')
+        .trim()
+        .toLowerCase();
       const variants = new Set<string>([tech.toLowerCase(), base]);
       if (base.includes('.')) variants.add(base.replace(/\./g, ''));
       if (base.includes(' ')) variants.add(base.replace(/\s+/g, ''));
@@ -343,7 +353,12 @@ export class TeamAppService {
     if (!text) return '';
     const trimmed = text.trim();
     if (trimmed.length <= maxChars) return trimmed;
-    return trimmed.slice(0, maxChars).replace(/\s+\S*$/, '').trim() + '…';
+    return (
+      trimmed
+        .slice(0, maxChars)
+        .replace(/\s+\S*$/, '')
+        .trim() + '…'
+    );
   }
 
   private normalizeBreakdown(reasoning: any): any {
@@ -448,7 +463,12 @@ export class TeamAppService {
     });
   }
 
-  private buildPipeline(projectDir: string, vacCount: number, scoreCount: number, appCount: number): any {
+  private buildPipeline(
+    projectDir: string,
+    vacCount: number,
+    scoreCount: number,
+    appCount: number,
+  ): any {
     const reportsDir = join(projectDir, 'reports');
     const reportCount = existsSync(reportsDir)
       ? (() => {
@@ -507,7 +527,10 @@ export class TeamAppService {
    * arrays-of-objects (we don't need them here).
    */
   private parseYaml(text: string): any {
-    interface L { indent: number; content: string }
+    interface L {
+      indent: number;
+      content: string;
+    }
     const lines: L[] = [];
     // Strip comments in a quote-aware pass: find first `#` that isn't inside
     // a quoted string, truncate there.
@@ -548,7 +571,11 @@ export class TeamAppService {
       // Array branch
       if (lines[i].content.startsWith('- ')) {
         const arr: any[] = [];
-        while (i < lines.length && lines[i].indent === minIndent && lines[i].content.startsWith('- ')) {
+        while (
+          i < lines.length &&
+          lines[i].indent === minIndent &&
+          lines[i].content.startsWith('- ')
+        ) {
           const body = lines[i].content.slice(2);
           // Detect "- key: value" pattern → array item is an object
           const kv = body.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
@@ -573,7 +600,10 @@ export class TeamAppService {
               !lines[i].content.startsWith('- ')
             ) {
               const m2 = lines[i].content.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
-              if (!m2) { i++; continue; }
+              if (!m2) {
+                i++;
+                continue;
+              }
               const [, k, rest] = m2;
               i++;
               if (rest.trim() === '') {
@@ -596,9 +626,16 @@ export class TeamAppService {
       }
       // Object branch
       const obj: any = {};
-      while (i < lines.length && lines[i].indent === minIndent && !lines[i].content.startsWith('- ')) {
+      while (
+        i < lines.length &&
+        lines[i].indent === minIndent &&
+        !lines[i].content.startsWith('- ')
+      ) {
         const m = lines[i].content.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
-        if (!m) { i++; continue; }
+        if (!m) {
+          i++;
+          continue;
+        }
         const [, key, rest] = m;
         i++;
         if (rest.trim() === '') {

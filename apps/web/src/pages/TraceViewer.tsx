@@ -29,8 +29,12 @@ export function TraceViewer() {
   const [agents, setAgents] = useState<Agent[]>([]);
 
   useEffect(() => {
-    get<Team[]>('/teams').then(setTeams).catch(() => {});
-    get<Agent[]>('/agents').then(setAgents).catch(() => {});
+    get<Team[]>('/teams')
+      .then(setTeams)
+      .catch(() => {});
+    get<Agent[]>('/agents')
+      .then(setAgents)
+      .catch(() => {});
   }, []);
 
   const { events, loading, prepend } = useTrace({
@@ -43,7 +47,15 @@ export function TraceViewer() {
   // Live updates via global SSE
   const handleSse = useCallback(
     (data: unknown) => {
-      const ev = data as { id?: string; kind?: string; agentId?: string; teamId?: string; taskId?: string; content?: unknown; createdAt?: number };
+      const ev = data as {
+        id?: string;
+        kind?: string;
+        agentId?: string;
+        teamId?: string;
+        taskId?: string;
+        content?: unknown;
+        createdAt?: number;
+      };
       if (!ev.id || !ev.kind) return;
 
       // Apply client-side filters
@@ -83,7 +95,9 @@ export function TraceViewer() {
         >
           <option value="">All Teams</option>
           {teams.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
           ))}
         </select>
 
@@ -94,7 +108,9 @@ export function TraceViewer() {
         >
           <option value="">All Agents</option>
           {agents.map((a) => (
-            <option key={a.id} value={a.id}>{a.avatar_emoji} {a.name}</option>
+            <option key={a.id} value={a.id}>
+              {a.avatar_emoji} {a.name}
+            </option>
           ))}
         </select>
 
@@ -105,7 +121,9 @@ export function TraceViewer() {
         >
           <option value="">All Events</option>
           {EVENT_KINDS.map((k) => (
-            <option key={k} value={k}>{k}</option>
+            <option key={k} value={k}>
+              {k}
+            </option>
           ))}
         </select>
       </div>

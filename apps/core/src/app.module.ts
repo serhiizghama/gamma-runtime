@@ -29,11 +29,6 @@ import { AgentMessagesRepository } from './repositories/agent-messages.repositor
     TeamAppModule,
   ],
   controllers: [AppController],
-  providers: [
-    ProjectsRepository,
-    TasksRepository,
-    ChatRepository,
-    AgentMessagesRepository,
-  ],
+  providers: [ProjectsRepository, TasksRepository, ChatRepository, AgentMessagesRepository],
 })
 export class AppModule {}

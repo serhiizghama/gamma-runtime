@@ -114,14 +114,20 @@ export function RolePicker({ defaultCategory = 'leadership', value, onChange }: 
             >
               <span className="shrink-0 pt-0.5 text-lg">{role.emoji ?? '🤖'}</span>
               <div className="min-w-0 flex-1">
-                <div className={`text-sm font-medium ${value === role.id ? 'text-blue-400' : 'text-gray-200'}`}>
+                <div
+                  className={`text-sm font-medium ${value === role.id ? 'text-blue-400' : 'text-gray-200'}`}
+                >
                   {role.name}
                 </div>
                 {role.description && (
-                  <div className="mt-0.5 text-xs text-gray-500 line-clamp-2">{role.description}</div>
+                  <div className="mt-0.5 text-xs text-gray-500 line-clamp-2">
+                    {role.description}
+                  </div>
                 )}
                 {role.vibe && (
-                  <div className="mt-0.5 text-[11px] italic text-gray-600 line-clamp-1">{role.vibe}</div>
+                  <div className="mt-0.5 text-[11px] italic text-gray-600 line-clamp-1">
+                    {role.vibe}
+                  </div>
                 )}
               </div>
             </button>

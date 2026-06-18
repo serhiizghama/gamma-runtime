@@ -41,10 +41,7 @@ export class TasksRepository {
   }
 
   async findById(id: string): Promise<Task | null> {
-    const { rows } = await this.db.query<Task>(
-      'SELECT * FROM tasks WHERE id = $1',
-      [id],
-    );
+    const { rows } = await this.db.query<Task>('SELECT * FROM tasks WHERE id = $1', [id]);
     return rows[0] ?? null;
   }
 

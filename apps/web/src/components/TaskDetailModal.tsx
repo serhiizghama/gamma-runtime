@@ -19,7 +19,9 @@ export function TaskDetailModal({ task, agents, onClose }: Props) {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={task.stage} />
-          <span className="rounded-full bg-gray-800 px-2.5 py-0.5 text-xs text-gray-400">{task.kind}</span>
+          <span className="rounded-full bg-gray-800 px-2.5 py-0.5 text-xs text-gray-400">
+            {task.kind}
+          </span>
           {assigned && (
             <span className="text-sm text-gray-400">
               {assigned.avatar_emoji} {assigned.name}
@@ -43,7 +45,9 @@ export function TaskDetailModal({ task, agents, onClose }: Props) {
                 <h5 className="mb-1 text-xs text-gray-500">Files changed:</h5>
                 <ul className="space-y-0.5">
                   {task.result.filesChanged.map((f) => (
-                    <li key={f} className="font-mono text-xs text-gray-400">{f}</li>
+                    <li key={f} className="font-mono text-xs text-gray-400">
+                      {f}
+                    </li>
                   ))}
                 </ul>
               </div>

@@ -46,14 +46,8 @@ export class InternalController {
   }
 
   @Get('read-messages')
-  readMessages(
-    @Query('agentId') agentId: string,
-    @Query('since') since?: string,
-  ) {
-    return this.internalService.readMessages(
-      agentId,
-      since ? parseInt(since, 10) : undefined,
-    );
+  readMessages(@Query('agentId') agentId: string, @Query('since') since?: string) {
+    return this.internalService.readMessages(agentId, since ? parseInt(since, 10) : undefined);
   }
 
   @Post('broadcast')

@@ -12,7 +12,13 @@ import { OrchestratorModule } from '../orchestrator/orchestrator.module';
 import { ChatModule } from '../chat/chat.module';
 
 @Module({
-  imports: [DatabaseModule, forwardRef(() => AgentsModule), ClaudeModule, OrchestratorModule, ChatModule],
+  imports: [
+    DatabaseModule,
+    forwardRef(() => AgentsModule),
+    ClaudeModule,
+    OrchestratorModule,
+    ChatModule,
+  ],
   controllers: [TeamsController],
   providers: [TeamsService, TeamsRepository, AgentsRepository, ProjectsRepository, TasksRepository],
   exports: [TeamsService, TeamsRepository],

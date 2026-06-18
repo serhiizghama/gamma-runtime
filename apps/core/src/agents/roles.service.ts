@@ -120,7 +120,7 @@ export class RolesService implements OnModuleInit {
     const categories: RoleCategory[] = [];
 
     // Virtual "leadership" category first
-    const leadershipRoles = this.manifest.filter(r => LEADERSHIP_ROLE_IDS.includes(r.id));
+    const leadershipRoles = this.manifest.filter((r) => LEADERSHIP_ROLE_IDS.includes(r.id));
     if (leadershipRoles.length > 0) {
       categories.push({
         id: 'leadership',
@@ -149,7 +149,7 @@ export class RolesService implements OnModuleInit {
   }
 
   findById(roleId: string): RoleManifestEntry | null {
-    return this.manifest.find(r => r.id === roleId) ?? null;
+    return this.manifest.find((r) => r.id === roleId) ?? null;
   }
 
   async getRolePrompt(roleId: string): Promise<string> {

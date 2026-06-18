@@ -1,0 +1,8 @@
+node_modules/
+dist/
+pnpm-lock.yaml
+data/
+community-roles/
+*.sql
+docs/SPEC-v2.md
+docs/IMPLEMENTATION-PLAN.md

@@ -45,10 +45,10 @@ export class DatabaseInitService implements OnModuleInit {
     try {
       await client.query('BEGIN');
       await client.query(sql);
-      await client.query(
-        'INSERT INTO _migrations (name, applied_at) VALUES ($1, $2)',
-        [migrationFile, Date.now()],
-      );
+      await client.query('INSERT INTO _migrations (name, applied_at) VALUES ($1, $2)', [
+        migrationFile,
+        Date.now(),
+      ]);
       await client.query('COMMIT');
       this.logger.log(`Migration ${migrationFile} applied successfully`);
     } catch (err) {
