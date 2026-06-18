@@ -1,0 +1,26 @@
+<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Gamma Runtime logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="240" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#9333EA"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- badge -->
+  <rect x="8" y="8" width="224" height="224" rx="54" fill="url(#bg)"/>
+  <rect x="8" y="8" width="224" height="224" rx="54" fill="url(#sheen)"/>
+
+  <!-- Gamma mark, drawn as an orchestration tree -->
+  <!-- top bar (orchestrator) -->
+  <rect x="66" y="62" width="108" height="30" rx="9" fill="#ffffff"/>
+  <!-- left stem -->
+  <rect x="66" y="62" width="30" height="118" rx="9" fill="#ffffff"/>
+
+  <!-- agent nodes at the two free ends -->
+  <circle cx="174" cy="77" r="17" fill="#22D3EE" stroke="#0E1117" stroke-width="4"/>
+  <circle cx="81" cy="180" r="17" fill="#22D3EE" stroke="#0E1117" stroke-width="4"/>
+</svg>

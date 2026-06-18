@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./assets/logo.svg" alt="Gamma Runtime" width="128" height="128" />
+
 # Gamma Runtime
 
 ### A local-first platform for orchestrating teams of AI agents
@@ -52,32 +54,38 @@ local Postgres instance; everything runs with a single `docker compose up`.
 
 ## How it works
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                      Browser (React)                       │
-│   ┌──────────┐    ┌────────────┐    ┌──────────────────┐   │
-│   │ Agent Map│    │ Chat Panel │    │ Task Board (Kanban)│  │
-│   └──────────┘    └────────────┘    └──────────────────┘   │
-└───────────────────────────┬────────────────────────────────┘
-                            │  REST + Server-Sent Events
-┌───────────────────────────┴────────────────────────────────┐
-│                  NestJS Backend (Fastify)                    │
-│  ┌────────────┐ ┌──────────┐ ┌────────┐ ┌────────────────┐  │
-│  │ Orchestrator│ │  Agents  │ │ Teams  │ │ Internal API   │  │
-│  │  (the core) │ │          │ │        │ │ (agent-facing) │  │
-│  └────────────┘ └──────────┘ └────────┘ └────────────────┘  │
-│  ┌────────────┐ ┌──────────┐ ┌──────────────────────────┐   │
-│  │ Event Bus  │ │  Trace   │ │ Claude CLI Adapter        │   │
-│  │ (in-memory)│ │  (log)   │ │ (child_process.spawn)     │   │
-│  └────────────┘ └──────────┘ └──────────────────────────┘   │
-└────────┬─────────────────────────────────┬──────────────────┘
-         │                                 │
-   ┌─────┴─────┐                  ┌─────────┴──────────┐
-   │ Postgres  │                  │  claude CLI × N    │
-   │  (state)  │                  │ (one per active    │
-   └───────────┘                  │  agent, isolated   │
-                                  │  workspaces)       │
-                                  └────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Browser["🖥️ &nbsp;Browser · React"]
+        direction LR
+        AM[Agent Map]
+        CP[Chat Panel]
+        TB[Task Board · Kanban]
+    end
+
+    subgraph Backend["⚙️ &nbsp;NestJS Backend · Fastify"]
+        direction LR
+        ORC["<b>Orchestrator</b><br/><i>the core</i>"]
+        AG[Agents]
+        TM[Teams]
+        API["Internal API<br/>agent-facing"]
+        EB["Event Bus<br/>in-memory"]
+        TR["Trace · log"]
+        CLI["Claude CLI Adapter<br/>child_process.spawn"]
+    end
+
+    PG[("Postgres<br/>state")]
+    CC["claude CLI × N<br/>one process per active agent<br/>isolated workspaces"]
+
+    Browser <==>|"REST + Server-Sent Events"| Backend
+    ORC --> AG & TM & API & CLI
+    Backend --> PG
+    CLI ==> CC
+
+    style ORC fill:#4F46E5,stroke:#312E81,color:#fff
+    style CLI fill:#4F46E5,stroke:#312E81,color:#fff
+    style CC fill:#22D3EE,stroke:#0E7490,color:#06283D
+    style PG fill:#9333EA,stroke:#581C87,color:#fff
 ```
 
 The orchestration loop:
