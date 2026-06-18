@@ -218,7 +218,6 @@ gamma-runtime/
 │           ├── store/        # Zustand state
 │           └── api/          # Fetch client
 ├── community-roles/         # 160+ agent role definitions
-├── docs/                    # SPEC-v2.md, IMPLEMENTATION-PLAN.md
 ├── scripts/                 # DB init & migrations
 └── docker-compose.yml       # Postgres
 ```
@@ -230,9 +229,6 @@ gamma-runtime/
 - **SQL** is always parameterized — never string-concatenated.
 - **No Redis** — a single instance with an in-memory event bus keeps the
   architecture intentionally simple.
-
-For the full product and system specification, see
-[`docs/SPEC-v2.md`](docs/SPEC-v2.md).
 
 ---
 

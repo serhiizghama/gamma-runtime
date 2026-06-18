@@ -108,11 +108,9 @@ AGENT_TIMEOUT_MS=600000
 - Ad-hoc migrations: `scripts/*.sql` — run manually against the running Postgres container when needed.
 - To blow away state and start clean: `pnpm db:reset`.
 
-## Design Docs
+## Design Principles
 
-Before making large architectural changes, read:
-
-- `docs/SPEC-v2.md` — product & system spec
-- `docs/IMPLEMENTATION-PLAN.md` — build plan and sequencing
-
-These explain _why_ the runtime is shaped this way (local-first, no LLM gateway, CLI-as-agent, etc.).
+The runtime is shaped by a few deliberate choices: local-first (one
+`docker compose up`), no external LLM gateway (agents are local `claude` CLI
+processes under the user's subscription), CLI-as-agent, and intentional
+minimalism (single instance, in-memory event bus, no Redis).
